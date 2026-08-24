@@ -304,23 +304,30 @@ follows:
 - `rust-lint` runs format and Clippy with incremental compilation and dev/test
   debug output disabled.
 - `rust-deny` runs the locked all-feature dependency policy in parallel.
-- `rust-full`, `rust-partial`, and `rust-skip` are mutually exclusive execution
-  producers. `rust-coverage` is not an execution lane: it is the stable
-  required aggregate. Under `if: always()`, it validates the selected mode and
-  every producer result, then passes only when the selected producer succeeds
-  and the other two are skipped. `rust-gate` and `python-rust-integration` use
-  that stable aggregate status.
-- `rust-full` owns the full locked-workspace coverage path: the selected
-  `cargo llvm-cov nextest` profile, workspace doctests against the instrumented
-  target, the workspace line baseline, `target/llvm-cov/lcov.info`, repository
-  policy, plugin projection validation, and the Linux executable artifact.
+- `rust-full`, `rust-partial`, and `rust-skip` remain the mutually exclusive
+  full, partial, and skip mode results. The full result is composed from the
+  `rust-full-shards` matrix and the stable `rust-full` merge-and-gate job.
+  `rust-coverage` is not an execution lane: it is the stable required
+  aggregate. Under `if: always()`, it validates the selected mode and every
+  mode result, then passes only when the selected mode succeeds and the other
+  two are skipped. `rust-gate` and `python-rust-integration` use that stable
+  aggregate status.
+- `rust-full-shards` owns the full locked-workspace coverage execution. Four
+  cells run `cargo llvm-cov nextest` with disjoint
+  `--partition hash:N/4` partitions and upload distinct LCOV reports. Shard 1
+  alone runs workspace doctests, repository policy, plugin projection
+  validation, cache-candidate staging, and the Linux executable artifact.
+  `rust-full` requires every cell to pass, merges exactly four same-run LCOV
+  reports, and applies the unchanged 88% line threshold once to the combined
+  workspace coverage.
   After coverage-target pruning, an exact cache miss in a successful
   `merge_group` full lane stages and verifies a policy-cache candidate from
   that preserved artifact. The trusted main publisher may promote it only after
   that candidate's SHA becomes the current `main` SHA, then rewrites and
   revalidates its `refs/heads/main` provenance. This does not build a second
   executable.
-  It is the only producer that enforces full-workspace coverage. The
+  The composed full mode is the only path that enforces full-workspace
+  coverage. The
   `merge_group` `checks_requested` trigger runs the same full, read-only path
   for a merge-queue candidate. Manual dispatches and merge-queue runs use
   `rust-full`; a normal `main` push runs only trusted cache publication. Pull
@@ -354,6 +361,31 @@ follows:
   cache-off `rust-full` control, uses the same coverage action and profile, and
   uploads a uniquely named verification artifact rather than competing with the
   Python handoff.
+
+### Rust coverage shard count
+
+The production matrix uses four hash partitions. This is a measured tradeoff,
+not a claim that hash partitioning balances test runtime exactly.
+[Merge-group run 32684348532](https://github.com/character-ai/larch/actions/runs/32684348532)
+recorded a 711-second monolithic `rust-full` job. Its timing artifact attributed
+about 209 seconds to compilation, 184 seconds to nextest, 132 seconds to
+repository policy, and 107 seconds to the coverage report. The following rough
+predictions hold the measured fixed phases constant, divide only nextest time,
+and assume shard 1 retains the policy work:
+
+| Matrix width | Shard 1 | Each other shard | Critical shard |
+| ---: | ---: | ---: | ---: |
+| 2 | about 10.2 min | about 8.0 min | about 10.2 min |
+| 4 | about 9.4 min | about 7.2 min | about 9.4 min |
+| 8 | about 9.0 min | about 6.8 min | about 9.0 min |
+
+Treat each estimate as having roughly one minute of uncertainty. A four-cell
+matrix captures most of the predicted critical-path reduction: moving from two
+to four cells saves about 46 seconds, while moving from four to eight saves only
+about 23 more seconds and doubles duplicated compilation, setup, report, and
+artifact work. New production timing can revise the count through
+`/rebalance-tests --kind rust --n-rust-shards N`; the command verifies complete
+post-change shard cohorts before it accepts the result.
 
 ### Bash-shard Cargo target ownership
 
@@ -389,30 +421,32 @@ The focused targets remain available for local debugging. They are not
 `test-harnesses-N` prerequisites, so a fresh Bash-harness runner does not
 duplicate the workspace test compilation.
 
-`rust-full` and the dispatch-only coverage measurement jobs install
+`rust-full-shards` and the dispatch-only coverage measurement jobs install
 checksum-verified pinned `cargo-nextest` and `cargo-llvm-cov` binaries without
 a source-install fallback. Normal local checks use changed-path Clippy and do
 not install coverage tooling or create instrumented artifacts.
 
-`rust-full` sets `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_TEST_DEBUG=0`,
+`rust-full-shards` sets `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_TEST_DEBUG=0`,
 `CARGO_PROFILE_TEST_OPT_LEVEL=0`, and runs nextest with
 `NEXTEST_TEST_THREADS=16`. It cleans prior coverage state, builds one
 coverage-instrumented artifact set with `cargo nextest run --no-run` under the
 environment exported by `cargo llvm-cov show-env`. The same environment then
 builds the `larch` CLI with Cargo's `--profile test`, which resolves to
 `target/llvm-cov-target/debug/larch`; it does not compile a second CLI with the
-dev profile or build an uninstrumented `target/debug/larch`. The producer runs
-`cargo llvm-cov nextest --no-report` and a separate
-`cargo test --doc --workspace --all-features --locked --target-dir
-target/llvm-cov-target` command under the same `cargo llvm-cov show-env`
-environment. `--no-report` preserves the coverage artifact set between normal
-test phases; the stable toolchain runs doctests without cargo-llvm-cov's
-nightly-only doctest instrumentation. The report command retains the existing
-line threshold and filename exclusions. After nextest and before its report,
-the producer fails closed unless the coverage-target executable is runnable and
-reports its version, then uses it for exactly one `larch lint all` invocation.
+dev profile or build an uninstrumented `target/debug/larch`. Each cell runs its
+`cargo llvm-cov nextest --no-report --partition hash:N/4` partition. Shard 1
+also runs a separate `cargo test --doc --workspace --all-features --locked
+--target-dir target/llvm-cov-target` command under the same
+`cargo llvm-cov show-env` environment. `--no-report` preserves the coverage
+artifact set between normal test phases; the stable toolchain runs doctests
+without cargo-llvm-cov's nightly-only doctest instrumentation. Each shard
+report retains the existing filename exclusions. The stable `rust-full` job
+applies the line threshold after it merges all four reports. After nextest and
+before its report, shard 1
+fails closed unless the coverage-target executable is runnable and reports its
+version, then uses it for exactly one `larch lint all` invocation.
 That invocation writes a sorted per-rule timing TSV and contributes to the
-unchanged line gate. After the report, the producer uses the executable for
+merged line gate. After the report, shard 1 uses the executable for
 both plugin-runtime commands and the generated-projection clean-diff check
 before uploading it for Python integration tests. The separate doctest command
 stays required even when the workspace currently has no doctests. Nextest's
@@ -724,13 +758,14 @@ making that final claim.
 
 A final production claim needs three comparable warm full-path successful
 `push` runs on `refs/heads/main` after the relevant repair. Record each run's
-direct URL and the results for `rust-full`, `rust-coverage`, `rust-gate`, and
-`python-tests-gate`. For every sample, link the coverage-timing TSV, LCOV
-artifact, and `larch-linux-test-binary` artifact. Record the job duration,
-cache hit or miss, restored bytes and restore time, compile time, cache-save
-outcome and time, and end-to-end time. Keep warm exact hits separate from cold
-or miss samples. Report raw values and medians. A pull-request or manual run
-does not substitute for a production push.
+direct URL and the results for every `rust-full shard N` cell, `rust-full`,
+`rust-coverage`, `rust-gate`, and `python-tests-gate`. For every sample, link
+each shard's coverage-timing TSV and LCOV artifact, the merged LCOV artifact,
+and the `larch-linux-test-binary` artifact. Record each job duration, cache hit
+or miss, restored bytes and restore time, compile time, cache-save outcome and
+time, and end-to-end time. Keep warm exact hits separate from cold or miss
+samples. Report raw values and medians. A pull-request or manual run does not
+substitute for a production push.
 
 The raw end-to-end record, including its explicit separation of controlled
 main-ref dispatches from production pushes, is in

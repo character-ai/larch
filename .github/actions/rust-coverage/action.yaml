@@ -5,6 +5,7 @@ runs:
   using: composite
   steps:
     - name: Initialize Rust coverage phase timing
+      id: coverage-init
       shell: bash
       run: |
         set -euo pipefail
@@ -23,16 +24,46 @@ runs:
           sequential|parallel) ;;
           *) printf 'invalid Rust coverage phase mode: %s\n' "$RUST_COVERAGE_PHASE_MODE" >&2; exit 1 ;;
         esac
+        coverage_shard_index="${COVERAGE_SHARD_INDEX:-1}"
+        coverage_shard_count="${COVERAGE_SHARD_COUNT:-1}"
+        case "$coverage_shard_index" in
+          ''|0|0*|*[!0-9]*) printf 'invalid Rust coverage shard index: %s\n' "$coverage_shard_index" >&2; exit 1 ;;
+        esac
+        case "$coverage_shard_count" in
+          ''|0|0*|*[!0-9]*) printf 'invalid Rust coverage shard count: %s\n' "$coverage_shard_count" >&2; exit 1 ;;
+        esac
+        if [ "$coverage_shard_index" -gt "$coverage_shard_count" ]; then
+          printf 'Rust coverage shard index exceeds count: %s > %s\n' \
+            "$coverage_shard_index" "$coverage_shard_count" >&2
+          exit 1
+        fi
+        if [ "$coverage_shard_index" -eq 1 ]; then
+          coverage_primary_shard=true
+        else
+          coverage_primary_shard=false
+        fi
+        if [ "$coverage_shard_count" -eq 1 ]; then
+          coverage_apply_line_gate=true
+        else
+          coverage_apply_line_gate=false
+        fi
         if [ "$COVERAGE_TARGET_CACHE_ENABLED" = true ]; then
           target_cache_policy="$COVERAGE_TARGET_CACHE_PUBLICATION"
         else
           target_cache_policy=disabled-unmeasured
         fi
         printf 'phase-mode\t0\tsuccess\t%s\n' "$RUST_COVERAGE_PHASE_MODE" >> "$timing_file"
+        printf 'coverage-shard\t0\tsuccess\t%s/%s;primary=%s;line-gate=%s\n' \
+          "$coverage_shard_index" "$coverage_shard_count" "$coverage_primary_shard" \
+          "$coverage_apply_line_gate" >> "$timing_file"
         printf 'kind\tvalue\npolicy\t%s\n' "$target_cache_policy" > "$target_inventory"
         {
           printf 'COVERAGE_TIMING_FILE=%s\n' "$timing_file"
           printf 'COVERAGE_TARGET_CACHE_INVENTORY=%s\n' "$target_inventory"
+          printf 'COVERAGE_SHARD_INDEX=%s\n' "$coverage_shard_index"
+          printf 'COVERAGE_SHARD_COUNT=%s\n' "$coverage_shard_count"
+          printf 'COVERAGE_PRIMARY_SHARD=%s\n' "$coverage_primary_shard"
+          printf 'COVERAGE_APPLY_LINE_GATE=%s\n' "$coverage_apply_line_gate"
           printf 'COVERAGE_TARGET_CACHE_HIT=disabled\n'
           printf 'COVERAGE_TARGET_CACHE_RESTORE_OUTCOME=disabled-unmeasured\n'
           printf 'COVERAGE_TARGET_CACHE_RESTORE_SECONDS=0\n'
@@ -46,6 +77,10 @@ runs:
           printf 'COVERAGE_PRIOR_FAILURE_OR_CANCELLATION=false\n'
           printf 'COVERAGE_JOB_OUTCOME=success\n'
         } >> "$GITHUB_ENV"
+        {
+          printf 'primary=%s\n' "$coverage_primary_shard"
+          printf 'apply-line-gate=%s\n' "$coverage_apply_line_gate"
+        } >> "$GITHUB_OUTPUT"
     - name: Start Rust coverage cache restore timing
       shell: bash
       run: |
@@ -392,7 +427,11 @@ runs:
           cargo test --doc --workspace --all-features --locked \
             --target-dir "$coverage_target_dir"
         )
-        run_timed doctests run_doctests
+        if [ "$COVERAGE_PRIMARY_SHARD" = true ]; then
+          run_timed doctests run_doctests
+        else
+          printf 'doctests\t0\tskipped\tnon-primary-shard\n' >> "$COVERAGE_TIMING_FILE"
+        fi
         prepared_finished="$(date +%s)"
 
         run_repository_policy() (
@@ -415,9 +454,13 @@ runs:
           eval "$(CARGO_TARGET_DIR="$coverage_target_dir" cargo llvm-cov show-env --sh)" &&
           unset CARGO_LLVM_COV_SHOW_ENV &&
           require_process_scoped_profile &&
+          partition_arguments=() &&
+          if [ "$COVERAGE_SHARD_COUNT" -gt 1 ]; then
+            partition_arguments=(--partition "hash:${COVERAGE_SHARD_INDEX}/${COVERAGE_SHARD_COUNT}")
+          fi &&
           cargo llvm-cov nextest --no-report \
             --workspace --all-features --locked --test-threads "$1" \
-            --status-level slow --final-status-level slow
+            --status-level slow --final-status-level slow "${partition_arguments[@]}"
         )
 
         run_parallel_coverage_phases() {
@@ -470,23 +513,39 @@ runs:
           case "$RUST_COVERAGE_PHASE_MODE" in
             sequential)
               run_timed "test-execution-${test_threads}" run_nextest "$test_threads"
-              # Keep exactly one full policy scan in every coverage path,
-              # before its report, so the unchanged 88% line gate includes it.
-              run_timed "repository-policy-${test_threads}" \
-                run_repository_policy "$test_threads"
+              # Keep exactly one full policy scan in the complete sharded path.
+              # The aggregate report applies the unchanged 88% line gate.
+              if [ "$COVERAGE_PRIMARY_SHARD" = true ]; then
+                run_timed "repository-policy-${test_threads}" \
+                  run_repository_policy "$test_threads"
+              else
+                printf 'repository-policy-%s\t0\tskipped\tnon-primary-shard\n' \
+                  "$test_threads" >> "$COVERAGE_TIMING_FILE"
+              fi
               ;;
             parallel)
               # Both branches use a process-scoped profile path and write
               # separate logs and timing rows. Wait for both before reporting
               # so no profraw producer can race coverage collection.
-              run_parallel_coverage_phases "$test_threads"
+              if [ "$COVERAGE_PRIMARY_SHARD" = true ]; then
+                run_parallel_coverage_phases "$test_threads"
+              else
+                run_timed "test-execution-${test_threads}" run_nextest "$test_threads"
+                printf 'repository-policy-%s\t0\tskipped\tnon-primary-shard\n' \
+                  "$test_threads" >> "$COVERAGE_TIMING_FILE"
+              fi
               ;;
             *) printf 'invalid Rust coverage phase mode: %s\n' "$RUST_COVERAGE_PHASE_MODE" >&2; exit 1 ;;
           esac
+          report_arguments=(
+            --ignore-filename-regex "${RUST_COVERAGE_IGNORE_REGEX}"
+            --lcov --output-path target/llvm-cov/lcov.info
+          )
+          if [ "$COVERAGE_APPLY_LINE_GATE" = true ]; then
+            report_arguments+=(--fail-under-lines "${RUST_COVERAGE_MIN_LINES}")
+          fi
           if run_timed "coverage-report-${test_threads}" cargo llvm-cov report \
-            --ignore-filename-regex "${RUST_COVERAGE_IGNORE_REGEX}" \
-            --lcov --output-path target/llvm-cov/lcov.info \
-            --fail-under-lines "${RUST_COVERAGE_MIN_LINES}"; then
+            "${report_arguments[@]}"; then
             report_result=0
             total_outcome=success
           else
@@ -504,6 +563,7 @@ runs:
         done
     - name: Run plugin validations with coverage executable
       id: plugin-validation
+      if: success() && steps.coverage-init.outputs.primary == 'true'
       env:
         LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-coverage-validation-%p.profraw
       shell: bash
@@ -538,7 +598,7 @@ runs:
         path: target/llvm-cov/lcov.info
         if-no-files-found: error
     - name: Upload Rust repository policy rule timings
-      if: success()
+      if: success() && steps.coverage-init.outputs.primary == 'true'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: rust-repository-policy-rule-timings${{ env.COVERAGE_TIMING_ARTIFACT_SUFFIX }}
@@ -550,7 +610,7 @@ runs:
       # name so its upload cost remains measurable without racing that handoff.
       # Keep the source SHA, checksum, and version beside the executable so the
       # consumer can reject a missing, stale, or altered handoff.
-      if: success() && env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'
+      if: success() && steps.coverage-init.outputs.primary == 'true' && env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -562,7 +622,7 @@ runs:
           --source-sha "$GITHUB_SHA" \
           --rust-inputs-sha256 "$RUST_POLICY_INPUTS_SHA256"
     - name: Upload coverage-built Rust executable for cross-language integration tests
-      if: success() && env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'
+      if: success() && steps.coverage-init.outputs.primary == 'true' && env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: ${{ env.COVERAGE_PYTHON_ARTIFACT_NAME }}
@@ -721,7 +781,7 @@ runs:
     # advanced main to this exact SHA.
     - name: Stage cargo-nextest cache candidate
       id: nextest-cache-candidate
-      if: success() && github.event_name == 'merge_group' && steps.nextest-cache.outputs.cache-hit != 'true'
+      if: success() && steps.coverage-init.outputs.primary == 'true' && github.event_name == 'merge_group' && steps.nextest-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -733,13 +793,13 @@ runs:
           --candidate-dir "$RUNNER_TEMP/main-cache-cargo-nextest-candidate" \
           --maximum-bytes 0 \
           --producer-event "$GITHUB_EVENT_NAME" \
-          --producer-job rust-full \
+          --producer-job 'rust-full shard 1' \
           --producer-ref "$GITHUB_REF" \
           --source-sha "$GITHUB_SHA" \
           --source "cargo-nextest=$HOME/.cargo/bin/cargo-nextest" \
           --tool-version "cargo-nextest=cargo-nextest ${CARGO_NEXTEST_VERSION}"
     - name: Upload cargo-nextest cache candidate
-      if: success() && github.event_name == 'merge_group' && steps.nextest-cache.outputs.cache-hit != 'true'
+      if: success() && steps.coverage-init.outputs.primary == 'true' && github.event_name == 'merge_group' && steps.nextest-cache.outputs.cache-hit != 'true'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: main-cache-cargo-nextest-candidate
@@ -749,7 +809,7 @@ runs:
         overwrite: false
     - name: Stage cargo-llvm-cov cache candidate
       id: llvm-cov-cache-candidate
-      if: success() && github.event_name == 'merge_group' && steps.llvm-cov-cache.outputs.cache-hit != 'true'
+      if: success() && steps.coverage-init.outputs.primary == 'true' && github.event_name == 'merge_group' && steps.llvm-cov-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -761,13 +821,13 @@ runs:
           --candidate-dir "$RUNNER_TEMP/main-cache-cargo-llvm-cov-candidate" \
           --maximum-bytes 0 \
           --producer-event "$GITHUB_EVENT_NAME" \
-          --producer-job rust-full \
+          --producer-job 'rust-full shard 1' \
           --producer-ref "$GITHUB_REF" \
           --source-sha "$GITHUB_SHA" \
           --source "cargo-llvm-cov=$HOME/.cargo/bin/cargo-llvm-cov" \
           --tool-version "cargo-llvm-cov=cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"
     - name: Upload cargo-llvm-cov cache candidate
-      if: success() && github.event_name == 'merge_group' && steps.llvm-cov-cache.outputs.cache-hit != 'true'
+      if: success() && steps.coverage-init.outputs.primary == 'true' && github.event_name == 'merge_group' && steps.llvm-cov-cache.outputs.cache-hit != 'true'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: main-cache-cargo-llvm-cov-candidate
@@ -778,7 +838,7 @@ runs:
     - name: Stage pruned coverage dependency cache candidate
       id: coverage-target-cache-candidate
       if: >-
-        success() && github.event_name == 'merge_group' &&
+        success() && steps.coverage-init.outputs.primary == 'true' && github.event_name == 'merge_group' &&
         env.COVERAGE_TARGET_CACHE_PUBLICATION == 'main-cache-candidate' &&
         steps.coverage-target-cache.outputs.cache-hit != 'true' &&
         steps.coverage-target-cache-prune.outcome == 'success' &&
@@ -794,7 +854,7 @@ runs:
           --candidate-dir "$RUNNER_TEMP/main-cache-coverage-target-candidate" \
           --maximum-bytes "$COVERAGE_TARGET_CACHE_MAX_BYTES" \
           --producer-event "$GITHUB_EVENT_NAME" \
-          --producer-job rust-full \
+          --producer-job 'rust-full shard 1' \
           --producer-ref "$GITHUB_REF" \
           --source-sha "$GITHUB_SHA" \
           --source "llvm-cov-target=$GITHUB_WORKSPACE/target/llvm-cov-target" \
@@ -898,6 +958,9 @@ runs:
             if [ "$event_name" != merge_group ]; then
               outcome=skipped
               detail="validation-read-only;${cache_hits}"
+            elif [ "$COVERAGE_PRIMARY_SHARD" != true ]; then
+              outcome=skipped
+              detail="non-primary-shard-read-only;${cache_hits}"
             elif [ "$prior_failure_or_cancelled" = true ]; then
               outcome=skipped
               detail="job-not-success;${cache_hits}"

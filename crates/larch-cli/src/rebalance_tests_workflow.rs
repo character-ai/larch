@@ -13,9 +13,9 @@ use larch_adapters::{
 };
 use larch_core::{
     CiTimingRunSelection, GitHubActionsService, GitHubMutationOutcome, GitHubRepositoryRef, Head,
-    RepositoryRead, Revision, StatusOptions, WorkflowDispatchRequest, WorkflowRun,
-    WorkflowRunFilters, collect_harness_timing, collect_job_timing, collect_pytest_timing,
-    plan_json, verify_json,
+    MAX_RUST_COVERAGE_SHARDS, RepositoryRead, Revision, StatusOptions, WorkflowDispatchRequest,
+    WorkflowRun, WorkflowRunFilters, collect_harness_timing, collect_job_timing,
+    collect_pytest_timing, collect_rust_coverage_job_timing, plan_json, verify_json,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -34,10 +34,16 @@ const PYTHON_SHARD_MATRIX_PREFIX: &str = "        shard: [";
 const PYTHON_TEST_NAME_PREFIX: &str =
     r"      - name: Run Python tests (shard ${{ matrix.shard }} of ";
 const PYTHON_SHARD_COUNT_PREFIX: &str = "          PYTEST_SHARD_COUNT: \"";
+const RUST_FULL_HEADER: &str = "\n  rust-full-shards:\n";
+const RUST_FULL_FOOTER: &str = "\n  # The partial path";
+const RUST_SHARD_MATRIX_PREFIX: &str = "        shard: [";
+const RUST_PRODUCER_SHARD_COUNT_PREFIX: &str = "      COVERAGE_SHARD_COUNT: \"";
+const RUST_GATE_SHARD_COUNT_PREFIX: &str = "      RUST_COVERAGE_SHARD_COUNT: \"";
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum RebalanceKind {
     Harness,
     Python,
+    Rust,
     All,
 }
 impl RebalanceKind {
@@ -47,10 +53,14 @@ impl RebalanceKind {
     const fn includes_python(self) -> bool {
         matches!(self, Self::Python | Self::All)
     }
+    const fn includes_rust(self) -> bool {
+        matches!(self, Self::Rust | Self::All)
+    }
     const fn wire(self) -> &'static str {
         match self {
             Self::Harness => "harness",
             Self::Python => "python",
+            Self::Rust => "rust",
             Self::All => "all",
         }
     }
@@ -58,7 +68,8 @@ impl RebalanceKind {
         match self {
             Self::Harness => "harness",
             Self::Python => "python",
-            Self::All => "harness+python",
+            Self::Rust => "rust",
+            Self::All => "harness+python+rust",
         }
     }
 }
@@ -82,10 +93,14 @@ pub struct RebalanceRunArguments {
     n_verify_runs: usize,
     #[arg(long, value_parser = parse_positive_u32)]
     n_python_shards: Option<u32>,
+    #[arg(long, value_parser = parse_rust_shard_count)]
+    n_rust_shards: Option<u32>,
     #[arg(long, default_value_t = 15.0, value_parser = parse_positive_f64)]
     balance_threshold: f64,
     #[arg(long, default_value_t = 300.0, value_parser = parse_positive_f64)]
     max_shard_wall_clock: f64,
+    #[arg(long, default_value_t = 600.0, value_parser = parse_positive_f64)]
+    max_rust_shard_wall_clock: f64,
     #[arg(long, value_parser = parse_experiment_note)]
     experimental_wall_clock_override: Option<String>,
     #[arg(long, value_parser = parse_compile_affinity)]
@@ -131,17 +146,51 @@ struct PythonPlan {
     changed: bool,
 }
 #[derive(Clone, Debug)]
+struct RustPlan {
+    current_shard_count: u32,
+    shard_count: u32,
+    baseline_slowest_wall_clock: f64,
+    approved_slowest_wall_clock: f64,
+    changed: bool,
+}
+#[derive(Clone, Debug)]
 struct PreparedPlan {
     kind: RebalanceKind,
     repository: GitHubRepositoryRef,
     harness: Option<HarnessPlan>,
     python: Option<PythonPlan>,
+    rust: Option<RustPlan>,
     decision: String,
 }
+
+struct PlanningState {
+    harness: Option<BTreeMap<u32, Vec<String>>>,
+    assignments: Option<BTreeMap<String, u32>>,
+    python_shard_count: Option<u32>,
+    rust_shard_count: Option<u32>,
+}
+
+struct PlanningTimings {
+    harness: Option<(larch_core::HarnessTimingReport, larch_core::JobTimingReport)>,
+    python: Option<larch_core::PytestTimingReport>,
+    rust: Option<larch_core::JobTimingReport>,
+}
+
+struct PlanRequestEvidence<'a> {
+    current_harness: Option<&'a BTreeMap<u32, Vec<String>>>,
+    harness_timing: Option<&'a larch_core::HarnessTimingReport>,
+    jobs_timing: Option<&'a larch_core::JobTimingReport>,
+    current_assignments: Option<&'a BTreeMap<String, u32>>,
+    pytest_timing: Option<&'a larch_core::PytestTimingReport>,
+    current_rust_shard_count: Option<u32>,
+    rust_timing: Option<&'a larch_core::JobTimingReport>,
+}
+
 impl PreparedPlan {
     fn is_noop(&self) -> bool {
         self.harness.as_ref().is_none_or(|plan| !plan.changed)
             && self.python.as_ref().is_none_or(|plan| !plan.changed)
+            && self.rust.as_ref().is_none_or(|plan| !plan.changed)
     }
 }
 #[derive(Clone, Debug)]
@@ -366,13 +415,11 @@ impl ProductionWorkflow {
             .map_err(|error| format!("cannot safely access {CI_WORKFLOW}: {error}"))
     }
 
-    fn collect_plan(
+    fn read_planning_state(
         &self,
         arguments: &RebalanceRunArguments,
-        repository: &GitHubRepositoryRef,
-    ) -> Result<PreparedPlan, String> {
-        let github = self.github()?;
-        let current_harness = arguments
+    ) -> Result<PlanningState, String> {
+        let harness = arguments
             .kind
             .includes_harness()
             .then(|| {
@@ -380,23 +427,43 @@ impl ProductionWorkflow {
                     .and_then(|path| test_shards::read_makefile_shard_map(&path))
             })
             .transpose()?;
-        let current_assignments = arguments
+        let assignments = arguments
             .kind
             .includes_python()
             .then(|| self.read_assignments())
             .transpose()?;
-        let current_python_shard_count = arguments
+        let python_shard_count = arguments
             .kind
             .includes_python()
             .then(|| self.read_python_shard_count())
             .transpose()?;
-        let (harness_pair, pytest_timing) = self.runtime.block_on(async {
+        let rust_shard_count = arguments
+            .kind
+            .includes_rust()
+            .then(|| self.read_rust_shard_count())
+            .transpose()?;
+        Ok(PlanningState {
+            harness,
+            assignments,
+            python_shard_count,
+            rust_shard_count,
+        })
+    }
+
+    fn collect_plan_timings(
+        &self,
+        github: &OctocrabGitHubService,
+        repository: &GitHubRepositoryRef,
+        arguments: &RebalanceRunArguments,
+        state: &PlanningState,
+    ) -> Result<PlanningTimings, String> {
+        self.runtime.block_on(async {
             let selection = CiTimingRunSelection::Recent {
                 branch: arguments.baseline_branch.clone(),
                 workflow: arguments.workflow.clone(),
                 limit: arguments.n_runs,
             };
-            let harness = if let Some(shards) = &current_harness {
+            let harness = if let Some(shards) = &state.harness {
                 let targets = shards.values().flatten().cloned().collect::<Vec<_>>();
                 let timing = collect_harness_timing(
                     github,
@@ -415,11 +482,11 @@ impl ProductionWorkflow {
                 )
                 .await
                 .map_err(|error| error.to_string())?;
-                Ok::<_, String>(Some((timing, jobs)))
+                Some((timing, jobs))
             } else {
-                Ok(None)
-            }?;
-            let pytest = if current_assignments.is_some() {
+                None
+            };
+            let python = if state.assignments.is_some() {
                 Some(
                     collect_pytest_timing(github, repository, &selection, &self.cancellation)
                         .await
@@ -428,13 +495,44 @@ impl ProductionWorkflow {
             } else {
                 None
             };
-            Ok::<_, String>((harness, pytest))
-        })?;
-        let (harness_timing, jobs_timing) =
-            harness_pair.map_or((None, None), |(harness, jobs)| (Some(harness), Some(jobs)));
+            let rust = if state.rust_shard_count.is_some() {
+                Some(
+                    collect_rust_coverage_job_timing(
+                        github,
+                        repository,
+                        &selection,
+                        &self.cancellation,
+                    )
+                    .await
+                    .map_err(|error| error.to_string())?,
+                )
+            } else {
+                None
+            };
+            Ok(PlanningTimings {
+                harness,
+                python,
+                rust,
+            })
+        })
+    }
+
+    fn collect_plan(
+        &self,
+        arguments: &RebalanceRunArguments,
+        repository: &GitHubRepositoryRef,
+    ) -> Result<PreparedPlan, String> {
+        let github = self.github()?;
+        let state = self.read_planning_state(arguments)?;
+        let timings = self.collect_plan_timings(github, repository, arguments, &state)?;
+        let (harness_timing, jobs_timing) = timings
+            .harness
+            .as_ref()
+            .map_or((None, None), |(harness, jobs)| (Some(harness), Some(jobs)));
         if let (Some(configured), Some(observed)) = (
-            current_python_shard_count,
-            pytest_timing
+            state.python_shard_count,
+            timings
+                .python
                 .as_ref()
                 .and_then(|timing| timing.observed_shard_count),
         ) && configured != observed
@@ -445,11 +543,15 @@ impl ProductionWorkflow {
         }
         let request = plan_request(
             arguments,
-            current_harness.as_ref(),
-            harness_timing.as_ref(),
-            jobs_timing.as_ref(),
-            current_assignments.as_ref(),
-            pytest_timing.as_ref(),
+            &PlanRequestEvidence {
+                current_harness: state.harness.as_ref(),
+                harness_timing,
+                jobs_timing,
+                current_assignments: state.assignments.as_ref(),
+                pytest_timing: timings.python.as_ref(),
+                current_rust_shard_count: state.rust_shard_count,
+                rust_timing: timings.rust.as_ref(),
+            },
         )?;
         let result = plan_json(&request)?;
         let response: PlanResponse = serde_json::from_str(&result.json)
@@ -458,9 +560,9 @@ impl ProductionWorkflow {
             return Err(format_plan_rejection(&response));
         }
         let mut prepared =
-            response.into_prepared(arguments.kind, repository.clone(), current_harness)?;
+            response.into_prepared(arguments.kind, repository.clone(), state.harness)?;
         if let (Some(python), Some(configured)) =
-            (prepared.python.as_mut(), current_python_shard_count)
+            (prepared.python.as_mut(), state.python_shard_count)
         {
             python.workflow_changed = python.shard_count != configured;
             python.changed |= python.workflow_changed;
@@ -480,6 +582,11 @@ impl ProductionWorkflow {
     fn read_python_shard_count(&self) -> Result<u32, String> {
         let path = self.ci_workflow(larch_adapters::PathIntent::Read)?;
         python_workflow_shard_count(&read_utf8(&path).map_err(|error| error.to_string())?)
+    }
+
+    fn read_rust_shard_count(&self) -> Result<u32, String> {
+        let path = self.ci_workflow(larch_adapters::PathIntent::Read)?;
+        rust_workflow_shard_count(&read_utf8(&path).map_err(|error| error.to_string())?)
     }
 
     fn restore_artifacts(&self, artifacts: &[Artifact]) -> Result<(), String> {
@@ -686,16 +793,31 @@ impl WorkflowPort for ProductionWorkflow {
                 ));
             }
         }
-        if let Some(python) = &plan.python
-            && python.workflow_changed
-        {
+        let python_shard_count = plan
+            .python
+            .as_ref()
+            .filter(|python| python.workflow_changed)
+            .map(|python| python.shard_count);
+        let rust_shard_count = plan
+            .rust
+            .as_ref()
+            .filter(|rust| rust.changed)
+            .map(|rust| rust.shard_count);
+        if python_shard_count.is_some() || rust_shard_count.is_some() {
             let source = self
                 .ci_workflow(larch_adapters::PathIntent::Read)
                 .map_err(|error| self.rollback_write_failure(&written, error))?;
             let source_text = read_utf8(&source)
                 .map_err(|error| self.rollback_write_failure(&written, error.to_string()))?;
-            let rendered = rewrite_python_workflow_shard_count(&source_text, python.shard_count)
-                .map_err(|error| self.rollback_write_failure(&written, error))?;
+            let mut rendered = source_text;
+            if let Some(shard_count) = python_shard_count {
+                rendered = rewrite_python_workflow_shard_count(&rendered, shard_count)
+                    .map_err(|error| self.rollback_write_failure(&written, error))?;
+            }
+            if let Some(shard_count) = rust_shard_count {
+                rendered = rewrite_rust_workflow_shard_count(&rendered, shard_count)
+                    .map_err(|error| self.rollback_write_failure(&written, error))?;
+            }
             let target = self
                 .ci_workflow(larch_adapters::PathIntent::Write)
                 .map_err(|error| self.rollback_write_failure(&written, error))?;
@@ -853,7 +975,7 @@ impl WorkflowPort for ProductionWorkflow {
             arguments.n_verify_runs,
         )?;
         let github = self.github()?;
-        let (harness_pair, pytest) = self.runtime.block_on(async {
+        let (harness_pair, pytest, rust) = self.runtime.block_on(async {
             let harness = if let Some(harness_plan) = &plan.harness {
                 let targets = harness_plan
                     .proposed_shards
@@ -889,7 +1011,22 @@ impl WorkflowPort for ProductionWorkflow {
             } else {
                 None
             };
-            Ok::<_, String>((harness, pytest))
+            let rust = if plan.rust.is_some() {
+                let selection = CiTimingRunSelection::Explicit(run_ids.clone());
+                Some(
+                    collect_rust_coverage_job_timing(
+                        github,
+                        &plan.repository,
+                        &selection,
+                        &self.cancellation,
+                    )
+                    .await
+                    .map_err(|error| error.to_string())?,
+                )
+            } else {
+                None
+            };
+            Ok::<_, String>((harness, pytest, rust))
         })?;
         let (harness, jobs) =
             harness_pair.map_or((None, None), |(harness, jobs)| (Some(harness), Some(jobs)));
@@ -900,6 +1037,7 @@ impl WorkflowPort for ProductionWorkflow {
             harness.as_ref(),
             jobs.as_ref(),
             pytest.as_ref(),
+            rust.as_ref(),
         )?;
         let result = verify_json(&request)?;
         if !result.success {
@@ -916,6 +1054,7 @@ struct PlanResponse {
     violations: Vec<String>,
     harness: Option<PlanHarnessResponse>,
     python: Option<PlanPythonResponse>,
+    rust: Option<PlanRustResponse>,
 }
 
 #[derive(Deserialize)]
@@ -932,6 +1071,15 @@ struct PlanHarnessResponse {
 struct PlanPythonResponse {
     assignments: BTreeMap<String, u32>,
     shard_count: u32,
+    is_noop: bool,
+}
+
+#[derive(Deserialize)]
+struct PlanRustResponse {
+    current_shard_count: u32,
+    shard_count: u32,
+    baseline_slowest_wall_clock: f64,
+    approved_slowest_wall_clock: f64,
     is_noop: bool,
 }
 
@@ -963,8 +1111,16 @@ impl PlanResponse {
             workflow_changed: false,
             changed: !response.is_noop,
         });
+        let rust = self.rust.map(|response| RustPlan {
+            current_shard_count: response.current_shard_count,
+            shard_count: response.shard_count,
+            baseline_slowest_wall_clock: response.baseline_slowest_wall_clock,
+            approved_slowest_wall_clock: response.approved_slowest_wall_clock,
+            changed: !response.is_noop,
+        });
         if kind.includes_harness() != harness.is_some()
             || kind.includes_python() != python.is_some()
+            || kind.includes_rust() != rust.is_some()
         {
             return Err("rebalance-tests plan response omitted a selected leg".to_owned());
         }
@@ -973,19 +1129,20 @@ impl PlanResponse {
             repository,
             harness,
             python,
+            rust,
             decision: self.decision,
         })
     }
 }
 fn plan_request(
     arguments: &RebalanceRunArguments,
-    current_harness: Option<&BTreeMap<u32, Vec<String>>>,
-    harness_timing: Option<&larch_core::HarnessTimingReport>,
-    jobs_timing: Option<&larch_core::JobTimingReport>,
-    current_assignments: Option<&BTreeMap<String, u32>>,
-    pytest_timing: Option<&larch_core::PytestTimingReport>,
+    evidence: &PlanRequestEvidence<'_>,
 ) -> Result<String, String> {
-    let harness = match (current_harness, harness_timing, jobs_timing) {
+    let harness = match (
+        evidence.current_harness,
+        evidence.harness_timing,
+        evidence.jobs_timing,
+    ) {
         (Some(shards), Some(timing), Some(jobs)) => Some(json!({
             "expected_run_ids": timing.sampled_run_ids,
             "current_shards": shards,
@@ -995,7 +1152,7 @@ fn plan_request(
         (None, None, None) => None,
         _ => return Err("incomplete harness planning evidence".to_owned()),
     };
-    let python = match (current_assignments, pytest_timing) {
+    let python = match (evidence.current_assignments, evidence.pytest_timing) {
         (Some(assignments), Some(timing)) => Some(json!({
             "expected_run_ids": timing.sampled_run_ids,
             "current_assignments": assignments,
@@ -1004,14 +1161,25 @@ fn plan_request(
         (None, None) => None,
         _ => return Err("incomplete python planning evidence".to_owned()),
     };
+    let rust = match (evidence.current_rust_shard_count, evidence.rust_timing) {
+        (Some(shard_count), Some(timing)) => Some(json!({
+            "expected_run_ids": timing.sampled_run_ids,
+            "current_shard_count": shard_count,
+            "timing": timing,
+        })),
+        (None, None) => None,
+        _ => return Err("incomplete Rust coverage planning evidence".to_owned()),
+    };
     serde_json::to_string(&json!({
         "schema_version": 1,
         "kind": "plan",
         "selection": arguments.kind.wire(),
         "options": {
             "max_shard_wall_clock": arguments.max_shard_wall_clock,
+            "max_rust_shard_wall_clock": arguments.max_rust_shard_wall_clock,
             "balance_threshold": arguments.balance_threshold,
             "n_python_shards": arguments.n_python_shards,
+            "n_rust_shards": arguments.n_rust_shards,
             "experimental_wall_clock_override": arguments.experimental_wall_clock_override,
             "compile_affinities": arguments.compile_affinity.iter().map(|affinity| json!({
                 "target": affinity.target,
@@ -1021,6 +1189,7 @@ fn plan_request(
         },
         "harness": harness,
         "python": python,
+        "rust": rust,
     }))
     .map_err(|error| format!("cannot render rebalance plan request: {error}"))
 }
@@ -1032,6 +1201,7 @@ fn verify_request(
     harness_timing: Option<&larch_core::HarnessTimingReport>,
     jobs_timing: Option<&larch_core::JobTimingReport>,
     pytest_timing: Option<&larch_core::PytestTimingReport>,
+    rust_timing: Option<&larch_core::JobTimingReport>,
 ) -> Result<String, String> {
     let harness = match (&plan.harness, harness_timing, jobs_timing) {
         (Some(plan), Some(timing), Some(jobs)) => Some(json!({
@@ -1055,17 +1225,31 @@ fn verify_request(
         (None, None) => None,
         _ => return Err("incomplete python verification evidence".to_owned()),
     };
+    let rust = match (&plan.rust, rust_timing) {
+        (Some(plan), Some(timing)) => Some(json!({
+            "expected_run_ids": run_ids,
+            "expected_shard_count": plan.shard_count,
+            "baseline_shard_count": plan.current_shard_count,
+            "baseline_slowest_wall_clock": plan.baseline_slowest_wall_clock,
+            "approved_slowest_wall_clock": plan.approved_slowest_wall_clock,
+            "timing": timing,
+        })),
+        (None, None) => None,
+        _ => return Err("incomplete Rust coverage verification evidence".to_owned()),
+    };
     serde_json::to_string(&json!({
         "schema_version": 1,
         "kind": "verify",
         "selection": arguments.kind.wire(),
         "options": {
             "max_shard_wall_clock": arguments.max_shard_wall_clock,
+            "max_rust_shard_wall_clock": arguments.max_rust_shard_wall_clock,
             "balance_threshold": arguments.balance_threshold,
             "experimental_wall_clock_override": arguments.experimental_wall_clock_override,
         },
         "harness": harness,
         "python": python,
+        "rust": rust,
     }))
     .map_err(|error| format!("cannot render rebalance verification request: {error}"))
 }
@@ -1109,10 +1293,7 @@ fn rewrite_python_workflow_shard_count(source: &str, count: u32) -> Result<Strin
     let matrix = unique_python_line(body, PYTHON_SHARD_MATRIX_PREFIX, "matrix")?;
     let named = unique_python_line(body, PYTHON_TEST_NAME_PREFIX, "test name")?;
     let configured = unique_python_line(body, PYTHON_SHARD_COUNT_PREFIX, "environment")?;
-    let replacement_matrix = format!(
-        "{PYTHON_SHARD_MATRIX_PREFIX}{}]",
-        render_python_shard_list(count)
-    );
+    let replacement_matrix = format!("{PYTHON_SHARD_MATRIX_PREFIX}{}]", render_shard_list(count));
     let replacement_name = format!("{PYTHON_TEST_NAME_PREFIX}{count})");
     let replacement_configured = format!("{PYTHON_SHARD_COUNT_PREFIX}{count}\"");
     let body = body
@@ -1159,23 +1340,26 @@ fn unique_python_line<'a>(body: &'a str, prefix: &str, label: &str) -> Result<&'
 
 fn python_matrix_shard_count(body: &str) -> Result<u32, String> {
     let line = unique_python_line(body, PYTHON_SHARD_MATRIX_PREFIX, "matrix")?;
+    matrix_shard_count(line, PYTHON_SHARD_MATRIX_PREFIX, "Python")
+}
+
+fn matrix_shard_count(line: &str, prefix: &str, label: &str) -> Result<u32, String> {
     let members = line
-        .strip_prefix(PYTHON_SHARD_MATRIX_PREFIX)
+        .strip_prefix(prefix)
         .and_then(|value| value.strip_suffix(']'))
-        .ok_or_else(|| "rebalance-tests Python shard matrix has invalid syntax".to_owned())?;
+        .ok_or_else(|| format!("rebalance-tests {label} shard matrix has invalid syntax"))?;
     let shards = members
         .split(',')
         .map(str::trim)
         .map(str::parse::<u32>)
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| "rebalance-tests Python shard matrix has a non-numeric member".to_owned())?;
+        .map_err(|_| format!("rebalance-tests {label} shard matrix has a non-numeric member"))?;
     let count = u32::try_from(shards.len())
-        .map_err(|_| "rebalance-tests Python shard matrix is too large".to_owned())?;
+        .map_err(|_| format!("rebalance-tests {label} shard matrix is too large"))?;
     if count == 0 || shards.iter().copied().ne(1..=count) {
-        return Err(
-            "rebalance-tests Python shard matrix must contain contiguous shard ids from 1"
-                .to_owned(),
-        );
+        return Err(format!(
+            "rebalance-tests {label} shard matrix must contain contiguous shard ids from 1"
+        ));
     }
     Ok(count)
 }
@@ -1198,11 +1382,106 @@ fn python_configured_shard_count(body: &str) -> Result<u32, String> {
         .ok_or_else(|| "rebalance-tests Python environment has an invalid shard count".to_owned())
 }
 
-fn render_python_shard_list(count: u32) -> String {
+fn render_shard_list(count: u32) -> String {
     (1..=count)
         .map(|shard| shard.to_string())
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn rust_workflow_shard_count(source: &str) -> Result<u32, String> {
+    let (_, body, _) = split_rust_full_block(source)?;
+    let matrix_line = unique_rust_line(body, RUST_SHARD_MATRIX_PREFIX, "matrix")?;
+    let matrix = matrix_shard_count(matrix_line, RUST_SHARD_MATRIX_PREFIX, "Rust coverage")?;
+    let producer = rust_configured_shard_count(
+        body,
+        RUST_PRODUCER_SHARD_COUNT_PREFIX,
+        "producer environment",
+    )?;
+    let gate = rust_configured_shard_count(body, RUST_GATE_SHARD_COUNT_PREFIX, "gate environment")?;
+    if matrix != producer || matrix != gate {
+        return Err(format!(
+            "rebalance-tests Rust coverage shard count is inconsistent: matrix={matrix}, producer={producer}, gate={gate}"
+        ));
+    }
+    Ok(matrix)
+}
+
+fn rewrite_rust_workflow_shard_count(source: &str, count: u32) -> Result<String, String> {
+    if count == 0 || count > MAX_RUST_COVERAGE_SHARDS {
+        return Err(format!(
+            "rebalance-tests Rust coverage shard count must be from 1 through {MAX_RUST_COVERAGE_SHARDS}"
+        ));
+    }
+    let (before, body, after) = split_rust_full_block(source)?;
+    let previous = rust_workflow_shard_count(source)?;
+    if previous == count {
+        return Ok(source.to_owned());
+    }
+    let matrix = unique_rust_line(body, RUST_SHARD_MATRIX_PREFIX, "matrix")?;
+    let producer = unique_rust_line(
+        body,
+        RUST_PRODUCER_SHARD_COUNT_PREFIX,
+        "producer environment",
+    )?;
+    let gate = unique_rust_line(body, RUST_GATE_SHARD_COUNT_PREFIX, "gate environment")?;
+    let rendered_body = body
+        .replacen(
+            matrix,
+            &format!("{RUST_SHARD_MATRIX_PREFIX}{}]", render_shard_list(count)),
+            1,
+        )
+        .replacen(
+            producer,
+            &format!("{RUST_PRODUCER_SHARD_COUNT_PREFIX}{count}\""),
+            1,
+        )
+        .replacen(gate, &format!("{RUST_GATE_SHARD_COUNT_PREFIX}{count}\""), 1);
+    Ok(format!(
+        "{before}{RUST_FULL_HEADER}{rendered_body}{RUST_FULL_FOOTER}{after}"
+    ))
+}
+
+fn split_rust_full_block(source: &str) -> Result<(&str, &str, &str), String> {
+    if source.matches(RUST_FULL_HEADER).count() != 1
+        || source.matches(RUST_FULL_FOOTER).count() != 1
+    {
+        return Err(format!(
+            "rebalance-tests requires one unambiguous Rust coverage job boundary in {CI_WORKFLOW}"
+        ));
+    }
+    let (before, remainder) = source.split_once(RUST_FULL_HEADER).ok_or_else(|| {
+        format!("rebalance-tests cannot find the Rust coverage shard job in {CI_WORKFLOW}")
+    })?;
+    let (body, after) = remainder.split_once(RUST_FULL_FOOTER).ok_or_else(|| {
+        format!("rebalance-tests cannot find the Rust coverage job boundary in {CI_WORKFLOW}")
+    })?;
+    Ok((before, body, after))
+}
+
+fn unique_rust_line<'a>(body: &'a str, prefix: &str, label: &str) -> Result<&'a str, String> {
+    let matches = body
+        .lines()
+        .filter(|line| line.starts_with(prefix))
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [line] => Ok(*line),
+        [] => Err(format!(
+            "rebalance-tests cannot find the Rust coverage {label} line in {CI_WORKFLOW}"
+        )),
+        _ => Err(format!(
+            "rebalance-tests found multiple Rust coverage {label} lines in {CI_WORKFLOW}"
+        )),
+    }
+}
+
+fn rust_configured_shard_count(body: &str, prefix: &str, label: &str) -> Result<u32, String> {
+    let line = unique_rust_line(body, prefix, label)?;
+    line.strip_prefix(prefix)
+        .and_then(|value| value.strip_suffix('"'))
+        .and_then(|value| value.parse().ok())
+        .filter(|count: &u32| *count > 0 && *count <= MAX_RUST_COVERAGE_SHARDS)
+        .ok_or_else(|| format!("rebalance-tests Rust coverage {label} has an invalid shard count"))
 }
 
 fn branch_name(prefix: &str) -> String {
@@ -1238,6 +1517,12 @@ fn pull_request_body(arguments: &RebalanceRunArguments, plan: &PreparedPlan) -> 
             files.push(ASSIGNMENTS);
         }
         if python.workflow_changed {
+            files.push(CI_WORKFLOW);
+        }
+    }
+    if let Some(rust) = &plan.rust {
+        legs.push("rust");
+        if rust.changed && !files.contains(&CI_WORKFLOW) {
             files.push(CI_WORKFLOW);
         }
     }
@@ -1278,6 +1563,20 @@ fn pull_request_body(arguments: &RebalanceRunArguments, plan: &PreparedPlan) -> 
             "- Python nodeids assigned: {} across {} shards",
             python.assignments.len(),
             python.shard_count
+        ));
+    }
+    if let Some(rust) = &plan.rust {
+        body.push(format!(
+            "- Rust coverage shards: {} to {}",
+            rust.current_shard_count, rust.shard_count
+        ));
+        body.push(format!(
+            "- Rust baseline observed slowest shard: {:.1}s",
+            rust.baseline_slowest_wall_clock
+        ));
+        body.push(format!(
+            "- Rust approved slowest-shard threshold: {:.1}s",
+            rust.approved_slowest_wall_clock
         ));
     }
     body.join("\n") + "\n"
@@ -1448,6 +1747,17 @@ fn parse_positive_u32(value: &str) -> Result<u32, String> {
         .ok()
         .filter(|value| *value > 0)
         .ok_or_else(|| format!("expected a positive integer, got {value:?}"))
+}
+fn parse_rust_shard_count(value: &str) -> Result<u32, String> {
+    value
+        .parse::<u32>()
+        .ok()
+        .filter(|count| (1..=MAX_RUST_COVERAGE_SHARDS).contains(count))
+        .ok_or_else(|| {
+            format!(
+                "expected a Rust coverage shard count from 1 through {MAX_RUST_COVERAGE_SHARDS}, got {value:?}"
+            )
+        })
 }
 fn parse_positive_f64(value: &str) -> Result<f64, String> {
     value

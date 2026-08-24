@@ -645,7 +645,7 @@ jobs:
             --cache-key '${{ steps.main-cache-keys.outputs.cargo-nextest }}' \
             --maximum-bytes 0 \
             --output-dir "$RUNNER_TEMP/main-cache-promoted/cargo-nextest" \
-            --producer-job rust-full \
+            --producer-job 'rust-full shard 1' \
             --source-sha "$GITHUB_SHA" \
           --expected-tool-version "cargo-nextest=cargo-nextest ${CARGO_NEXTEST_VERSION}"
           nextest_binary="$RUNNER_TEMP/main-cache-promoted/cargo-nextest/cargo-nextest"
@@ -691,7 +691,7 @@ jobs:
             --cache-key '${{ steps.main-cache-keys.outputs.cargo-llvm-cov }}' \
             --maximum-bytes 0 \
             --output-dir "$RUNNER_TEMP/main-cache-promoted/cargo-llvm-cov" \
-            --producer-job rust-full \
+            --producer-job 'rust-full shard 1' \
             --source-sha "$GITHUB_SHA" \
           --expected-tool-version "cargo-llvm-cov=cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"
           llvm_cov_binary="$RUNNER_TEMP/main-cache-promoted/cargo-llvm-cov/cargo-llvm-cov"
@@ -737,7 +737,7 @@ jobs:
             --cache-key '${{ steps.main-cache-keys.outputs.coverage-target }}' \
             --maximum-bytes 1400000000 \
             --output-dir "$RUNNER_TEMP/main-cache-promoted/coverage-target" \
-            --producer-job rust-full \
+            --producer-job 'rust-full shard 1' \
             --source-sha "$GITHUB_SHA" \
             --expected-tool-version "cargo=${{ steps.rust-toolchain.outputs.cargo-version }}" \
             --expected-tool-version "cargo-llvm-cov=cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"
@@ -795,7 +795,7 @@ jobs:
             --cache-key '${{ steps.main-cache-keys.outputs.rust-policy }}' \
             --maximum-bytes 0 \
             --output-dir "$RUNNER_TEMP/main-cache-promoted/rust-policy-artifact" \
-            --producer-job rust-full \
+            --producer-job 'rust-full shard 1' \
             --source-sha "$GITHUB_SHA" \
             --expected-tool-version "cargo=${{ steps.rust-toolchain.outputs.cargo-version }}" \
             --expected-tool-version "rustc=${{ steps.rust-toolchain.outputs.rustc-version }}"

@@ -19,13 +19,14 @@ const COMPLETED: &str = "completed";
 const MERGE_GROUP: &str = "merge_group";
 const SUCCESS: &str = "success";
 const MAX_SOURCE_RUNS: usize = 100;
-const REQUIRED_JOBS: [&str; 2] = ["rust-full", "rust-lint"];
+const REQUIRED_JOBS: [&str; 3] = ["rust-full", "rust-full shard 1", "rust-lint"];
 
 /// Resolve the one successful merge-group CI run eligible to publish main caches.
 ///
 /// The selected run must have produced the supplied main SHA, and both cache
-/// producers must have completed successfully. Any missing, duplicate, or
-/// mismatched evidence refuses publication rather than choosing a nearby run.
+/// producers plus the full-coverage aggregate must have completed
+/// successfully. Any missing, duplicate, or mismatched evidence refuses
+/// publication rather than choosing a nearby run.
 ///
 /// # Errors
 ///
@@ -181,6 +182,7 @@ mod tests {
     fn source_resolution_refuses_ambiguous_or_incomplete_evidence() {
         let selected = run(42, SHA, MERGE_GROUP, Some(SUCCESS));
         assert!(select_source_run(&[selected.clone(), selected], SHA).is_err());
+        assert!(verify_required_jobs(&REQUIRED_JOBS.map(|name| job(name, Some(SUCCESS)))).is_ok());
         assert!(verify_required_jobs(&[job(REQUIRED_JOBS[0], Some(SUCCESS))]).is_err());
         assert!(
             verify_required_jobs(&[

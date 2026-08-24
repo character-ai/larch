@@ -10,5 +10,8 @@ fn run_help_exposes_the_checked_orchestration_boundary() {
         .success()
         .stdout(predicate::str::contains(
             "checked repository, artifact, pull-request",
-        ));
+        ))
+        .stdout(predicate::str::contains("--n-rust-shards"))
+        .stdout(predicate::str::contains("--max-rust-shard-wall-clock"))
+        .stdout(predicate::str::contains("rust"));
 }

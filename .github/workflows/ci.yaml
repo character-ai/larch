@@ -821,14 +821,19 @@ jobs:
 
   # The full path remains the merge-group/manual backstop. Pull requests enter
   # it whenever selection is full or selection infrastructure cannot prove a
-  # narrower path. Dispatch-only profile sweeps reuse the shared composite
-  # action in a separate benchmark job.
-  rust-full:
-    name: rust-full
+  # narrower path. Each shard rebuilds the instrumented workspace and owns one
+  # hash partition. The first shard also owns the single policy, doctest,
+  # plugin-validation, and Python-artifact work.
+  rust-full-shards:
+    name: rust-full shard ${{ matrix.shard }}
     needs: [rust-selection]
     if: always() && (github.event_name != 'pull_request' || needs.rust-selection.result != 'success' || needs.rust-selection.outputs.mode == 'full')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     env:
       CARGO_NEXTEST_VERSION: "0.9.137"
       CARGO_NEXTEST_ARCHIVE_SHA256: "38fd6275e111b200bbbed1bd2ae91cbb0d7edd28504879875cff2b3d96f3f311"
@@ -845,8 +850,10 @@ jobs:
       COVERAGE_PROFILE_BENCHMARK: "false"
       COVERAGE_PROFILE_SAMPLE: "1"
       RUST_COVERAGE_PHASE_MODE: sequential
-      COVERAGE_LCOV_ARTIFACT_SUFFIX: ""
-      COVERAGE_TIMING_ARTIFACT_SUFFIX: "-opt0-sample1"
+      COVERAGE_SHARD_INDEX: ${{ matrix.shard }}
+      COVERAGE_SHARD_COUNT: "4"
+      COVERAGE_LCOV_ARTIFACT_SUFFIX: ${{ format('-shard-{0}', matrix.shard) }}
+      COVERAGE_TIMING_ARTIFACT_SUFFIX: ${{ format('-opt0-sample1-shard-{0}', matrix.shard) }}
       COVERAGE_PRODUCES_PYTHON_ARTIFACT: "true"
       COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary"
       # Three comparable warm-cache main samples beat the cache-off control
@@ -892,7 +899,7 @@ jobs:
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
       - name: Look up trusted main Rust policy cache key
         id: trusted-main-policy-cache
-        if: success() && github.event_name == 'merge_group'
+        if: success() && matrix.shard == 1 && github.event_name == 'merge_group'
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ${{ runner.temp }}/trusted-main-rust-policy
@@ -902,7 +909,7 @@ jobs:
       # on an exact main-key miss; the trusted publication workflow is the
       # sole cache writer.
       - name: Stage and verify Rust policy cache candidate
-        if: success() && github.event_name == 'merge_group' && steps.trusted-main-policy-cache.outputs.cache-hit != 'true'
+        if: success() && matrix.shard == 1 && github.event_name == 'merge_group' && steps.trusted-main-policy-cache.outputs.cache-hit != 'true'
         env:
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
         run: |
@@ -925,19 +932,82 @@ jobs:
             --candidate-dir "$RUNNER_TEMP/main-cache-rust-policy-candidate" \
             --maximum-bytes 0 \
             --producer-event "$GITHUB_EVENT_NAME" \
-            --producer-job rust-full \
+            --producer-job 'rust-full shard 1' \
             --producer-ref "$GITHUB_REF" \
             --source-sha "$GITHUB_SHA" \
             --source "policy=$RUNNER_TEMP/main-cache-rust-policy/policy" \
             --tool-version "cargo=$(cargo --version)" \
             --tool-version "rustc=$(rustc --version)"
       - name: Upload Rust policy cache candidate
-        if: success() && github.event_name == 'merge_group' && steps.trusted-main-policy-cache.outputs.cache-hit != 'true'
+        if: success() && matrix.shard == 1 && github.event_name == 'merge_group' && steps.trusted-main-policy-cache.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: main-cache-rust-policy-candidate
           path: ${{ runner.temp }}/main-cache-rust-policy-candidate
           include-hidden-files: true
+          if-no-files-found: error
+          overwrite: false
+
+  # Keep the protected producer name stable. This job fails if any matrix leg
+  # fails, merges every same-run LCOV trace, and applies the 88% line gate once
+  # to the complete workspace result.
+  rust-full:
+    name: rust-full
+    needs: [rust-selection, rust-full-shards]
+    if: always() && (github.event_name != 'pull_request' || needs.rust-selection.result != 'success' || needs.rust-selection.outputs.mode == 'full')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      RUST_COVERAGE_MIN_LINES: "88.000"
+      RUST_COVERAGE_SHARD_COUNT: "4"
+    steps:
+      - name: Require every Rust coverage shard to pass
+        run: |
+          set -euo pipefail
+          shard_result="${{ needs.rust-full-shards.result }}"
+          [ "$shard_result" = success ] || {
+            printf '::error::rust-full-shards result=%s\n' "$shard_result"
+            exit 1
+          }
+      - name: Download Rust coverage shard reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: rust-coverage-lcov-shard-*
+          path: ${{ runner.temp }}/rust-coverage-shards
+      - name: Install pinned LCOV merger
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends lcov=2.0-4ubuntu2
+          test "$(dpkg-query --show --showformat='${Version}' lcov)" = 2.0-4ubuntu2
+      - name: Merge Rust coverage and enforce the line gate
+        run: |
+          set -euo pipefail
+          shard_root="$RUNNER_TEMP/rust-coverage-shards"
+          merged_root="$RUNNER_TEMP/rust-coverage-merged"
+          merged_report="$merged_root/lcov.info"
+          mkdir -p "$merged_root"
+          mapfile -d '' shard_reports < <(
+            find "$shard_root" -type f -name lcov.info -print0 | sort -z
+          )
+          test "${#shard_reports[@]}" -eq "$RUST_COVERAGE_SHARD_COUNT" || {
+            printf '::error::expected %s Rust coverage shard reports, found %s\n' \
+              "$RUST_COVERAGE_SHARD_COUNT" "${#shard_reports[@]}"
+            exit 1
+          }
+          merge_arguments=()
+          for shard_report in "${shard_reports[@]}"; do
+            test -f "$shard_report"
+            test ! -L "$shard_report"
+            merge_arguments+=(--add-tracefile "$shard_report")
+          done
+          lcov "${merge_arguments[@]}" --output-file "$merged_report"
+          lcov --summary "$merged_report" --fail-under-lines "$RUST_COVERAGE_MIN_LINES"
+      - name: Upload merged Rust coverage report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-coverage-lcov
+          path: ${{ runner.temp }}/rust-coverage-merged/lcov.info
           if-no-files-found: error
           overwrite: false
 

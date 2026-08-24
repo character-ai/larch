@@ -85,8 +85,9 @@ that checkout.
 On a successful merge-group run, an exact miss may stage a candidate artifact.
 The publisher uses `larch ci-timing merge-group-source`, a typed Actions
 operation, to prove that the newly landed `main` SHA has exactly one successful
-`CI` merge-group run for that SHA and that its `rust-full` and `rust-lint`
-producer jobs succeeded. The resolver accepts only a lowercase 40-character
+`CI` merge-group run for that SHA and that its `rust-full` aggregate,
+`rust-full shard 1` cache producer, and `rust-lint` cache producer succeeded.
+The resolver accepts only a lowercase 40-character
 commit SHA, queries at most 100 completed `ci.yaml` merge-group runs filtered
 to that SHA, fails on missing or ambiguous evidence, and emits only that run's
 numeric identifier. The publisher then downloads only named artifacts from
@@ -175,13 +176,16 @@ independent required steps. Its named workflow steps and cache-hit summary
 record the checkout, preparation, working-tree, and history timing phases for
 cold and warm comparisons.
 
-The coverage execution job builds the `larch` CLI under the same
+Each `rust-full-shards` coverage job builds the `larch` CLI under the same
 instrumented target directory and Cargo test profile as its full workspace
-tests. Before the job uploads `larch-linux-test-binary`, it fails closed unless
+test partition. Every cell uploads a uniquely named LCOV artifact. Shard 1 is
+the only cell permitted to run repository policy and plugin validation, stage
+cache candidates, or upload `larch-linux-test-binary`. Before shard 1 uploads
+that binary, it fails closed unless
 the coverage-target executable at `target/llvm-cov-target/debug/larch` is
 runnable and reports its version. The same executable runs repository policy
-and plugin projection validation before either it or the LCOV report is
-uploaded. The artifact contains the executable plus its SHA-256, source SHA,
+and plugin projection validation before it is uploaded. The artifact contains
+the executable plus its SHA-256, source SHA,
 reported version, Rust-input digest, and producer reference. The required
 `python-rust-integration` job publishes the stable `python-tests-gate` check.
 It verifies both prerequisite results, regular-file shape, checksum, Rust-input
@@ -190,11 +194,17 @@ Rust-backed Python tests. A candidate-built artifact must name the current
 checkout; a trusted-main artifact is accepted only for an enforced `skip` run.
 The stub-safe `python-tests` matrix has no Rust artifact dependency. The
 producer's `if-no-files-found: error` prevents an absent producer artifact from
-being treated as a successful handoff.
+being treated as a successful handoff. The stable `rust-full` gate first
+requires the complete matrix to pass, downloads same-run artifacts by the
+fixed shard prefix, requires exactly the configured count of regular,
+non-symlink `lcov.info` files, and merges them with the exact pinned Ubuntu
+LCOV package before applying the 88% line threshold. It uploads only the merged
+report under the legacy stable artifact and member names.
 
-On an exact Rust-policy miss, a successful `rust-full` merge-group run stages
-and verifies a policy-cache candidate after the coverage target has been
-pruned. It verifies the preserved integration artifact's regular-file shape,
+On an exact Rust-policy miss, shard 1 of a successful `rust-full` merge-group
+run stages and verifies a policy-cache candidate after the coverage target has
+been pruned. No other shard can stage or upload that candidate. Shard 1 verifies
+the preserved integration artifact's regular-file shape,
 existing SHA-256, Rust-input digest, source SHA, and version before copying it,
 then proves the staged executable against that same checksum. Its internal
 provenance is the fixed `merge-group` label; pull requests, manual runs, and
@@ -901,12 +911,14 @@ rows, so the consumer can reject an incomplete cohort rather than infer missing
 startup cost. One timing operation accepts at most 20 runs and retains at most
 100,000 rows, 32 MiB of label text, and 16,384 bytes per target or nodeid.
 Harness input is also capped at 4,096 required targets. `larch ci-timing jobs`
-derives wall-clock durations from typed Actions job records and reports the
-same selected cohort. `larch ci-timing merge-group-source` reads bounded
-workflow and job records to resolve only a trusted producer run. All four
-commands use the Actions adapter and the fixed GitHub credential boundary
-above; they do not call `gh api`, accept raw URLs, or expose log text in their
-output.
+derives harness wall-clock durations from typed Actions job records.
+`larch ci-timing rust-jobs` uses the same bounded records for Rust coverage,
+treats a legacy `rust-full` as one shard, and ignores the stable aggregate when
+matrix jobs are present. Both report the same selected cohort.
+`larch ci-timing merge-group-source` reads bounded workflow and job records to
+resolve only a trusted producer run. All five commands use the Actions adapter
+and the fixed GitHub credential boundary above; they do not call `gh api`,
+accept raw URLs, or expose log text in their output.
 
 ## Implementation and Verification Owners
 

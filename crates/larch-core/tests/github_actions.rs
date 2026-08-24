@@ -1,13 +1,13 @@
 //! Public-contract coverage for GitHub Actions log rendering.
 
 use larch_core::{
-    CheckRun, GitHubActionsError, GitHubActionsErrorKind, GitHubActionsFuture,
+    CheckRun, CiTimingRunSelection, GitHubActionsError, GitHubActionsErrorKind, GitHubActionsFuture,
     GitHubActionsService, GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue,
     GitHubIssueCreate, GitHubIssueEdit, GitHubIssueList, GitHubIssueListResult, GitHubIssueSearch,
     GitHubLabel, GitHubLabelCreate, GitHubMutationOutcome, GitHubRepository, GitHubRepositoryRef,
     GitHubService, GitHubTransportPolicy, GitHubUser, ProcessCancellation, WorkflowDispatchRequest,
-    WorkflowJob, WorkflowLogArchive, WorkflowRun, WorkflowRunFilters, collect_job_timing, run_logs,
-    run_logs_setup_failure, workflow_path,
+    WorkflowJob, WorkflowLogArchive, WorkflowRun, WorkflowRunFilters, collect_job_timing,
+    collect_rust_coverage_job_timing, run_logs, run_logs_setup_failure, workflow_path,
 };
 use std::{
     future::Future,
@@ -445,6 +445,81 @@ fn ci_timing_jobs_skips_an_ambiguous_duplicate_harness_shard() {
     assert!(report.rows.is_empty());
     assert_eq!(report.sampled_run_ids, [101]);
     assert_eq!(report.skipped_run_ids, [101]);
+}
+
+#[test]
+fn ci_timing_rust_jobs_prefers_matrix_shards_over_the_aggregate_gate() {
+    let service = fake(
+        Ok(completed_run()),
+        Ok(archive(&[])),
+        Ok(vec![
+            WorkflowJob {
+                name: "rust-full shard 1".to_owned(),
+                status: "completed".to_owned(),
+                conclusion: Some("success".to_owned()),
+                wall_clock_seconds: Some(563.0),
+            },
+            WorkflowJob {
+                name: "rust-full shard 2".to_owned(),
+                status: "completed".to_owned(),
+                conclusion: Some("success".to_owned()),
+                wall_clock_seconds: Some(431.0),
+            },
+            WorkflowJob {
+                name: "rust-full".to_owned(),
+                status: "completed".to_owned(),
+                conclusion: Some("success".to_owned()),
+                wall_clock_seconds: Some(35.0),
+            },
+        ]),
+    );
+    let cancellation = NeverCancelled;
+
+    let report = block_on(collect_rust_coverage_job_timing(
+        &service,
+        &repository(),
+        &CiTimingRunSelection::Explicit(vec![101]),
+        &cancellation,
+    ))
+    .expect("collect Rust coverage shard timings");
+
+    assert_eq!(
+        serde_json::to_value(&report).expect("serialize Rust jobs report")["kind"],
+        "rust-jobs"
+    );
+    assert_eq!(report.sampled_run_ids, [101]);
+    assert_eq!(report.rows.len(), 2);
+    assert_eq!(report.rows[0].shard, 1);
+    assert_eq!(report.rows[1].shard, 2);
+    assert_eq!(report.shard_medians.len(), 2);
+    assert!(report.skipped_run_ids.is_empty());
+}
+
+#[test]
+fn ci_timing_rust_jobs_keeps_the_legacy_monolithic_baseline() {
+    let service = fake(
+        Ok(completed_run()),
+        Ok(archive(&[])),
+        Ok(vec![WorkflowJob {
+            name: "rust-full".to_owned(),
+            status: "completed".to_owned(),
+            conclusion: Some("success".to_owned()),
+            wall_clock_seconds: Some(711.0),
+        }]),
+    );
+    let cancellation = NeverCancelled;
+
+    let report = block_on(collect_rust_coverage_job_timing(
+        &service,
+        &repository(),
+        &CiTimingRunSelection::Explicit(vec![101]),
+        &cancellation,
+    ))
+    .expect("collect legacy Rust coverage timing");
+
+    assert_eq!(report.rows.len(), 1);
+    assert_eq!(report.rows[0].shard, 1);
+    assert_eq!(report.rows[0].seconds.to_bits(), 711.0_f64.to_bits());
 }
 
 #[test]

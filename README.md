@@ -284,9 +284,9 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#rebalance-tests"><code>/rebalance-tests</code></a></td>
-      <td><code>[--kind {harness,python,all}] [--repo owner/name] [--n-runs N] [--branch-prefix PREFIX] [--n-verify-runs N] [--n-python-shards N] [--balance-threshold SECONDS] [--max-shard-wall-clock SECONDS] [--experimental-wall-clock-override NOTE] [--compile-affinity TARGET=GROUP:SECONDS] [--workflow FILE] [--baseline-branch BRANCH] [--dry-run]</code></td>
+      <td><code>[--kind {harness,python,rust,all}] [--repo owner/name] [--n-runs N] [--branch-prefix PREFIX] [--n-verify-runs N] [--n-python-shards N] [--n-rust-shards N] [--balance-threshold SECONDS] [--max-shard-wall-clock SECONDS] [--max-rust-shard-wall-clock SECONDS] [--experimental-wall-clock-override NOTE] [--compile-affinity TARGET=GROUP:SECONDS] [--workflow FILE] [--baseline-branch BRANCH] [--dry-run]</code></td>
     </tr>
-    <tr><td colspan="2">Rebalance CI test harness shards, Python unit-test shards, or both through the checked Rust workflow; create one PR and verify exact CI runs. Harness verification fails closed on incomplete evidence, wall-clock or runner-cost regression; Python timing verification also fails closed.</td></tr>
+    <tr><td colspan="2">Rebalance CI test harness shards, Python unit-test shards, Rust coverage shards, or any combination through the checked Rust workflow; create one PR and verify exact CI runs. Every selected timing leg fails closed on incomplete evidence or its configured performance limit.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#release"><code>/release</code></a></td>

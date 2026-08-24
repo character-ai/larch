@@ -1917,6 +1917,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-ci-timing-harness", "ci-timing", "harness"),
     CleanInstallCase::new("clean-install-ci-timing-jobs", "ci-timing", "jobs"),
     CleanInstallCase::new(
+        "clean-install-ci-timing-rust-jobs",
+        "ci-timing",
+        "rust-jobs",
+    ),
+    CleanInstallCase::new(
         "clean-install-ci-timing-merge-group-source",
         "ci-timing",
         "merge-group-source",
