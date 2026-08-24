@@ -33,6 +33,82 @@ fn read_version_preserves_best_effort_machine_output() {
 }
 
 #[test]
+fn resolve_repository_preserves_plugin_metadata_forms_and_refusals() {
+    let root = tempfile::tempdir().expect("plugin root");
+    fs::create_dir(root.path().join(".claude-plugin")).expect("manifest parent");
+    let manifest = root.path().join(".claude-plugin/plugin.json");
+    for repository in [
+        "https://github.com/character-ai/larch",
+        "git@github.com:character-ai/larch.git",
+        "ssh://git@github.com/character-ai/larch.git",
+        "character-ai/larch",
+        "https://github.com/character-ai/larch.git",
+        "git+https://github.com/character-ai/larch.git",
+        "HTTPS://github.com/character-ai/larch",
+        "SSH://git@github.com/character-ai/larch.git",
+    ] {
+        fs::write(
+            &manifest,
+            serde_json::to_vec(&serde_json::json!({ "repository": repository }))
+                .expect("serialize manifest"),
+        )
+        .expect("manifest");
+        larch()
+            .args(["plugin", "resolve-repository"])
+            .env("CLAUDE_PLUGIN_ROOT", root.path())
+            .assert()
+            .success()
+            .stdout("character-ai/larch\n")
+            .stderr("");
+    }
+
+    for (repository, message) in [
+        (
+            "https://example.com/character-ai/larch",
+            "repository must be a GitHub URL or OWNER/REPO",
+        ),
+        ("../larch", "repository metadata is malformed"),
+        ("character-ai/../larch", "repository metadata is malformed"),
+        (
+            "https://github.com/character-ai/larch\nother/repo",
+            "repository metadata must be single-value",
+        ),
+    ] {
+        fs::write(
+            &manifest,
+            serde_json::to_vec(&serde_json::json!({ "repository": repository }))
+                .expect("serialize manifest"),
+        )
+        .expect("manifest");
+        larch()
+            .args(["plugin", "resolve-repository"])
+            .env("CLAUDE_PLUGIN_ROOT", root.path())
+            .assert()
+            .failure()
+            .stdout("")
+            .stderr(format!("resolve-upstream-larch-repo: {message}\n"));
+    }
+
+    fs::write(&manifest, "{}\n").expect("missing repository manifest");
+    larch()
+        .args(["plugin", "resolve-repository"])
+        .env("CLAUDE_PLUGIN_ROOT", root.path())
+        .assert()
+        .failure()
+        .stdout("")
+        .stderr("resolve-upstream-larch-repo: repository metadata missing\n");
+
+    fs::write(&manifest, "not json\n").expect("malformed repository manifest");
+    larch()
+        .args(["plugin", "resolve-repository"])
+        .env("CLAUDE_PLUGIN_ROOT", root.path())
+        .assert()
+        .failure()
+        .stdout("")
+        .stderr("resolve-upstream-larch-repo: could not read plugin metadata\n");
+}
+
+#[test]
 fn classify_bump_covers_patch_minor_major_and_malformed_versions() {
     let patch = repository();
     let base = head(patch.path());

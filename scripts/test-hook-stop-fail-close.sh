@@ -3,7 +3,7 @@
 # skills/implement/scripts/hook-stop-fail-close.sh.
 #
 # Black-box tests for post-/review boundary Stop blocking, including
-# jq-failure and jq/python3-absent static-literal fallback paths.
+# jq-failure static-literal direct-stdout fallback path.
 #
 # Usage:
 #   bash scripts/test-hook-stop-fail-close.sh
@@ -26,11 +26,6 @@ fi
 
 if ! command -v jq >/dev/null 2>&1; then
     echo "FAIL: harness jq not on PATH; cannot validate JSON output" >&2
-    exit 1
-fi
-
-if ! command -v python3 >/dev/null 2>&1; then
-    echo "FAIL: harness python3 not on PATH; cannot exercise the JSON fallback" >&2
     exit 1
 fi
 
@@ -177,7 +172,7 @@ else
     fail "T1 reason missing implement tmpdir basename: $out"
 fi
 
-# T2 — jq -cn failure falls back to python3 JSON encoding.
+# T2 — jq -cn failure uses the static direct-stdout fallback.
 REAL_JQ=$(command -v jq)
 cat >"$STUB_BIN/jq" <<EOF
 #!/usr/bin/env bash
@@ -188,32 +183,9 @@ exec "$REAL_JQ" "\$@"
 EOF
 chmod +x "$STUB_BIN/jq"
 out=$(invoke_hook "$cwd" "$STUB_BIN:")
-assert_block_json "T2 jq-failure still blocks via python3 fallback" "$out"
-if printf '%s' "$out" | jq -e '.reason | contains("claude-implement-test")' >/dev/null 2>&1; then
-    pass "T2 python3 fallback preserves dynamic reason"
-else
-    fail "T2 python3 fallback reason missing tmpdir basename: $out"
-fi
+assert_exact "T2 jq failure uses static fallback" "$out" "$STATIC_BLOCK"
 
-# T3 — jq failure plus python3 json.dumps failure uses static literal.
-REAL_PY=$(command -v python3)
-cat >"$STUB_BIN/python3" <<EOF
-#!/usr/bin/env bash
-if [[ "\${1:-}" == "-c" && "\${2:-}" == *json.dumps* ]]; then
-  exit 1
-fi
-exec "$REAL_PY" "\$@"
-EOF
-chmod +x "$STUB_BIN/python3"
-out=$(invoke_hook "$cwd" "$STUB_BIN:")
-assert_exact "T3 jq/python3 JSON failure uses static fallback" "$out" "$STATIC_BLOCK"
-
-# T4 — jq-absent/failure static fallback when python3 JSON encoding is also stubbed.
-# Uses a failing jq stub (not PATH removal) because cwd parsing requires jq on PATH.
-out=$(invoke_hook "$cwd" "$STUB_BIN:")
-assert_exact "T4 static fallback when jq and python3 JSON encoding fail" "$out" "$STATIC_BLOCK"
-
-# T5 — stop_hook_active=true is silent.
+# T3 — stop_hook_active=true is silent.
 payload=$(jq -cn --arg cwd "$cwd" '{stop_hook_active:true,cwd:$cwd}')
 # shellcheck disable=SC2031 # subshell-local env scoping is intentional
 out=$(
@@ -222,12 +194,18 @@ out=$(
     export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
     printf '%s' "$payload" | "$HOOK"
 )
-assert_empty "T5 stop_hook_active=true is silent" "$out"
+assert_empty "T3 stop_hook_active=true is silent" "$out"
 
-# T6 — .review-boundary-passed releases the guard.
+# T4 — .review-boundary-passed releases the guard.
 touch "$cache_root/larch/sessions/claude-implement-test-$$/.review-boundary-passed"
 out=$(invoke_hook "$cwd")
-assert_empty "T6 review-boundary-passed releases guard" "$out"
+assert_empty "T4 review-boundary-passed releases guard" "$out"
+
+if grep -q 'python3' "$HOOK"; then
+    fail "T5 hook runtime is Python-free"
+else
+    pass "T5 hook runtime is Python-free"
+fi
 
 TOTAL=$((PASS + FAIL))
 echo "hook-stop-fail-close.sh: $PASS/$TOTAL passed"

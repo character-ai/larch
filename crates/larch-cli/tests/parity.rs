@@ -2400,6 +2400,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "plugin",
         "read-version",
     ),
+    CleanInstallCase::new(
+        "clean-install-plugin-resolve-repository",
+        "plugin",
+        "resolve-repository",
+    ),
     CleanInstallCase::new("clean-install-object-store-gcs", "object-store", "gcs"),
     CleanInstallCase::new("clean-install-push-branch", "push", "branch"),
     CleanInstallCase::new(
@@ -2519,6 +2524,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "stall-recovery",
         "clear-stall",
     ),
+    CleanInstallCase::new(
+        "clean-install-stall-recovery-comment-url-from-response",
+        "stall-recovery",
+        "comment-url-from-response",
+    ),
     CleanInstallCase::new("clean-install-stall-recovery-classify", "stall-recovery", "classify"),
     CleanInstallCase::new("clean-install-stall-recovery-init-attempts", "stall-recovery", "init-attempts"),
     CleanInstallCase::new("clean-install-stall-recovery-normalize-file-failure-report-env", "stall-recovery", "normalize-file-failure-report-env"),
@@ -2528,9 +2538,19 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-stall-recovery-record-escalation", "stall-recovery", "record-escalation"),
     CleanInstallCase::new("clean-install-stall-recovery-retry-policy", "stall-recovery", "retry-policy"),
     CleanInstallCase::new(
+        "clean-install-stall-recovery-rewind-public-fd",
+        "stall-recovery",
+        "rewind-public-fd",
+    ),
+    CleanInstallCase::new(
         "clean-install-stall-recovery-compose-report",
         "stall-recovery",
         "compose-report",
+    ),
+    CleanInstallCase::new(
+        "clean-install-stall-recovery-compose-comment-request",
+        "stall-recovery",
+        "compose-comment-request",
     ),
     CleanInstallCase::new(
         "clean-install-stall-recovery-dedup-tier-a-report",
@@ -2541,6 +2561,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-stall-recovery-is-larch-dev-clone",
         "stall-recovery",
         "is-larch-dev-clone",
+    ),
+    CleanInstallCase::new(
+        "clean-install-stall-recovery-find-open-stall-issue",
+        "stall-recovery",
+        "find-open-stall-issue",
     ),
     CleanInstallCase::new("clean-install-stall-recovery-lint", "stall-recovery", "lint"),
     CleanInstallCase::new(

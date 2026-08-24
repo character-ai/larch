@@ -646,8 +646,10 @@ asks that Rust owner for a bounded no-follow snapshot. The owner checks file
 identity before, during, and after the read, then writes a private, unlinked
 descriptor owned by the helper. Marker lookup, the create title, and the
 GitHub transport consume that descriptor through `/dev/fd` rather than
-reopening the caller-provided pathname. A source that changes while it is
-snapshotted, or is missing, oversized,
+reopening the caller-provided pathname. Rust also owns descriptor rewinds,
+dedup-response parsing, comment-response URL validation, and the JSON comment
+request envelope. The runtime helper does not invoke Python. A source that
+changes while it is snapshotted, or is missing, oversized,
 non-regular, or symlinked, fails closed before any GitHub mutation. Later
 source changes cannot alter the approved transport bytes. A missing validator,
 sensitive corpus, repository resolver, network result, or valid created URL

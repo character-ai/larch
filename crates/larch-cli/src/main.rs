@@ -2433,6 +2433,8 @@ enum ReleaseCommand {
 enum PluginCommand {
     /// Print the active plugin version as a machine-readable row.
     ReadVersion(TrailingArguments),
+    /// Print the canonical upstream repository from plugin metadata.
+    ResolveRepository(TrailingArguments),
 }
 
 #[derive(Args)]
@@ -3557,6 +3559,9 @@ fn run(
         },
         Domain::Plugin(PluginCommand::ReadVersion(arguments)) => {
             Ok(release_prepare::read_plugin_version(&arguments.args))
+        }
+        Domain::Plugin(PluginCommand::ResolveRepository(arguments)) => {
+            Ok(release_prepare::resolve_plugin_repository(&arguments.args))
         }
         Domain::ObjectStore(ObjectStoreCommand::Gcs(arguments)) => {
             Ok(object_store_commands::run(&arguments))

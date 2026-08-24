@@ -79,10 +79,8 @@ if [[ -f "$IMPLEMENT_TMPDIR/review-round-summary.md" ]] && \
     if command -v jq >/dev/null 2>&1; then
         HOOK_OUT=$(jq -cn --arg r "$REASON" '{decision:"block",reason:$r}' 2>/dev/null) || HOOK_OUT=""
     fi
-    if [[ -z "$HOOK_OUT" ]] && command -v python3 >/dev/null 2>&1; then
-        HOOK_OUT=$(REASON="$REASON" python3 -c 'import json,os; print(json.dumps({"decision":"block","reason":os.environ["REASON"]}))' 2>/dev/null) || HOOK_OUT=""
-    fi
-    # jq/python3-absent static fallback. Fixed reason (no runtime interpolation).
+    # Direct-stdout fallback for stripped PATH or jq failure. The fixed reason
+    # contains no runtime interpolation, so its JSON bytes need no encoder.
     if [[ -z "$HOOK_OUT" ]]; then
         HOOK_OUT='{"decision":"block","reason":"You halted mid-Step-5 (post-/review boundary). Execute Cross-Skill Presence Propagation + Step 6 breadcrumb, then touch .review-boundary-passed inside the active /implement tmpdir."}'
     fi

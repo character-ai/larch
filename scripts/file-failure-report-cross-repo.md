@@ -6,7 +6,7 @@
 
 Required inputs are `--repo OWNER/REPO` and `--body-file PATH`. Create paths also require `--title TITLE`. `--dedup-only` runs the Tier A pre-pass without creating an issue.
 
-Non-dry-run calls require `--mutation-context PATH`, `--run-id ID`, and `--trusted-root PATH`. Trusted callers pass the authoritative implement or design session tmpdir as `--trusted-root`, its matching live run ID, and the session env file as an immediate child of that root. The shared Python checker requires a canonical session root, a regular non-symlink context file, `LARCH_LIVE_MUTATION_OK=true`, and matching run identity. The helper does not protect against a caller that controls every argument and the filesystem state. Dry-run paths are authorization-free and make no `gh` calls.
+Non-dry-run calls require `--mutation-context PATH`, `--run-id ID`, and `--trusted-root PATH`. Trusted callers pass the authoritative implement or design session tmpdir as `--trusted-root`, its matching live run ID, and the session env file as an immediate child of that root. The shared Rust checker requires a canonical session root, a regular non-symlink context file, `LARCH_LIVE_MUTATION_OK=true`, and matching run identity. The helper does not protect against a caller that controls every argument and the filesystem state. Dry-run paths are authorization-free and make no `gh` calls.
 
 Refusal emits `FILE_FAILURE_REPORT_STATUS=mutation-refused` and `FILE_FAILURE_REPORT_FALLBACK_REASON=unauthorized-mutation:<reason>`.
 
@@ -22,6 +22,10 @@ owned by the helper. The helper uses only those descriptors afterward, through
 change, symlink substitution, disappearance, or oversize input while the
 snapshot is being made falls back without a GitHub mutation. A later source
 change cannot alter the transport bytes.
+
+The Rust owner also performs descriptor rewinds, open-issue marker matching,
+comment-response URL validation, and JSON comment-request composition. The
+runtime helper does not invoke Python.
 
 ## Signature dedup contract
 

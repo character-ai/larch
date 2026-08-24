@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# test-resolve-upstream-larch-repo.sh — offline harness for resolve-upstream-larch-repo.sh
+# test-resolve-upstream-larch-repo.sh — delegation harness for the upstream resolver.
 
 unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-SCRIPT="$SCRIPT_DIR/resolve-upstream-larch-repo.sh"
+SOURCE_SCRIPT="$SCRIPT_DIR/resolve-upstream-larch-repo.sh"
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/larch-resolve-upstream.XXXXXX")
 trap 'rm -rf "$TMPROOT"' EXIT
 
@@ -14,72 +14,55 @@ FAIL=0
 pass() { PASS=$((PASS + 1)); echo "PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "FAIL: $1"; shift || true; [ "$#" -gt 0 ] && printf '%s\n' "$*" | sed 's/^/    /'; }
 
-make_plugin() {
-    local dir=$1 value=${2-__missing__}
-    mkdir -p "$dir/.claude-plugin"
-    if [ "$value" = __missing__ ]; then
-        printf '{}\n' >"$dir/.claude-plugin/plugin.json"
-    else
-        python3 - "$dir/.claude-plugin/plugin.json" "$value" <<'PY'
-import json, sys
-with open(sys.argv[1], "w", encoding="utf-8") as fh:
-    json.dump({"repository": sys.argv[2]}, fh)
-    fh.write("\n")
-PY
-    fi
-}
+PLUGIN_ROOT="$TMPROOT/plugin"
+mkdir -p "$PLUGIN_ROOT/.claude-plugin" "$PLUGIN_ROOT/scripts"
+PLUGIN_ROOT="$(cd "$PLUGIN_ROOT" && pwd -P)"
+printf '{"repository":"character-ai/larch"}\n' >"$PLUGIN_ROOT/.claude-plugin/plugin.json"
+cp "$SOURCE_SCRIPT" "$PLUGIN_ROOT/scripts/resolve-upstream-larch-repo.sh"
+cat >"$PLUGIN_ROOT/scripts/larch.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'CLAUDE_PLUGIN_ROOT=%s\n' "${CLAUDE_PLUGIN_ROOT:-}" >"${LARCH_STUB_LOG:?}"
+printf 'ARGV=%s\n' "$*" >>"$LARCH_STUB_LOG"
+if [ "${LARCH_STUB_FAIL:-}" = true ]; then
+    printf '%s\n' 'resolve-upstream-larch-repo: repository metadata missing' >&2
+    exit 1
+fi
+printf '%s\n' 'character-ai/larch'
+STUB
+chmod +x "$PLUGIN_ROOT/scripts/larch.sh" "$PLUGIN_ROOT/scripts/resolve-upstream-larch-repo.sh"
 
-run_case() {
-    local name=$1 value=$2 expected=$3 dir out err rc
-    dir="$TMPROOT/$name"
-    make_plugin "$dir" "$value"
-    cp "$SCRIPT" "$dir/resolve-upstream-larch-repo.sh"
-    mkdir -p "$dir/scripts"
-    mv "$dir/resolve-upstream-larch-repo.sh" "$dir/scripts/resolve-upstream-larch-repo.sh"
-    chmod +x "$dir/scripts/resolve-upstream-larch-repo.sh"
-    set +e
-    out=$(cd "$dir" && ./scripts/resolve-upstream-larch-repo.sh 2>"$dir/err")
-    rc=$?
-    set -e
-    err=$(cat "$dir/err")
-    if [ "$rc" -eq 0 ] && [ "$out" = "$expected" ] && [ -z "$err" ]; then
-        pass "$name"
-    else
-        fail "$name" "rc=$rc out=$out err=$err"
-    fi
-}
+set +e
+out=$(LARCH_STUB_LOG="$TMPROOT/delegation.log" "$PLUGIN_ROOT/scripts/resolve-upstream-larch-repo.sh" 2>"$TMPROOT/delegation.err")
+rc=$?
+set -e
+if [ "$rc" -eq 0 ] && [ "$out" = character-ai/larch ] && [ ! -s "$TMPROOT/delegation.err" ]; then
+    pass "resolver delegates successfully"
+else
+    fail "resolver delegates successfully" "rc=$rc out=$out err=$(cat "$TMPROOT/delegation.err")"
+fi
+if grep -qxF "CLAUDE_PLUGIN_ROOT=$PLUGIN_ROOT" "$TMPROOT/delegation.log" && \
+   grep -qxF 'ARGV=plugin resolve-repository' "$TMPROOT/delegation.log"; then
+    pass "resolver binds the adjacent plugin root and Rust verb"
+else
+    fail "resolver binds the adjacent plugin root and Rust verb" "$(cat "$TMPROOT/delegation.log")"
+fi
 
-run_reject() {
-    local name=$1 value=${2-__missing__} dir out rc
-    dir="$TMPROOT/$name"
-    make_plugin "$dir" "$value"
-    cp "$SCRIPT" "$dir/resolve-upstream-larch-repo.sh"
-    mkdir -p "$dir/scripts"
-    mv "$dir/resolve-upstream-larch-repo.sh" "$dir/scripts/resolve-upstream-larch-repo.sh"
-    chmod +x "$dir/scripts/resolve-upstream-larch-repo.sh"
-    set +e
-    out=$(cd "$dir" && ./scripts/resolve-upstream-larch-repo.sh 2>"$dir/err")
-    rc=$?
-    set -e
-    if [ "$rc" -ne 0 ] && [ -z "$out" ] && [ -s "$dir/err" ]; then
-        pass "$name"
-    else
-        fail "$name" "rc=$rc out=$out err=$(cat "$dir/err")"
-    fi
-}
+set +e
+out=$(LARCH_STUB_LOG="$TMPROOT/failure.log" LARCH_STUB_FAIL=true "$PLUGIN_ROOT/scripts/resolve-upstream-larch-repo.sh" 2>"$TMPROOT/failure.err")
+rc=$?
+set -e
+if [ "$rc" -eq 1 ] && [ -z "$out" ] && grep -q 'repository metadata missing' "$TMPROOT/failure.err"; then
+    pass "resolver propagates Rust metadata refusal"
+else
+    fail "resolver propagates Rust metadata refusal" "rc=$rc out=$out err=$(cat "$TMPROOT/failure.err")"
+fi
 
-run_case https-url 'https://github.com/character-ai/larch' 'character-ai/larch'
-run_case ssh-url 'git@github.com:character-ai/larch.git' 'character-ai/larch'
-run_case ssh-scheme-url 'ssh://git@github.com/character-ai/larch.git' 'character-ai/larch'
-run_case plain-owner-repo 'character-ai/larch' 'character-ai/larch'
-run_case git-suffix 'https://github.com/character-ai/larch.git' 'character-ai/larch'
-run_case git-plus-https 'git+https://github.com/character-ai/larch.git' 'character-ai/larch'
-run_reject missing-repository
-run_reject non-github 'https://example.com/character-ai/larch'
-run_reject malformed-owner '../larch'
-run_reject malformed-repo 'character-ai/../larch'
-run_reject trailing-newline $'https://github.com/character-ai/larch\n'
-run_reject newline-injection $'https://github.com/character-ai/larch\nother/repo'
+if grep -q 'python3' "$SOURCE_SCRIPT"; then
+    fail "resolver runtime is Python-free"
+else
+    pass "resolver runtime is Python-free"
+fi
 
 if [ "$FAIL" -ne 0 ]; then
     echo "FAILURES: $FAIL"

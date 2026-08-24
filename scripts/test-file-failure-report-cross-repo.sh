@@ -47,6 +47,94 @@ if [ "${1:-}" = session ] && [ "${2:-}" = check-live-mutation-auth ]; then
     grep -qx "LARCH_RUN_ID=$run_id" "$context_file" || exit 5
     exit 0
 fi
+if [ "${1:-}" = stall-recovery ] && [ "${2:-}" = rewind-public-fd ]; then
+    shift 2
+    [ "${1:-}" = --public-fd ] || exit 2
+    python3 -c 'import os,sys; os.lseek(int(sys.argv[1]), 0, os.SEEK_SET)' "$2"
+    exit 0
+fi
+if [ "${1:-}" = stall-recovery ] && [ "${2:-}" = compose-comment-request ]; then
+    shift 2
+    public_fd=""
+    snapshot_fd=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --public-fd) public_fd=${2:-}; shift 2 ;;
+            --snapshot-fd) snapshot_fd=${2:-}; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    python3 - "$public_fd" "$snapshot_fd" <<'PY'
+import json
+import os
+import sys
+
+public_fd = int(sys.argv[1])
+snapshot_fd = int(sys.argv[2])
+os.lseek(public_fd, 0, os.SEEK_SET)
+with os.fdopen(os.dup(public_fd), encoding="utf-8") as source:
+    request = json.dumps({"body": source.read()})
+os.lseek(snapshot_fd, 0, os.SEEK_SET)
+os.ftruncate(snapshot_fd, 0)
+os.write(snapshot_fd, request.encode())
+os.lseek(snapshot_fd, 0, os.SEEK_SET)
+PY
+    exit 0
+fi
+if [ "${1:-}" = stall-recovery ] && [ "${2:-}" = comment-url-from-response ]; then
+    shift 2
+    response_file=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --response-file) response_file=${2:-}; shift 2 ;;
+            *) shift 2 ;;
+        esac
+    done
+    python3 - "$response_file" <<'PY'
+import json
+import re
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as response:
+        url = json.load(response).get("html_url", "")
+except Exception:
+    url = ""
+if isinstance(url, str) and re.fullmatch(r"https://github[.]com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+#issuecomment-[0-9]+", url):
+    print(url)
+PY
+    exit 0
+fi
+if [ "${1:-}" = stall-recovery ] && [ "${2:-}" = find-open-stall-issue ]; then
+    shift 2
+    marker=""
+    issues_file=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --marker) marker=${2:-}; shift 2 ;;
+            --issues-file) issues_file=${2:-}; shift 2 ;;
+            *) shift 2 ;;
+        esac
+    done
+    python3 - "$marker" "$issues_file" <<'PY'
+import json
+import sys
+
+marker = f"<!-- larch-stall:signature={sys.argv[1]} -->"
+with open(sys.argv[2], encoding="utf-8", errors="replace") as issues:
+    for line in issues:
+        if not line.strip():
+            continue
+        issue = json.loads(line)
+        if issue.get("pull_request") is not None:
+            continue
+        if marker in (issue.get("body") or ""):
+            print(issue.get("number") or "")
+            sys.exit(0)
+sys.exit(1)
+PY
+    exit $?
+fi
 [ "${1:-}" = stall-recovery ] && [ "${2:-}" = validate-tier-b-public-file ] || exit 2
 shift 2
 public_file=""
@@ -563,6 +651,12 @@ GH_STUB_CASE=create; export GH_STUB_CASE; run_script "$dir" "$dir/out-create-sen
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-create-sensitive")" "tier-b: create path rejects sensitive body"
 assert_eq unsafe-tier-b-body "$(kv FILE_FAILURE_REPORT_FALLBACK_REASON "$dir/out-create-sensitive")" "tier-b: create path reports unsafe body"
 not_contains "$dir/gh.log" 'issue create' "tier-b: sensitive create skips gh issue create"
+
+if grep -q 'python3' "$SOURCE_SCRIPT"; then
+    fail "runtime helper is Python-free"
+else
+    pass "runtime helper is Python-free"
+fi
 
 if [ "$FAIL" -ne 0 ]; then
     echo "FAILURES: $FAIL"

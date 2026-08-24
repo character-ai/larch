@@ -34,30 +34,26 @@ filter_manifest_args() {
         printf '%s\0' "$@"
         return
     fi
-    python3 - "$REPO_ROOT" "$@" <<'PY'
-import os
-import subprocess
-import sys
-from pathlib import Path
-
-root = Path(sys.argv[1])
-args = sys.argv[2:]
-manifest = subprocess.run(
-    [str(root / "scripts/larch.sh"), "residual-bash", "paths", "--root", str(root)],
-    env={**os.environ, "CLAUDE_PLUGIN_ROOT": os.environ.get("CLAUDE_PLUGIN_ROOT", str(root))},
-    check=True,
-    text=True,
-    capture_output=True,
-).stdout.splitlines()
-allowed = set(manifest)
-for arg in args:
-    rel = arg
-    prefix = str(root) + "/"
-    if rel.startswith(prefix):
-        rel = rel[len(prefix):]
-    if rel in allowed:
-        print(arg, end="\0")
-PY
+    local argument relative manifest_output manifest_path
+    local manifest_paths=()
+    if ! manifest_output=$(larch_residual_paths); then
+        return 1
+    fi
+    while IFS= read -r manifest_path; do
+        manifest_paths[${#manifest_paths[@]}]="$manifest_path"
+    done <<<"$manifest_output"
+    for argument in "$@"; do
+        relative=$argument
+        case "$relative" in
+            "$REPO_ROOT"/*) relative=${relative#"$REPO_ROOT"/} ;;
+        esac
+        for manifest_path in "${manifest_paths[@]}"; do
+            if [ "$relative" = "$manifest_path" ]; then
+                printf '%s\0' "$argument"
+                break
+            fi
+        done
+    done
 }
 
 if [ "$#" -eq 0 ]; then
