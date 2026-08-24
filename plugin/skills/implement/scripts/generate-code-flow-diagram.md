@@ -2,9 +2,8 @@
 
 Generates the Step 7a Mermaid code-flow diagram through a context-isolated
 Claude subprocess, then validates the candidate with
-`scripts/larch.sh mermaid sanitize`. It hands timing attribution to
-`scripts/larch.sh agent launch-claude-subprocess` with
-`--timing-task-kind implement-code-flow`.
+`scripts/larch.sh mermaid sanitize`. It hands timing attribution through
+`agent launch-claude-subprocess --timing-task-kind implement-code-flow`.
 
 Usage:
 
