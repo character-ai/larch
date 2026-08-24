@@ -569,8 +569,8 @@ A manual dispatch with `rust_phase_overlap_benchmark=true` runs the
 three `parallel` candidate samples at one commit on `ubuntu-24.04`. Every cell
 uses the same pinned coverage tools, dependency-cache policy, test profile,
 `NEXTEST_TEST_THREADS=16`, and 88.000% line threshold. The matrix is
-observational and cannot change the protected `rust-full` producer's
-`sequential` mode.
+observational and cannot mutate the protected `rust-full` producer. A reviewed
+workflow change is required to promote a proven phase mode.
 
 After compilation and the required doctests, the candidate starts nextest and
 the one repository-policy scan together. Each branch requires the
@@ -620,11 +620,11 @@ Parallel missed the promotion condition: its median end-to-end duration was
 (12.9%) slower. The three sequential runner jobs consumed 814 seconds in
 total; the three parallel jobs consumed 874 seconds, 60 seconds (7.4%) more.
 One parallel sample improved, but the other two regressed, so the sequential
-producer remains the production shape. The same dispatch's sequential
-`rust-full` took 325 seconds, `rust-coverage` took 3 seconds, `rust-gate` took
-3 seconds, and the workflow elapsed 365 seconds. Those manual-run values are
-context rather than a new production median; retaining the existing sequential
-producer makes no Rust-gate or workflow-path change.
+producer remained the production shape after that benchmark. The same
+dispatch's sequential `rust-full` took 325 seconds, `rust-coverage` took 3
+seconds, and `rust-gate` took 3 seconds. The workflow elapsed 365 seconds.
+Those manual-run values were context rather than a new production median; that
+decision made no Rust-gate or workflow-path change.
 
 Coverage and provenance remained equivalent to the control: every LCOV report
 had 158,933 found lines, 17,614 found functions, and 14,594 hit functions.
@@ -644,6 +644,45 @@ timing rows separately, and waits for both before report. A source-extracted
 helper probe forced nextest to exit 23 while policy succeeded; it retained both
 labeled phase records and returned failure, confirming that a branch failure
 remains attributable and blocks the report.
+
+#### Post-consolidation reevaluation
+
+[Benchmark run 32678844308](https://github.com/character-ai/larch/actions/runs/32678844308)
+reran the paired matrix at `11de90a0cbbcdcef8faf657742121ee3d11ba545`
+after the Rust integration-test consolidation. All six cells were exact
+coverage-target-cache hits with warm Cargo-input and coverage-tool caches. The
+target restores reported 1,411,751,936 to 1,411,756,032 allocated bytes. Each
+cell's generic cache-save row recorded `validation-read-only`; no validation
+run published a cache. Every benchmark cell and the sequential `rust-full`,
+`rust-coverage`, and `rust-gate` jobs succeeded.
+
+| Mode | Sample | Nextest | Policy | Report | End-to-end | Action job | Runner job |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| sequential | 1 | 189 s | 121 s | 110 s | 624 s | 686 s | 690 s |
+| sequential | 2 | 183 s | 130 s | 108 s | 620 s | 688 s | 695 s |
+| sequential | 3 | 182 s | 129 s | 107 s | 620 s | 693 s | 699 s |
+| sequential | median | 183 s | 129 s | 108 s | 620 s | 688 s | 695 s |
+| parallel | 1 | 268 s | 301 s | 111 s | 620 s | 686 s | 691 s |
+| parallel | 2 | 264 s | 311 s | 106 s | 624 s | 687 s | 694 s |
+| parallel | 3 | 260 s | 301 s | 105 s | 609 s | 673 s | 679 s |
+| parallel | median | 264 s | 301 s | 106 s | 620 s | 686 s | 691 s |
+
+Parallel tied the 620-second median coverage-phase total. It reduced the
+median action total by 2 seconds and runner wall time by 4 seconds, or 0.6%.
+That is not the policy-duration reduction required for promotion. Contention
+instead raised median nextest time by 81 seconds, or 44.3%, and policy time by
+172 seconds, or 133.3%. The protected `rust-full` producer therefore remains
+sequential.
+
+Every sample passed 5,479 tests and reported the same two skips. The parallel
+samples classified two or three tests as slow, while the sequential samples
+classified zero or one as slow; no sample failed. Every LCOV artifact found
+322,054 lines and 34,090 functions. Line hits ranged from 283,690 to 283,705,
+or 88.0877% to 88.0924%, and hit functions ranged from 28,244 to 28,248 across
+both modes. The coverage shapes were equivalent, but exact line percentages
+differed. Every policy artifact listed the same 57 rules, and every plugin
+projection check and executable-artifact upload passed. The candidate missed
+both the timing-gain and exact-coverage-identity conditions.
 
 ### Current-main-derived candidate evidence
 
