@@ -330,10 +330,11 @@ Rust mode reads complete jobs-API cohorts for the configured
 `rust-full-shards` matrix. The legacy monolithic `rust-full` job is a valid
 one-shard baseline. A resize updates the matrix, producer count, and
 `rust-coverage` gate's test-report count in one atomic workflow write. The
-dedicated policy report remains the one additional merge input. Verification requires
-every expected shard in every dispatched run, then rejects a slowest shard
-above the approved baseline cap or `--max-rust-shard-wall-clock` (default
-600s). Missing, skipped, duplicate, or incomplete job rows stop the workflow.
+dedicated policy report remains the one additional merge input. Verification
+requires every expected shard in every dispatched run, then rejects a slowest
+shard above the approved baseline cap or `--max-rust-shard-wall-clock`
+(default 600s). Missing, skipped, duplicate, or incomplete job rows stop the
+workflow.
 
 Before any write, branch, or PR, the unified pre-write gate runs in memory.
 Python work rejects empty timing rows, dedupes retried shard attempts before

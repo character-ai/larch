@@ -203,11 +203,14 @@ The stub-safe `python-tests` matrix has no Rust artifact dependency. The
 producer's `if-no-files-found: error` prevents an absent producer artifact from
 being treated as a successful handoff. The stable `rust-coverage` job first
 requires the complete matrix and the policy job to pass. In full mode it
-downloads the same-run test artifacts by the fixed shard prefix and the policy artifact by
-its exact name, requires exactly one more regular, non-symlink `lcov.info` file
-than the configured test-shard count, and merges them with the exact pinned
-Ubuntu LCOV package before applying the 88% line threshold. It uploads only the
-merged report under the legacy stable artifact and member names.
+downloads all same-run coverage artifacts with one fixed prefix, requires the
+exact policy and numbered shard paths, and rejects any report count other than
+one more than the configured test-shard count. Every report must be regular
+and non-symlink. The exact pinned Ubuntu LCOV package merges those inputs
+through its parallel add-tracefile path. The unchanged 88% line threshold is
+then calculated from LCOV's generated `LF` and `LH` totals in the merged report,
+and malformed totals fail closed. The job uploads only that merged report under
+the legacy stable artifact and member names.
 
 On an exact Rust-policy miss, shard 1 of a successful full-mode merge-group
 run stages and verifies a policy-cache candidate after the coverage target has

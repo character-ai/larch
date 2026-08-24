@@ -1253,24 +1253,18 @@ jobs:
             *) printf '::error::invalid Rust CI mode=%s\n' "$mode"; exit 1 ;;
           esac
           printf 'mode=%s\n' "$mode" >> "$GITHUB_OUTPUT"
-      - name: Download Rust coverage shard reports
+      - name: Download Rust coverage reports
         if: steps.verify-mode.outputs.mode == 'full'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: rust-coverage-lcov-shard-*
+          pattern: rust-coverage-lcov-*
           path: ${{ runner.temp }}/rust-coverage-shards
-      - name: Download Rust policy coverage report
-        if: steps.verify-mode.outputs.mode == 'full'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: rust-coverage-lcov-policy
-          path: ${{ runner.temp }}/rust-coverage-shards/rust-coverage-lcov-policy
       - name: Install pinned LCOV merger
         if: steps.verify-mode.outputs.mode == 'full'
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends lcov=2.0-4ubuntu2
+          sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
+            apt-get install --yes --no-install-recommends lcov=2.0-4ubuntu2
           test "$(dpkg-query --show --showformat='${Version}' lcov)" = 2.0-4ubuntu2
       - name: Merge Rust coverage and enforce the line gate
         if: steps.verify-mode.outputs.mode == 'full'
@@ -1289,14 +1283,42 @@ jobs:
               "$expected_report_count" "${#shard_reports[@]}"
             exit 1
           }
-          merge_arguments=()
-          for shard_report in "${shard_reports[@]}"; do
+          policy_report="$shard_root/rust-coverage-lcov-policy/lcov.info"
+          test -f "$policy_report"
+          test ! -L "$policy_report"
+          merge_arguments=(--add-tracefile "$policy_report")
+          for ((shard_index = 1; shard_index <= RUST_COVERAGE_SHARD_COUNT; shard_index++)); do
+            shard_report="$shard_root/rust-coverage-lcov-shard-$shard_index/lcov.info"
             test -f "$shard_report"
             test ! -L "$shard_report"
             merge_arguments+=(--add-tracefile "$shard_report")
           done
-          lcov "${merge_arguments[@]}" --output-file "$merged_report"
-          lcov --summary "$merged_report" --fail-under-lines "$RUST_COVERAGE_MIN_LINES"
+          lcov --parallel "$expected_report_count" \
+            "${merge_arguments[@]}" --output-file "$merged_report"
+          LC_ALL=C awk -F: -v minimum="$RUST_COVERAGE_MIN_LINES" '
+            $1 == "LF" {
+              found_records++
+              if ($2 !~ /^[0-9]+$/) { malformed = 1; next }
+              found += $2
+            }
+            $1 == "LH" {
+              hit_records++
+              if ($2 !~ /^[0-9]+$/) { malformed = 1; next }
+              hit += $2
+            }
+            END {
+              if (malformed || found_records != hit_records || found == 0 || hit > found) {
+                print "::error::merged LCOV line totals are malformed" > "/dev/stderr"
+                exit 1
+              }
+              rate = 100 * hit / found
+              printf "Summary coverage rate:\n  lines......: %.3f%% (%d of %d lines)\n", rate, hit, found
+              if (rate < minimum) {
+                printf "::error::line coverage %.3f%% is below %.3f%%\n", rate, minimum > "/dev/stderr"
+                exit 1
+              }
+            }
+          ' "$merged_report"
       - name: Upload merged Rust coverage report
         if: steps.verify-mode.outputs.mode == 'full'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

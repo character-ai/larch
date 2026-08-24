@@ -322,9 +322,13 @@ follows:
   candidates, and uploads the Linux executable artifact. `rust-full-policy`
   runs beside the four cells. It builds only the instrumented `larch` binary,
   runs the single `larch lint all` scan, and uploads its LCOV and per-rule
-  timing artifacts. `rust-coverage` requires all five full-mode reports,
-  merges exactly five same-run LCOV reports, and applies the unchanged 88%
-  line threshold once to the combined workspace coverage.
+  timing artifacts. `rust-coverage` requires and downloads exactly five
+  same-run LCOV reports in one artifact operation, then verifies their exact
+  paths.
+  The pinned LCOV 2.0 merger combines the reports with five-way parallelism,
+  then the job applies the unchanged 88% line threshold to the canonical
+  `LF`/`LH` totals in that merged report without parsing the input set a second
+  time.
   After coverage-target pruning, an exact cache miss in a successful
   `merge_group` full lane stages and verifies a policy-cache candidate from
   that preserved artifact. The trusted main publisher may promote it only after
@@ -439,13 +443,14 @@ also runs a separate `cargo test --doc --workspace --all-features --locked
 artifact set between normal test phases; the stable toolchain runs doctests
 without cargo-llvm-cov's nightly-only doctest instrumentation. Each shard
 report retains the existing filename exclusions. The stable `rust-coverage`
-job applies the line threshold after it merges the four test reports and the
-policy report. After shard 1 produces its report, it uses the executable for
-both plugin-runtime commands and the generated-projection clean-diff check
-before uploading it for bootstrap integration tests. The separate doctest
-command stays required even
-when the workspace currently has no doctests. Nextest's slow-test status and
-final status output remain visible in the job log.
+job merges the four test reports and the policy report through LCOV's parallel
+add-tracefile path, then applies the line threshold to the merged report's
+generated line totals. After shard 1 produces its report, it uses the
+executable for both plugin-runtime commands and the generated-projection
+clean-diff check before uploading it for bootstrap integration tests. The separate
+doctest command stays required even when the workspace currently has no
+doctests. Nextest's slow-test status and final status output remain visible in
+the job log.
 
 `rust-full-policy` exports the same coverage environment, then runs
 `cargo build --locked --package larch-cli --bin larch --all-features --profile test`.
@@ -709,8 +714,8 @@ Parallel tied the 620-second median coverage-phase total. It reduced the
 median action total by 2 seconds and runner wall time by 4 seconds, or 0.6%.
 That is not the policy-duration reduction required for promotion. Contention
 instead raised median nextest time by 81 seconds, or 44.3%, and policy time by
-172 seconds, or 133.3%. The protected `rust-full` producer therefore remains
-sequential.
+172 seconds, or 133.3%. The then-current protected `rust-full` producer
+therefore remained sequential.
 
 Every sample passed 5,479 tests and reported the same two skips. The parallel
 samples classified two or three tests as slow, while the sequential samples
@@ -863,10 +868,10 @@ uses a zero bound to publish the dependency-only inventory without saving. A
 later dispatch must pass that measured byte bound, capped at 2 GiB, to seed the
 benchmark cache. During that dispatch, the full shard and policy path stays
 cache-off as the matched control and the benchmark lane is the warm candidate.
-The benchmark key cannot activate or supply the production cache. Its timing and inventory
-artifacts use the `-target-cache-benchmark` suffix, and its verification
-executable uses a distinct artifact name, so they remain distinguishable from
-the control artifacts while retaining upload cost.
+The benchmark key cannot activate or supply the production cache. Its timing
+and inventory artifacts use the `-target-cache-benchmark` suffix, and its
+verification executable uses a distinct artifact name, so they remain
+distinguishable from the control artifacts while retaining upload cost.
 
 This workflow does not garbage-collect GitHub Actions caches. Add that behavior
 only after a repository cache inventory demonstrates quota pressure or useful
