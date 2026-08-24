@@ -1,5 +1,9 @@
 # pyright: reportUnusedCallResult=false
-"""Typed git operations over an injected proc.Runner."""
+"""Frozen pre-#8880 copy of retired ``larch.git.git`` for Rust parity fixtures only.
+
+Not a production module. Loaded by path from fixtures/rust-parity consumers after
+``python/larch/git/git.py`` was deleted with the dead rebase/coder-delta set.
+"""
 
 from __future__ import annotations
 

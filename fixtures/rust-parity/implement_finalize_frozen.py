@@ -17,7 +17,6 @@ from larch.core import config, process_identity
 from larch import io as larch_io
 from larch.bgjob import registry as bgjob_registry
 from larch.report import progress_file
-from larch.git import git
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry
@@ -25,9 +24,10 @@ from larch.core import rust_runtime
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.report import run_log_manifest
 from larch.state import session_env
-import implement_scope_disposition_reference as scope_disposition
 from larch.errors import NeedsUserInput, ShipError, Stalled, TransientNetworkError
 from larch.outcomes import Outcome
+import git_frozen as git
+import implement_scope_disposition_reference as scope_disposition
 from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext
 

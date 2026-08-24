@@ -9450,12 +9450,6 @@ python = []
 rust = ["architectural-guidelines read", "architectural-invariants read", "block-issue *", "ci distill-log", "ci main-health", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "ship write-result-env", "stall-recovery normalize-outcome", "timing *", "token append-record", "token dump", "token lane-report", "token lane-write", "token mark", "token record-vendor", "token record-vendor-sidecar", "tracking-issue *"]
 
 [[callers]]
-path = "python/larch/git/rebase.py"
-kind = "python-runtime"
-python = []
-rust = ["git rebase-skip", "git sync-local-main"]
-
-[[callers]]
 path = "python/larch/report/exec_issue_detail.py"
 kind = "python-runtime"
 python = []
