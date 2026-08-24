@@ -3,96 +3,16 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
-import os
 import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
 from larch.report import run_lifecycle
 
-
-@pytest.mark.rust_integration
-def test_consumer_reaches_rust_through_its_bootstrap(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    binary = os.environ.get("LARCH_TEST_RUST_BINARY", "")
-    if not binary:
-        pytest.skip("CI Rust test binary is unavailable")
-    expected_sha256 = os.environ.get("LARCH_TEST_RUST_BINARY_SHA256", "")
-    assert expected_sha256, "integration job must provide the verified Rust binary checksum"
-    rust_ci_mode = os.environ.get("RUST_CI_MODE", "")
-    assert rust_ci_mode in {"full", "partial", "skip"}, (
-        "integration job must provide a valid Rust CI mode"
-    )
-    binary_path = Path(binary)
-    assert binary_path.is_file()
-    assert os.access(binary_path, os.X_OK)
-    assert hashlib.sha256(binary_path.read_bytes()).hexdigest() == expected_sha256
-
-    repo = tmp_path / "client"
-    repo.mkdir()
-    profile_directory = tmp_path / "runner-temp"
-    profile_directory.mkdir()
-    monkeypatch.setenv(
-        "LLVM_PROFILE_FILE", str(profile_directory / "larch-python-%p.profraw")
-    )
-    _ = subprocess.run(
-        ["git", "init", "--quiet", str(repo)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    _ = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(repo),
-            "remote",
-            "add",
-            "origin",
-            "https://github.com/example/client.git",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    # Deliberately omit LLVM_PROFILE_FILE: the lifecycle bootstrap must retain
-    # the ambient redirect. Full and skip use a coverage-built executable and
-    # prove the redirect by writing a profile; partial is not instrumented.
-    environment = {
-        "HOME": str(tmp_path / "home"),
-        "LARCH_BINARY": str(binary_path),
-        "PATH": os.environ["PATH"],
-        "XDG_CACHE_HOME": str(tmp_path / "cache"),
-        "XDG_CONFIG_HOME": str(tmp_path / "config"),
-        "XDG_STATE_HOME": str(tmp_path / "state"),
-    }
-
-    started = run_lifecycle.start_run(
-        repo_root=repo,
-        skill="review",
-        run_id="python-consumer",
-        environ=environment,
-    )
-    assert started.storage_resolution.mode == "disabled"
-    assert started.context_file.is_file()
-
-    terminal = run_lifecycle.finish_run(
-        repo_root=repo,
-        skill="review",
-        run_id="python-consumer",
-        outcome="success",
-        environ=environment,
-    )
-    assert terminal.outcome == "success"
-    assert terminal.publication is None
-    assert terminal.storage_mode == "disabled"
-    if rust_ci_mode != "partial":
-        assert list(profile_directory.glob("larch-python-*.profraw"))
-    assert not list(repo.rglob("default_*.profraw"))
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_consumer_uses_its_own_bootstrap_when_ambient_root_differs(

@@ -156,6 +156,9 @@ fn rules_lists_registered_rules_in_name_order() {
             "skill-documentation\tRequire public, alias, and private skills in both documentation catalogs\n",
         ))
         .stdout(predicate::str::contains(
+            "skill-structure\tRequire live skill prompt structure declared by the shared pin manifest\n",
+        ))
+        .stdout(predicate::str::contains(
             "run-log-corpus-walkers\tReject raw committed run-log corpus walkers outside the shared owner\n",
         ))
         .stdout(predicate::str::contains(

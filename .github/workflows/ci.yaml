@@ -222,9 +222,9 @@ jobs:
   # Regression harness shards (the `test-*` bash scripts in Makefile). Runs
   # as a parallel matrix in parallel with the `lint` and `shellcheck` jobs so
   # a harness failure can be diagnosed and re-run without waiting on
-  # pre-commit, and vice versa. Installs pytest via
-  # requirements-test-harnesses.txt (the lint job uses requirements-lint.txt,
-  # which also pulls pre-commit).
+  # pre-commit, and vice versa. Installs only the Python packages used by the
+  # Bash harnesses via requirements-test-harnesses.txt (the lint job uses
+  # requirements-lint.txt, which also pulls pre-commit).
   test-harnesses:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -823,7 +823,7 @@ jobs:
   # it whenever selection is full or selection infrastructure cannot prove a
   # narrower path. Each shard rebuilds the instrumented workspace and owns one
   # hash partition. The first shard also owns doctests, plugin validation, the
-  # Python artifact, and trusted-main policy-cache candidate staging. The
+  # bootstrap integration artifact, and trusted-main policy-cache candidate staging. The
   # repository-policy scan runs in its own parallel coverage job below.
   rust-full-shards:
     name: rust-full shard ${{ matrix.shard }}
@@ -1082,7 +1082,7 @@ jobs:
 
   # The partial path has a strict package closure but still builds the CLI from
   # the candidate, validates repository policy and plugin projection, and
-  # uploads the same Python integration artifact. It deliberately omits only
+  # uploads the same bootstrap integration artifact. It deliberately omits only
   # the full-workspace coverage threshold.
   rust-partial:
     name: rust-partial
@@ -1183,7 +1183,7 @@ jobs:
           printf '%s\n' "$RUST_POLICY_INPUTS_SHA256" > "$artifact_dir/rust-inputs-sha256"
           printf '%s\n' current-checkout > "$artifact_dir/producer-ref"
           "$artifact_dir/larch" --version > "$artifact_dir/version"
-      - name: Upload partial Rust executable for cross-language integration tests
+      - name: Upload partial Rust executable for bootstrap integration tests
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: larch-linux-test-binary
@@ -1193,7 +1193,7 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          printf '## Partial Rust CI\n\nNo full-workspace coverage threshold ran. Selected package tests, applicable doctests, repository policy, plugin projection validation, and the Python integration artifact remain required.\n' \
+          printf '## Partial Rust CI\n\nNo full-workspace coverage threshold ran. Selected package tests, applicable doctests, repository policy, plugin projection validation, and the bootstrap integration artifact remain required.\n' \
             >> "$GITHUB_STEP_SUMMARY"
 
   # A skip path never executes a PR-provided Rust binary. The selection job
@@ -1258,7 +1258,7 @@ jobs:
             "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --check
           CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
             "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --check --check-worktree
-      - name: Upload trusted-main Rust executable for cross-language integration tests
+      - name: Upload trusted-main Rust executable for bootstrap integration tests
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: larch-linux-test-binary
@@ -1268,7 +1268,7 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          printf '## Rust compilation skipped\n\nTrusted-main repository policy, plugin projection validation, and the Python integration artifact completed against a matching Rust-input identity.\n' \
+          printf '## Rust compilation skipped\n\nTrusted-main repository policy, plugin projection validation, and the bootstrap integration artifact completed against a matching Rust-input identity.\n' \
             >> "$GITHUB_STEP_SUMMARY"
 
   # Preserve the protected rust-coverage status while making exactly one
@@ -1836,8 +1836,7 @@ jobs:
         run: make py-typecheck
 
   # Stub-safe Python unit tests, sharded across a matrix to speed up CI. They
-  # deliberately have no Rust dependency: the marker-selected cross-language
-  # test runs in python-rust-integration below. conftest.py round-robins the
+  # deliberately have no Rust dependency. conftest.py round-robins the
   # collected tests by index using PYTEST_SHARD_ID / PYTEST_SHARD_COUNT (see
   # python/pytest_sharding.py); the matrix `shard` list below is the source of
   # truth for shard count. `make py-test` runs pytest with --durations=0 so
@@ -1845,8 +1844,6 @@ jobs:
   python-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      PYTEST_ADDOPTS: '-m "not rust_integration"'
     strategy:
       fail-fast: false
       matrix:
@@ -1895,7 +1892,8 @@ jobs:
           PYTEST_SHARD_COUNT: "4"
         run: make py-test
 
-  # These are the only Python tests that execute the selected Rust binary.
+  # This job exercises the CI-selected Rust binary through the shipped
+  # bootstrap after both the Python unit suite and Rust coverage succeed.
   # Preserve python-tests-gate as the stable required check while
   # combining the focused consumer with the gate to avoid another runner tail.
   # The same-run artifact is validated before either consumer executes, so a
@@ -1925,17 +1923,7 @@ jobs:
             !/larch-logs/design/
             !/larch-logs/shared/
           sparse-checkout-cone-mode: false
-      - id: main-cache-keys
-        uses: ./.github/actions/main-cache-keys
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-      - id: pip-python-test-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ~/.cache/pip
-          key: ${{ steps.main-cache-keys.outputs.pip-python-test }}
-      - name: Download Rust executable for cross-language integration tests
+      - name: Download Rust executable for bootstrap integration tests
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: larch-linux-test-binary
@@ -1979,30 +1967,7 @@ jobs:
           actual_version="$("$artifact_dir/larch" --version)"
           test "$actual_version" = "$expected_version"
           printf 'LARCH_TEST_RUST_BINARY_SHA256=%s\n' "$binary_sha" >> "$GITHUB_ENV"
-      - name: Resolve interpreter site-packages
-        id: site-packages
-        run: printf 'path=%s\n' "$(python -c 'import site; print(site.getsitepackages()[0])')" >> "$GITHUB_OUTPUT"
-      - name: Cache installed Python packages
-        id: cache-site-packages
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ${{ steps.site-packages.outputs.path }}
-          key: ${{ steps.main-cache-keys.outputs.site-python-test }}
-      - name: Install Python test dependencies
-        if: steps.cache-site-packages.outputs.cache-hit != 'true'
-        env:
-          PIP_RETRIES: "5"
-          PIP_DEFAULT_TIMEOUT: "30"
-        run: pip install -r python/requirements-test.txt
-      - name: Run Rust-backed Python integration tests
-        env:
-          # Coverage-instrumented full and skip executables must not leave
-          # profraw files in the temporary repositories owned by these tests.
-          # The uninstrumented partial executable uses the same clean redirect.
-          LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-python-%p.profraw
+      - name: Run selected Rust bootstrap integration tests
         run: |
-          cd python
-          python3 -m pytest --durations=0 -m rust_integration \
-            tests/report/test_run_lifecycle_consumer.py::test_consumer_reaches_rust_through_its_bootstrap
-          cd ..
+          bash scripts/test-rust-integration-consumer.sh
           LARCH_BINARY="$LARCH_TEST_RUST_BINARY" make test-findings-classification
