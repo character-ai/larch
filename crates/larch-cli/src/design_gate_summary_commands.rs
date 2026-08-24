@@ -10,10 +10,10 @@
 //! `render-gate` is a pure KEY=value renderer that reproduces the Python
 //! `argparse` grammar (prog `cli.py`) byte-for-byte, including its usage and
 //! error strings. `render-final-summary` is orchestration only: it reuses the
-//! already-Rust report/difficulty/review-provenance owners, calls the in-process
-//! Rust `render run-summary` owner with an unchanged argument vector so the
-//! rendered body stays byte-identical, then applies the enrichment and prefix
-//! passes.
+//! already-Rust report/difficulty/review-provenance owners, refreshes the final
+//! token and timing reports through verified Rust entrypoints, calls the
+//! in-process Rust `render run-summary` owner with the compatibility argument
+//! grammar, then applies the enrichment and prefix passes.
 
 use std::{
     collections::BTreeMap,
@@ -21,7 +21,6 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::ExitCode,
-    time::Duration,
 };
 
 use serde_json::{Map, Value};
@@ -36,10 +35,7 @@ use larch_core::{
 };
 
 use crate::design_step0_commands::utf8_arguments;
-use crate::python_verb::run_python_verb;
 use crate::runtime_entrypoint::run_verified_larch;
-
-const PYTHON_BRIDGE_TIMEOUT: Duration = Duration::from_secs(120);
 
 // ---------------------------------------------------------------------------
 // render-gate: constants copied verbatim from design_gate_render.py
@@ -1003,25 +999,19 @@ fn persist_difficulty_record(design_tmpdir: &Path, run_id: &str) {
 
 /// Port of `_refresh_final_reports`.
 ///
-/// The token refresh goes through the Python `cli.py` seam exactly as the
-/// pre-cutover module did (`_run_cli`); that verb is no longer registered
-/// there, so it writes nothing, matching the frozen reference byte-for-byte.
-/// The timing refresh runs the Rust `timing report` owner through the verified
-/// bootstrap, mirroring `_run_larch`.
+/// Refresh token and timing reports through their Rust owners at the verified
+/// bootstrap. Both calls stay best-effort, matching the pre-cutover contract.
 fn refresh_final_reports(design_tmpdir: &Path) {
     let token_output = design_tmpdir.join("token-report-final.json");
-    let _ = run_python_verb(
-        [
-            OsString::from("token"),
-            OsString::from("report"),
-            OsString::from("--full"),
-            OsString::from("--format"),
-            OsString::from("json"),
-            OsString::from("--output"),
-            token_output.into_os_string(),
-        ],
-        PYTHON_BRIDGE_TIMEOUT,
-    );
+    let _ = run_larch_capture(&[
+        OsString::from("token"),
+        OsString::from("report"),
+        OsString::from("--full"),
+        OsString::from("--format"),
+        OsString::from("json"),
+        OsString::from("--output"),
+        token_output.into_os_string(),
+    ]);
     let timing_output = design_tmpdir.join("timing-report-final.json");
     let _ = run_larch_capture(&[
         OsString::from("timing"),
