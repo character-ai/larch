@@ -117,7 +117,7 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     assert "make rust-clippy" in rust_lint
     assert "make rust-lint" not in rust_lint
     assert "cargo-deny-action" not in rust_lint
-    assert '"$coverage_larch" lint all' in rust_coverage
+    assert '"$GITHUB_WORKSPACE/scripts/larch.sh" lint all' in rust_coverage
     assert "make rust-lint" not in rust_coverage
     assert "make rust-build" not in workflow
     assert "make rust-test" not in workflow
@@ -233,6 +233,7 @@ def test_ci_branch_safety_merge_group_and_required_context_contract() -> None:
         "rust-lint",
         "rust-deny",
         "rust-full-shards",
+        "rust-full-policy",
         "rust-full",
         "rust-partial",
         "rust-skip",
@@ -728,6 +729,9 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "\n  rust-full-shards:", 1
     )[0]
     rust_full_job = workflow.split("\n  rust-full-shards:", 1)[1].split(
+        "\n  rust-full-policy:", 1
+    )[0]
+    rust_full_policy = workflow.split("\n  rust-full-policy:", 1)[1].split(
         "\n  rust-full:", 1
     )[0]
     rust_full_gate = workflow.split("\n  rust-full:", 1)[1].split(
@@ -867,7 +871,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     for coverage_step in named_coverage_steps.values():
         if "run: |" in coverage_step:
             assert "github.event_name == 'push'" not in coverage_step
-    for coverage_job in (rust_full_job, rust_coverage_benchmark):
+    for coverage_job in (rust_full_job, rust_full_policy, rust_coverage_benchmark):
         assert 'COVERAGE_TARGET_CACHE_SCHEMA: "v2"' in coverage_job
         assert (
             'COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"' in coverage_job
@@ -947,6 +951,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "coverage-target-cache-prune" in rust_coverage
     assert "coverage-target-cache-save" in rust_coverage
     assert "Start Rust coverage job timing" in rust_full_job
+    assert "Start Rust coverage job timing" in rust_full_policy
     assert "Start Rust coverage job timing" in rust_coverage_benchmark
     assert "job-total-after-runner-setup" in rust_coverage
     assert (
@@ -1011,6 +1016,14 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "path: ~/.cargo/bin/cargo-llvm-cov" in rust_coverage
     assert "key: ${{ env.CARGO_NEXTEST_CACHE_KEY }}" in rust_coverage
     assert "key: ${{ env.CARGO_LLVM_COV_CACHE_KEY }}" in rust_coverage
+    nextest_restore = rust_coverage.split("Restore cargo-nextest binary", 1)[1].split(
+        "Restore cargo-llvm-cov binary", 1
+    )[0]
+    nextest_install = rust_coverage.split("Install cargo-nextest", 1)[1].split(
+        "Install cargo-llvm-cov", 1
+    )[0]
+    assert "steps.coverage-init.outputs.run-tests == 'true'" in nextest_restore
+    assert "steps.coverage-init.outputs.run-tests == 'true'" in nextest_install
     for checksum in (
         "38fd6275e111b200bbbed1bd2ae91cbb0d7edd28504879875cff2b3d96f3f311",
         "9c05bd3c7c5da1286b193873f12b37db386485fa483d8fa0554e68a53d9df550",
@@ -1039,6 +1052,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         in rust_coverage_benchmark
     )
     assert 'CARGO_PROFILE_TEST_OPT_LEVEL: "0"' in rust_full_job
+    assert 'CARGO_PROFILE_TEST_OPT_LEVEL: "0"' in rust_full_policy
     assert (
         "COVERAGE_LCOV_ARTIFACT_SUFFIX: ${{ format('-shard-{0}', matrix.shard) }}"
         in rust_full_job
@@ -1048,6 +1062,10 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         in rust_full_job
     )
     assert 'COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary"' in rust_full_job
+    assert (
+        'COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary-policy"'
+        in rust_full_policy
+    )
     assert (
         rust_coverage_benchmark.count(
             "COVERAGE_LCOV_ARTIFACT_SUFFIX: ${{ format('-opt{0}-sample{1}', matrix.test_opt_level, matrix.sample) }}"
@@ -1061,8 +1079,10 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         == 1
     )
     assert 'NEXTEST_TEST_THREADS: "16"' in rust_full_job
+    assert 'NEXTEST_TEST_THREADS: "16"' in rust_full_policy
     assert 'NEXTEST_TEST_THREADS: "16"' in rust_coverage_benchmark
     assert "RUST_COVERAGE_PHASE_MODE: sequential" in rust_full_job
+    assert "RUST_COVERAGE_PHASE_MODE: sequential" in rust_full_policy
     assert "RUST_COVERAGE_PHASE_MODE: sequential" in rust_coverage_benchmark
     assert "NEXTEST_TEST_THREADS=16" in rust_testing
     assert "Post-policy nextest-tail candidate evidence" in rust_testing
@@ -1073,24 +1093,52 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert 'test_opt_level: ["0", "1"]' in rust_coverage_benchmark
     assert "sample: [1, 2, 3]" in rust_coverage_benchmark
     assert 'CARGO_INCREMENTAL: "0"' in rust_full_job
+    assert 'CARGO_INCREMENTAL: "0"' in rust_full_policy
     assert 'CARGO_PROFILE_TEST_DEBUG: "0"' in rust_full_job
     assert "timeout-minutes: 15" in rust_full_job
+    assert "timeout-minutes: 15" in rust_full_policy
     assert "timeout-minutes: 60" in rust_coverage_benchmark
     assert "strategy:" in rust_full_job
     assert "fail-fast: false" in rust_full_job
     assert "shard: [1, 2, 3, 4]" in rust_full_job
     assert 'COVERAGE_SHARD_COUNT: "4"' in rust_full_job
     assert "name: rust-full shard ${{ matrix.shard }}" in rust_full_job
+    assert "name: rust-full policy" in rust_full_policy
     assert "needs: [rust-selection]" in rust_full_job
+    assert "needs: [rust-selection]" in rust_full_policy
+    assert (
+        "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1"
+        in rust_full_policy
+    )
     assert "uses: ./.github/actions/rust-coverage" in rust_full_job
+    assert "uses: ./.github/actions/rust-coverage" in rust_full_policy
+    assert "RUST_COVERAGE_EXECUTION_ROLE: test-shard" in rust_full_job
+    assert "RUST_COVERAGE_EXECUTION_ROLE: policy" in rust_full_policy
+    assert "COVERAGE_SHARD_INDEX:" not in rust_full_policy
+    assert "COVERAGE_SHARD_COUNT:" not in rust_full_policy
+    assert 'COVERAGE_LCOV_ARTIFACT_SUFFIX: "-policy"' in rust_full_policy
+    assert 'COVERAGE_TIMING_ARTIFACT_SUFFIX: "-opt0-sample1-policy"' in rust_full_policy
+    assert 'COVERAGE_PRODUCES_PYTHON_ARTIFACT: "false"' in rust_full_policy
     assert "uses: ./.github/actions/rust-coverage" in rust_coverage_benchmark
+    for benchmark_job in (
+        rust_coverage_benchmark,
+        rust_phase_overlap_benchmark,
+        rust_target_cache_benchmark,
+    ):
+        assert "RUST_COVERAGE_EXECUTION_ROLE: combined" in benchmark_job
     assert "Run plugin validations with coverage executable" in rust_coverage
-    assert '--partition "hash:${COVERAGE_SHARD_INDEX}/${COVERAGE_SHARD_COUNT}"' in rust_coverage
+    assert (
+        '--partition "hash:${COVERAGE_SHARD_INDEX}/${COVERAGE_SHARD_COUNT}"'
+        in rust_coverage
+    )
     assert "COVERAGE_PRIMARY_SHARD" in rust_coverage
     assert "COVERAGE_APPLY_LINE_GATE" in rust_coverage
     assert "id: coverage-init" in rust_coverage
     assert "steps.coverage-init.outputs.primary == 'true'" in rust_coverage
-    assert 'report_arguments+=(--fail-under-lines "${RUST_COVERAGE_MIN_LINES}")' in rust_coverage
+    assert (
+        'report_arguments+=(--fail-under-lines "${RUST_COVERAGE_MIN_LINES}")'
+        in rust_coverage
+    )
     plugin_validation = rust_coverage.split(
         "Run plugin validations with coverage executable", 1
     )[1].split("Upload Rust coverage report", 1)[0]
@@ -1163,11 +1211,24 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "cargo llvm-cov show-env --sh" in rust_coverage
     assert "cargo nextest run --workspace --all-features --locked \\" in rust_coverage
     assert '--target-dir "$coverage_target_dir" --no-run' in rust_coverage
-    coverage_compilation = rust_coverage.split("compile_coverage() (", 1)[1].split(
-        "run_timed compilation compile_coverage", 1
-    )[0]
-    assert 'test -x "$coverage_target_dir/debug/larch"' in coverage_compilation
-    assert "cargo build" not in coverage_compilation
+    test_coverage_compilation = rust_coverage.split("compile_test_coverage() (", 1)[
+        1
+    ].split("compile_policy_coverage() (", 1)[0]
+    assert 'test -x "$coverage_target_dir/debug/larch"' in test_coverage_compilation
+    assert "cargo build" not in test_coverage_compilation
+    policy_coverage_compilation = rust_coverage.split("compile_policy_coverage() (", 1)[
+        1
+    ].split('if [ "$COVERAGE_RUN_TESTS" = true ]', 1)[0]
+    assert (
+        "cargo build --locked --package larch-cli --bin larch --all-features \\"
+        in policy_coverage_compilation
+    )
+    assert (
+        '--profile test --target-dir "$coverage_target_dir"'
+        in policy_coverage_compilation
+    )
+    assert "cargo nextest" not in policy_coverage_compilation
+    assert 'test -x "$coverage_target_dir/debug/larch"' in policy_coverage_compilation
     assert "cargo llvm-cov nextest --no-report \\" in rust_coverage
     assert 'thread_counts="4 6 8 10 12 14 16"' in rust_coverage
     assert "cargo llvm-cov clean --profraw-only" in rust_coverage
@@ -1199,6 +1260,10 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "validation-read-only" in rust_coverage
     assert "workflow_dispatch-main-benchmark-hit" in rust_coverage
     assert 'case "${RUST_COVERAGE_PHASE_MODE:?}" in' in rust_coverage
+    assert 'case "${RUST_COVERAGE_EXECUTION_ROLE:?}" in' in rust_coverage
+    assert "combined|test-shard" in rust_coverage
+    assert "dedicated-policy-job" in rust_coverage
+    assert "dedicated-test-shards" in rust_coverage
     assert "require_process_scoped_profile()" in rust_coverage
     assert "*%p*" in rust_coverage
     assert "start_timed_background()" in rust_coverage
@@ -1246,12 +1311,13 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert 'test -x "$coverage_larch"' in rust_coverage
     assert "plugin_larch() {" in rust_coverage
     assert "plugin_larch --version" in rust_coverage
-    assert '"$coverage_larch" lint all' in rust_coverage
-    assert rust_coverage.count('"$coverage_larch" lint all') == 1
+    assert '"$GITHUB_WORKSPACE/scripts/larch.sh" lint all' in rust_coverage
+    assert rust_coverage.count('"$GITHUB_WORKSPACE/scripts/larch.sh" lint all') == 1
     assert "plugin_larch release plugin-runtime" in rust_coverage
     assert "plugin_larch release plugin-runtime --check" in rust_coverage
     for coverage_job in (
         rust_full_job,
+        rust_full_policy,
         rust_coverage_benchmark,
         rust_phase_overlap_benchmark,
         rust_target_cache_benchmark,
@@ -1266,7 +1332,8 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         'CARGO_TARGET_DIR="$coverage_target_dir" cargo llvm-cov show-env --sh'
         in repository_policy
     )
-    assert '"$coverage_larch" lint all \\' in repository_policy
+    assert '"$GITHUB_WORKSPACE/scripts/larch.sh" lint all \\' in repository_policy
+    assert 'LARCH_BINARY="$coverage_larch"' in repository_policy
     assert "rust-repository-policy-rules-${test_threads}.tsv" in repository_policy
     plugin_validation = rust_coverage.split(
         "Run plugin validations with coverage executable", 1
@@ -1403,9 +1470,16 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     ):
         assert execution_result in rust_coverage_job
 
-    assert "needs: [rust-selection, rust-full-shards]" in rust_full_gate
-    assert "Require every Rust coverage shard to pass" in rust_full_gate
+    assert (
+        "needs: [rust-selection, rust-full-shards, rust-full-policy]" in rust_full_gate
+    )
+    assert "Require every full Rust coverage producer to pass" in rust_full_gate
+    assert 'policy_result="${{ needs.rust-full-policy.result }}"' in rust_full_gate
     assert "pattern: rust-coverage-lcov-shard-*" in rust_full_gate
+    assert "name: rust-coverage-lcov-policy" in rust_full_gate
+    assert (
+        'expected_report_count="$((RUST_COVERAGE_SHARD_COUNT + 1))"' in rust_full_gate
+    )
     assert "lcov=2.0-4ubuntu2" in rust_full_gate
     assert "--add-tracefile" in rust_full_gate
     assert '--fail-under-lines "$RUST_COVERAGE_MIN_LINES"' in rust_full_gate
@@ -2009,6 +2083,9 @@ def test_rust_ci_documentation_matches_producer_topology() -> None:
     production_evidence_text = " ".join(production_evidence.split())
     rust_testing_text = " ".join(rust_testing.split())
     rust_full = workflow.split("\n  rust-full-shards:", 1)[1].split(
+        "\n  rust-full-policy:", 1
+    )[0]
+    rust_full_policy = workflow.split("\n  rust-full-policy:", 1)[1].split(
         "\n  rust-full:", 1
     )[0]
     rust_full_gate = workflow.split("\n  rust-full:", 1)[1].split(
@@ -2034,6 +2111,7 @@ def test_rust_ci_documentation_matches_producer_topology() -> None:
         in coverage_text
     )
     assert "`rust-full-shards` matrix" in coverage_text
+    assert "`rust-full-policy`" in coverage_text
     assert (
         "`rust-coverage` is not an execution lane: it is the stable required aggregate."
         in coverage_text
@@ -2065,11 +2143,11 @@ def test_rust_ci_documentation_matches_producer_topology() -> None:
         in production_evidence_text
     )
     assert (
-        "every `rust-full shard N` cell, `rust-full`, `rust-coverage`, `rust-gate`, and `python-tests-gate`"
+        "every `rust-full shard N` cell, `rust-full policy`, `rust-full`, `rust-coverage`, `rust-gate`, and `python-tests-gate`"
         in production_evidence_text
     )
     assert (
-        "each shard's coverage-timing TSV and LCOV artifact, the merged LCOV artifact, and the `larch-linux-test-binary` artifact"
+        "each producer's coverage-timing TSV and LCOV artifact, the merged LCOV artifact, and the `larch-linux-test-binary` artifact"
         in production_evidence_text
     )
     assert (
@@ -2079,8 +2157,11 @@ def test_rust_ci_documentation_matches_producer_topology() -> None:
 
     assert "github.event_name != 'pull_request'" in rust_full
     assert "needs.rust-selection.outputs.mode == 'full'" in rust_full
+    assert "needs.rust-selection.outputs.mode == 'full'" in rust_full_policy
     assert "shard: [1, 2, 3, 4]" in rust_full
-    assert "needs: [rust-selection, rust-full-shards]" in rust_full_gate
+    assert (
+        "needs: [rust-selection, rust-full-shards, rust-full-policy]" in rust_full_gate
+    )
     assert "Merge Rust coverage and enforce the line gate" in rust_full_gate
     assert "needs.rust-selection.outputs.mode == 'partial'" in rust_partial
     assert "needs.rust-selection.outputs.mode == 'skip'" in rust_skip
@@ -2093,9 +2174,8 @@ def test_rust_ci_documentation_matches_producer_topology() -> None:
     assert "LARCH_TEST_RUST_BINARY" not in python_tests
     assert "larch-linux-test-binary" not in python_tests
     assert "Verify selected Rust integration artifact" in python_rust_integration
-    assert "| 2 | about 10.2 min | about 8.0 min" in rust_testing
-    assert "| 4 | about 9.4 min | about 7.2 min" in rust_testing
-    assert "| 8 | about 9.0 min | about 6.8 min" in rust_testing
+    assert "The policy job runs in parallel with every test shard." in rust_testing_text
+    assert "exactly five same-run LCOV reports" in rust_testing_text
 
 
 def test_rust_ci_change_selection_rollout_contract() -> None:
@@ -2124,6 +2204,9 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "\n  rust-full-shards:", 1
     )[0]
     rust_full = workflow.split("\n  rust-full-shards:", 1)[1].split(
+        "\n  rust-full-policy:", 1
+    )[0]
+    rust_full_policy = workflow.split("\n  rust-full-policy:", 1)[1].split(
         "\n  rust-full:", 1
     )[0]
     rust_partial = workflow.split("\n  rust-partial:", 1)[1].split("\n  rust-skip:", 1)[
@@ -2170,15 +2253,12 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert "git fetch" not in selector_job
     assert '--repo-root "$GITHUB_WORKSPACE"' in selector_job
     assert (
-        "uses: ./.rust-ci-selector-base/.github/actions/main-cache-keys"
-        in selector_job
+        "uses: ./.rust-ci-selector-base/.github/actions/main-cache-keys" in selector_job
     )
     assert "rust-policy-source-root: .rust-ci-selector-base" in selector_job
     assert "key: ${{ steps.main-cache-keys.outputs.rust-policy }}" in selector_job
     assert (
-        selector_job.count(
-            "steps.main-cache-keys.outputs.rust-policy-inputs-sha256"
-        )
+        selector_job.count("steps.main-cache-keys.outputs.rust-policy-inputs-sha256")
         == 2
     )
     assert selector_job.count('test -n "$RUST_POLICY_INPUTS_SHA256"') == 1
@@ -2192,7 +2272,9 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "format('{0}/crates/**/*.rs', inputs.rust-policy-source-root)"
         in main_cache_keys
     )
-    assert "format('{0}/**/*.rs', inputs.rust-policy-source-root)" not in main_cache_keys
+    assert (
+        "format('{0}/**/*.rs', inputs.rust-policy-source-root)" not in main_cache_keys
+    )
     assert "sha256sum --check --strict larch.sha256" in selector_job
     assert "TRUSTED_POLICY_VALID" in selector_job
     assert "if: steps.proposed-selection.outputs.mode == 'skip'" not in selector_job
@@ -2231,7 +2313,7 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert "name: trusted-main-rust-policy" in selector_job
     assert "rust-selection-observation" not in workflow
 
-    for selected_lane in (rust_lint, rust_deny, rust_full):
+    for selected_lane in (rust_lint, rust_deny, rust_full, rust_full_policy):
         assert "needs: [rust-selection]" in selected_lane
     assert "RUST_CI_MODE" in rust_lint
     assert "Run selected Clippy with warnings denied" in rust_lint
@@ -2240,6 +2322,7 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         repo_root / "crates" / "larch-cli" / "src" / "ci_selection.rs"
     ).read_text(encoding="utf-8")
     assert "needs.rust-selection.outputs.mode == 'full'" in rust_full
+    assert "needs.rust-selection.outputs.mode == 'full'" in rust_full_policy
     assert "needs.rust-selection.outputs.mode == 'partial'" in rust_partial
     assert 'CARGO_PROFILE_TEST_OPT_LEVEL: "0"' in rust_partial
     assert "cargo test --doc" in rust_partial

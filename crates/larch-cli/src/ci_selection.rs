@@ -1157,7 +1157,7 @@ fn full_selection(
         validation_owners: vec![
             "rust-lint: workspace format and Clippy".to_owned(),
             "rust-deny: dependency policy".to_owned(),
-            "rust-full: sharded coverage and line gate, doctests, repository policy, plugin validation, and Python artifact"
+            "rust-full: sharded test coverage, parallel policy coverage, combined line gate, doctests, plugin validation, and Python artifact"
                 .to_owned(),
         ],
     }

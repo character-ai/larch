@@ -24,6 +24,15 @@ runs:
           sequential|parallel) ;;
           *) printf 'invalid Rust coverage phase mode: %s\n' "$RUST_COVERAGE_PHASE_MODE" >&2; exit 1 ;;
         esac
+        case "${RUST_COVERAGE_EXECUTION_ROLE:?}" in
+          combined|test-shard)
+            coverage_run_tests=true
+            ;;
+          policy)
+            coverage_run_tests=false
+            ;;
+          *) printf 'invalid Rust coverage execution role: %s\n' "$RUST_COVERAGE_EXECUTION_ROLE" >&2; exit 1 ;;
+        esac
         coverage_shard_index="${COVERAGE_SHARD_INDEX:-1}"
         coverage_shard_count="${COVERAGE_SHARD_COUNT:-1}"
         case "$coverage_shard_index" in
@@ -42,7 +51,15 @@ runs:
         else
           coverage_primary_shard=false
         fi
-        if [ "$coverage_shard_count" -eq 1 ]; then
+        case "$RUST_COVERAGE_EXECUTION_ROLE" in
+          combined) coverage_run_policy="$coverage_primary_shard" ;;
+          test-shard) coverage_run_policy=false ;;
+          policy)
+            coverage_primary_shard=false
+            coverage_run_policy=true
+            ;;
+        esac
+        if [ "$RUST_COVERAGE_EXECUTION_ROLE" = combined ] && [ "$coverage_shard_count" -eq 1 ]; then
           coverage_apply_line_gate=true
         else
           coverage_apply_line_gate=false
@@ -52,6 +69,7 @@ runs:
         else
           target_cache_policy=disabled-unmeasured
         fi
+        printf 'execution-role\t0\tsuccess\t%s\n' "$RUST_COVERAGE_EXECUTION_ROLE" >> "$timing_file"
         printf 'phase-mode\t0\tsuccess\t%s\n' "$RUST_COVERAGE_PHASE_MODE" >> "$timing_file"
         printf 'coverage-shard\t0\tsuccess\t%s/%s;primary=%s;line-gate=%s\n' \
           "$coverage_shard_index" "$coverage_shard_count" "$coverage_primary_shard" \
@@ -63,6 +81,8 @@ runs:
           printf 'COVERAGE_SHARD_INDEX=%s\n' "$coverage_shard_index"
           printf 'COVERAGE_SHARD_COUNT=%s\n' "$coverage_shard_count"
           printf 'COVERAGE_PRIMARY_SHARD=%s\n' "$coverage_primary_shard"
+          printf 'COVERAGE_RUN_TESTS=%s\n' "$coverage_run_tests"
+          printf 'COVERAGE_RUN_POLICY=%s\n' "$coverage_run_policy"
           printf 'COVERAGE_APPLY_LINE_GATE=%s\n' "$coverage_apply_line_gate"
           printf 'COVERAGE_TARGET_CACHE_HIT=disabled\n'
           printf 'COVERAGE_TARGET_CACHE_RESTORE_OUTCOME=disabled-unmeasured\n'
@@ -79,6 +99,8 @@ runs:
         } >> "$GITHUB_ENV"
         {
           printf 'primary=%s\n' "$coverage_primary_shard"
+          printf 'run-tests=%s\n' "$coverage_run_tests"
+          printf 'run-policy=%s\n' "$coverage_run_policy"
           printf 'apply-line-gate=%s\n' "$coverage_apply_line_gate"
         } >> "$GITHUB_OUTPUT"
     - name: Start Rust coverage cache restore timing
@@ -88,6 +110,7 @@ runs:
         printf 'COVERAGE_CACHE_RESTORE_STARTED=%s\n' "$(date +%s)" >> "$GITHUB_ENV"
     - name: Restore cargo-nextest binary
       id: nextest-cache
+      if: steps.coverage-init.outputs.run-tests == 'true'
       uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: ~/.cargo/bin/cargo-nextest
@@ -233,7 +256,7 @@ runs:
         printf 'COVERAGE_TOOL_SETUP_STARTED=%s\n' "$(date +%s)" >> "$GITHUB_ENV"
     - name: Install cargo-nextest
       id: install-nextest
-      if: steps.nextest-cache.outputs.cache-hit != 'true'
+      if: steps.coverage-init.outputs.run-tests == 'true' && steps.nextest-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -274,13 +297,15 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        printf '%s  %s\n' "$CARGO_NEXTEST_BINARY_SHA256" "$HOME/.cargo/bin/cargo-nextest" | sha256sum --check --strict
+        if [ "$COVERAGE_RUN_TESTS" = true ]; then
+          printf '%s  %s\n' "$CARGO_NEXTEST_BINARY_SHA256" "$HOME/.cargo/bin/cargo-nextest" | sha256sum --check --strict
+          nextest_version="$(cargo nextest --version)"
+          case "$nextest_version" in
+            "cargo-nextest ${CARGO_NEXTEST_VERSION}"*) ;;
+            *) printf 'unexpected cargo-nextest version: %s\n' "$nextest_version" >&2; exit 1 ;;
+          esac
+        fi
         printf '%s  %s\n' "$CARGO_LLVM_COV_BINARY_SHA256" "$HOME/.cargo/bin/cargo-llvm-cov" | sha256sum --check --strict
-        nextest_version="$(cargo nextest --version)"
-        case "$nextest_version" in
-          "cargo-nextest ${CARGO_NEXTEST_VERSION}"*) ;;
-          *) printf 'unexpected cargo-nextest version: %s\n' "$nextest_version" >&2; exit 1 ;;
-        esac
         test "$(cargo llvm-cov --version)" = "cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"
     - name: Install llvm-tools component
       id: install-llvm-tools
@@ -405,7 +430,7 @@ runs:
         profile_started="$(date +%s)"
         run_timed profile-cleanup cargo llvm-cov clean --workspace
         coverage_target_dir="$GITHUB_WORKSPACE/target/llvm-cov-target"
-        compile_coverage() (
+        compile_test_coverage() (
           eval "$(cargo llvm-cov show-env --sh)" &&
           unset CARGO_LLVM_COV_SHOW_ENV &&
           cargo nextest run --workspace --all-features --locked \
@@ -416,7 +441,18 @@ runs:
           # explicit instead of starting a redundant second Cargo build.
           test -x "$coverage_target_dir/debug/larch"
         )
-        run_timed compilation compile_coverage
+        compile_policy_coverage() (
+          eval "$(cargo llvm-cov show-env --sh)" &&
+          unset CARGO_LLVM_COV_SHOW_ENV &&
+          cargo build --locked --package larch-cli --bin larch --all-features \
+            --profile test --target-dir "$coverage_target_dir" &&
+          test -x "$coverage_target_dir/debug/larch"
+        )
+        if [ "$COVERAGE_RUN_TESTS" = true ]; then
+          run_timed compilation compile_test_coverage
+        else
+          run_timed compilation compile_policy_coverage
+        fi
         # Reuse the coverage-instrumented target and compiler environment.
         # This keeps required doctests visible and locked without rebuilding
         # the workspace in Cargo's default target directory.
@@ -437,16 +473,18 @@ runs:
         run_repository_policy() (
           test_threads="$1"
           coverage_larch="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch"
-          # The executable is built under the coverage profile, but direct
-          # execution needs the same profile destination that llvm-cov
-          # reports below. Keep this in a subshell so it cannot affect the
-          # next profile-cleanup or report path.
+          # The executable is built under the coverage profile, and its
+          # invocation needs the same profile destination that llvm-cov reports
+          # below. Keep this in a subshell so it cannot affect the next profile
+          # cleanup or report path.
           test -x "$coverage_larch" &&
           eval "$(CARGO_TARGET_DIR="$coverage_target_dir" cargo llvm-cov show-env --sh)" &&
           unset CARGO_LLVM_COV_SHOW_ENV &&
           require_process_scoped_profile &&
-          "$coverage_larch" --version &&
-          "$coverage_larch" lint all \
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$coverage_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" --version &&
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$coverage_larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" lint all \
             --timing-file "$RUNNER_TEMP/rust-repository-policy-rules-${test_threads}.tsv"
         )
 
@@ -510,33 +548,34 @@ runs:
         for test_threads in $thread_counts; do
           thread_started="$(date +%s)"
           run_timed "profile-cleanup-${test_threads}" cargo llvm-cov clean --profraw-only
-          case "$RUST_COVERAGE_PHASE_MODE" in
-            sequential)
-              run_timed "test-execution-${test_threads}" run_nextest "$test_threads"
-              # Keep exactly one full policy scan in the complete sharded path.
-              # The aggregate report applies the unchanged 88% line gate.
-              if [ "$COVERAGE_PRIMARY_SHARD" = true ]; then
+          if [ "$COVERAGE_RUN_TESTS" = true ] && [ "$COVERAGE_RUN_POLICY" = true ]; then
+            case "$RUST_COVERAGE_PHASE_MODE" in
+              sequential)
+                run_timed "test-execution-${test_threads}" run_nextest "$test_threads"
                 run_timed "repository-policy-${test_threads}" \
                   run_repository_policy "$test_threads"
-              else
-                printf 'repository-policy-%s\t0\tskipped\tnon-primary-shard\n' \
-                  "$test_threads" >> "$COVERAGE_TIMING_FILE"
-              fi
-              ;;
-            parallel)
-              # Both branches use a process-scoped profile path and write
-              # separate logs and timing rows. Wait for both before reporting
-              # so no profraw producer can race coverage collection.
-              if [ "$COVERAGE_PRIMARY_SHARD" = true ]; then
+                ;;
+              parallel)
+                # Both branches use a process-scoped profile path and write
+                # separate logs and timing rows. Wait for both before reporting
+                # so no profraw producer can race coverage collection.
                 run_parallel_coverage_phases "$test_threads"
-              else
-                run_timed "test-execution-${test_threads}" run_nextest "$test_threads"
-                printf 'repository-policy-%s\t0\tskipped\tnon-primary-shard\n' \
-                  "$test_threads" >> "$COVERAGE_TIMING_FILE"
-              fi
-              ;;
-            *) printf 'invalid Rust coverage phase mode: %s\n' "$RUST_COVERAGE_PHASE_MODE" >&2; exit 1 ;;
-          esac
+                ;;
+              *) printf 'invalid Rust coverage phase mode: %s\n' "$RUST_COVERAGE_PHASE_MODE" >&2; exit 1 ;;
+            esac
+          elif [ "$COVERAGE_RUN_TESTS" = true ]; then
+            run_timed "test-execution-${test_threads}" run_nextest "$test_threads"
+            printf 'repository-policy-%s\t0\tskipped\tdedicated-policy-job\n' \
+              "$test_threads" >> "$COVERAGE_TIMING_FILE"
+          elif [ "$COVERAGE_RUN_POLICY" = true ]; then
+            printf 'test-execution-%s\t0\tskipped\tdedicated-test-shards\n' \
+              "$test_threads" >> "$COVERAGE_TIMING_FILE"
+            run_timed "repository-policy-${test_threads}" \
+              run_repository_policy "$test_threads"
+          else
+            printf 'Rust coverage role selected no execution phase\n' >&2
+            exit 1
+          fi
           report_arguments=(
             --ignore-filename-regex "${RUST_COVERAGE_IGNORE_REGEX}"
             --lcov --output-path target/llvm-cov/lcov.info
@@ -598,7 +637,7 @@ runs:
         path: target/llvm-cov/lcov.info
         if-no-files-found: error
     - name: Upload Rust repository policy rule timings
-      if: success() && steps.coverage-init.outputs.primary == 'true'
+      if: success() && steps.coverage-init.outputs.run-policy == 'true'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: rust-repository-policy-rule-timings${{ env.COVERAGE_TIMING_ARTIFACT_SUFFIX }}
@@ -1041,8 +1080,8 @@ runs:
         cache_llvm_cov="${{ steps.llvm-cov-cache.outputs.cache-hit }}"
         {
           printf '## Rust coverage phase timings\n\n'
-          printf 'Profile: test opt level %s; configured nextest threads %s; phase mode %s; sample %s; benchmark sweep %s.\n\n' \
-            "$CARGO_PROFILE_TEST_OPT_LEVEL" "$NEXTEST_TEST_THREADS" "$RUST_COVERAGE_PHASE_MODE" "$COVERAGE_PROFILE_SAMPLE" "$COVERAGE_PROFILE_BENCHMARK"
+          printf 'Profile: execution role %s; test opt level %s; configured nextest threads %s; phase mode %s; sample %s; benchmark sweep %s.\n\n' \
+            "$RUST_COVERAGE_EXECUTION_ROLE" "$CARGO_PROFILE_TEST_OPT_LEVEL" "$NEXTEST_TEST_THREADS" "$RUST_COVERAGE_PHASE_MODE" "$COVERAGE_PROFILE_SAMPLE" "$COVERAGE_PROFILE_BENCHMARK"
           printf 'Cache hits: Cargo inputs %s; cargo-nextest %s; cargo-llvm-cov %s. This TSV records cache restore, tool setup, profile execution, repository policy, plugin validation, and cache save.\n\n' \
             "$cache_cargo_inputs" "$cache_nextest" "$cache_llvm_cov"
           printf 'Coverage dependency target cache: policy %s; exact hit %s; restore %s s (%s bytes, %s); post-prune %s bytes; save %s s (%s, %s).\n\n' \

@@ -221,7 +221,7 @@ The agent tool-contract checks (rules A012 and A013) are owned by the pinned `ag
 
 There are four pre-commit-driven paths:
 
-- **CI** — The `lint` job runs `make lint-only` (repo-wide pre-commit over all files) with dedicated-job hooks skipped. `agent-lint`, `agnix`, and `lintlang` share the consolidated `agent-lint` job; `shellcheck` and `gitleaks` have dedicated jobs, Ruff runs in `lint-local`, and Pyright runs in `python-pyright`. CI owns every exhaustive Rust operation: `rust-lint` runs format and Clippy, `rust-deny` runs dependency policy in parallel, and the coverage execution lane owns the full workspace build and tests, doctests, coverage, repository policy, plugin projection validation, and Linux executable artifact. `rust-gate` requires `rust-lint`, `rust-deny`, and the protected `rust-coverage` status. CI runs regression harnesses through the two-cell `test-harnesses` matrix (`make test-harnesses-1` and `make test-harnesses-2`) instead of one serial harness job. Non-secret-scan jobs use sparse checkouts. `gitleaks` and `trufflehog` keep full source history. Remote run archives pass the run-log scrubber before publication and are not fetched into CI. Local `make lint` runs regression harnesses, Rust policy rules, and pre-commit; it does **not** run `py-lint` or `py-test`. CI also runs `contains-pins`, `python-pyright`, and `python-tests`, with Pytest and harnesses parallelized.
+- **CI**: The `lint` job runs `make lint-only` (repo-wide pre-commit over all files) with dedicated-job hooks skipped. `agent-lint`, `agnix`, and `lintlang` share the consolidated `agent-lint` job; `shellcheck` and `gitleaks` have dedicated jobs, Ruff runs in `lint-local`, and Pyright runs in `python-pyright`. CI owns every exhaustive Rust operation: `rust-lint` runs format and Clippy, `rust-deny` runs dependency policy in parallel, and the parallel coverage jobs own the full workspace tests, doctests, coverage, repository policy, plugin projection validation, and Linux executable artifact. `rust-gate` requires `rust-lint`, `rust-deny`, and the protected `rust-coverage` status. CI runs regression harnesses through the two-cell `test-harnesses` matrix (`make test-harnesses-1` and `make test-harnesses-2`) instead of one serial harness job. Non-secret-scan jobs use sparse checkouts. `gitleaks` and `trufflehog` keep full source history. Remote run archives pass the run-log scrubber before publication and are not fetched into CI. Local `make lint` runs regression harnesses, Rust policy rules, and pre-commit; it does **not** run `py-lint` or `py-test`. CI also runs `contains-pins`, `python-pyright`, and `python-tests`, with Pytest and harnesses parallelized.
 
   Pull requests, merge groups, and manual dispatches run this validation
   workflow with cache restores only. A normal `main` push runs the separate
@@ -327,10 +327,11 @@ count:
 Rust mode reads complete jobs-API cohorts for the configured
 `rust-full-shards` matrix. The legacy monolithic `rust-full` job is a valid
 one-shard baseline. A resize updates the matrix, producer count, and merged
-coverage-gate count in one atomic workflow write. Verification requires every
-expected shard in every dispatched run, then rejects a slowest shard above the
-approved baseline cap or `--max-rust-shard-wall-clock` (default 600s). Missing,
-skipped, duplicate, or incomplete job rows stop the workflow.
+coverage gate's test-report count in one atomic workflow write. The dedicated
+policy report remains the one additional merge input. Verification requires
+every expected shard in every dispatched run, then rejects a slowest shard
+above the approved baseline cap or `--max-rust-shard-wall-clock` (default
+600s). Missing, skipped, duplicate, or incomplete job rows stop the workflow.
 
 Before any write, branch, or PR, the unified pre-write gate runs in memory.
 Python work rejects empty timing rows, dedupes retried shard attempts before
@@ -428,8 +429,9 @@ required context is source-bound to the GitHub Actions integration (`15368`):
 
 Do not require a matrix leg or a conditional implementation detail. In
 particular, `rust-selection`, `rust-lint`, `rust-deny`,
-`rust-full-shards`, `rust-full`, `rust-partial`, and `rust-skip` are inputs to
-the stable Rust aggregates, not proof that every required Rust obligation ran.
+`rust-full-shards`, `rust-full-policy`, `rust-full`, `rust-partial`, and
+`rust-skip` are inputs to the stable Rust aggregates, not proof that every
+required Rust obligation ran.
 
 The ruleset requires a merge queue with `ALLGREEN`, a 60-minute check-response
 timeout, `max_entries_to_build=1`, `max_entries_to_merge=1`,

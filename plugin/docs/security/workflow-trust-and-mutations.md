@@ -675,9 +675,10 @@ effective execution mode, reason, rollout state, and observation flag after
 cache validation and any safe override; it is an artifact for audit, not an
 authorization token. The stable required `rust-coverage` status accepts only
 one successful mode result (`rust-full`, `rust-partial`, or `rust-skip`). The
-full result requires every `rust-full-shards` matrix cell, an exact-count LCOV
-merge, and the combined line gate. An unavailable selector requires that full
-result, which must succeed before the stable status can pass. Main, manual,
+full result requires every `rust-full-shards` matrix cell, the parallel
+`rust-full-policy` producer, an exact-count LCOV merge that includes its
+profile, and the combined line gate. An unavailable selector requires that
+full result, which must succeed before the stable status can pass. Main, manual,
 scheduled, merge-queue, and unknown events continue to run the full lane. The
 `full-rust-ci` label is a
 safe pull-request override because it can only force that same full path.
