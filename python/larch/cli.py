@@ -13,13 +13,7 @@ import importlib
 import os
 import sys
 
-_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("complete-umbrella", "bootstrap"): (
-        "larch.complete_umbrella",
-        "bootstrap_main",
-        True,
-    ),
-}
+_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {}
 
 # Compatibility view: keys whose registry row has machine_stdout=True.
 # Derived from _REGISTRY; do not hand-maintain.

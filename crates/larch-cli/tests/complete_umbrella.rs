@@ -14,6 +14,38 @@ fn larch() -> Command {
 }
 
 #[test]
+fn bootstrap_is_exposed_at_the_rust_executable_boundary() {
+    larch()
+        .args(["complete-umbrella", "bootstrap", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--issue"))
+        .stdout(predicate::str::contains("--operator-invoked"))
+        .stdout(predicate::str::contains("--lifecycle-parent-context"));
+}
+
+#[test]
+fn bootstrap_names_the_failed_stage_on_the_executable_boundary() {
+    larch()
+        .env_remove("CLAUDE_PROJECT_DIR")
+        .args([
+            "complete-umbrella",
+            "bootstrap",
+            "--issue",
+            "1",
+            "--operator-invoked",
+        ])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("BOOTSTRAP_OK=false\n"))
+        .stdout(predicate::str::contains("BOOTSTRAP_STAGE=repository-root\n"))
+        .stderr(predicate::str::contains(
+            "complete-umbrella bootstrap failed at stage=repository-root",
+        ));
+}
+
+#[test]
 fn ship_leaf_is_exposed_at_the_rust_executable_boundary() {
     larch()
         .args(["complete-umbrella", "ship-leaf", "--help"])

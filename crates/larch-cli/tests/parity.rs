@@ -1001,6 +1001,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "prose-audit",
     ),
     CleanInstallCase::new(
+        "clean-install-complete-umbrella-bootstrap",
+        "complete-umbrella",
+        "bootstrap",
+    ),
+    CleanInstallCase::new(
         "clean-install-complete-umbrella-ship-leaf",
         "complete-umbrella",
         "ship-leaf",

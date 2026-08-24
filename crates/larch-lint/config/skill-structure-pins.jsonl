@@ -369,6 +369,9 @@
 {"path":"skills/complete-umbrella/SKILL.md","kind":"contains","needle":"run_in_background: true","id":"ported test_complete_umbrella_phases.py:212 [8638e10ba1]"}
 {"path":"skills/complete-umbrella/SKILL.md","kind":"absent","needle":"330000","id":"ported test_complete_umbrella_phases.py:213 [830de0ef05]"}
 {"path":"skills/complete-umbrella/SKILL.md","kind":"contains","needle":"complete-umbrella bootstrap","id":"ported test_complete_umbrella_phases.py:227 [d8d2b84529]"}
+{"path":"skills/complete-umbrella/SKILL.md","kind":"contains","needle":"\"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh\" complete-umbrella bootstrap","id":"complete-umbrella: Step 0 bootstrap enters through scripts/larch.sh"}
+{"path":"skills/complete-umbrella/SKILL.md","kind":"absent","needle":"python3","id":"complete-umbrella: Step 0 must not invoke python3"}
+{"path":"skills/complete-umbrella/SKILL.md","kind":"absent","needle":"python/cli.py","id":"complete-umbrella: Step 0 must not invoke python/cli.py"}
 {"path":"skills/complete-umbrella/SKILL.md","kind":"contains","needle":"The bootstrap calls `resume` before session setup or `start`.","id":"ported test_complete_umbrella_phases.py:228 [7181b9d2dc]"}
 {"path":"skills/complete-umbrella/SKILL.md","kind":"absent","needle":"complete-umbrella resume","id":"ported test_complete_umbrella_phases.py:229 [1cafc6c956]"}
 {"path":"skills/complete-umbrella/SKILL.md","kind":"absent","needle":"complete-umbrella start","id":"ported test_complete_umbrella_phases.py:230 [0b0813f495]"}

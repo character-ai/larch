@@ -1935,11 +1935,13 @@ verb = "bootstrap"
 python_module = "larch.complete_umbrella"
 python_function = "bootstrap_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 8651
+migration_issue = 8897
+clean_install_test = "clean-install-complete-umbrella-bootstrap"
 
 [[commands]]
 domain = "complete-umbrella"
@@ -9436,12 +9438,6 @@ python = []
 rust = ["review-and-fix write-pre-self-review-snapshot"]
 
 [[callers]]
-path = "python/larch/complete_umbrella.py"
-kind = "python-runtime"
-python = []
-rust = ["agent read-claude-model", "gh resolve-repo", "run-log lifecycle-start", "session setup"]
-
-[[callers]]
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
@@ -9570,8 +9566,8 @@ rust = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues cl
 [[callers]]
 path = "skills/complete-umbrella/SKILL.md"
 kind = "skill"
-python = ["complete-umbrella bootstrap"]
-rust = ["bgjob start", "bgjob wait", "session cleanup-tmpdir"]
+python = []
+rust = ["bgjob start", "bgjob wait", "complete-umbrella bootstrap", "session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/complete-umbrella/references/adversarial-review.md"

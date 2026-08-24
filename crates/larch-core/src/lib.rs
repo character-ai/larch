@@ -270,8 +270,8 @@ pub use difficulty_calibration::difficulty_calibration_report;
 pub use env_file::{
     CommentPolicy, CrStrip, DuplicateInputPolicy, DuplicatePolicy, EmptyKeyPolicy, EnvFile,
     KeyPolicy, KvDocument, KvError, KvErrorKind, KvRow, MalformedLinePolicy, ParseOptions,
-    RenderOptions, WhitespacePolicy, kv_text, parse_allowlisted_env_line, parse_single_kv_row,
-    select_kv_bytes, split_one_shell_token,
+    RenderOptions, WhitespacePolicy, kv_row_value, kv_text, parse_allowlisted_env_line,
+    parse_single_kv_row, select_kv_bytes, split_one_shell_token,
 };
 pub use error::{
     EnvironmentalFailure, ErrorCategory, FailureKind, InternalDefect, LarchError, OperatorError,

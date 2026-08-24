@@ -18,10 +18,11 @@ use larch_core::{
     BgjobError, JobSpec, KvDocument, LivenessVerdict, MalformedLinePolicy, OwnerIdentity,
     ParseOptions, RecordedProcessIdentity, RegistryEntry, bgjob_dir, checked_dir, child_liveness,
     cleanup_cache_sessions_root, clear_completion_residue, completion_result_is_visible,
-    daemon_liveness, ensure_under, entry_expired, log_paths, parse_allowlisted_env_line,
-    parse_single_kv_row, private_atomic_write, read_entry, read_process_identity, registry_path,
-    registry_root, resolve_run_id, result_env_path, shell_quote, validate_initial_merge_rows,
-    validate_merge_result_env, validate_run_id, validate_slug,
+    daemon_liveness, ensure_under, entry_expired, kv_row_value, log_paths,
+    parse_allowlisted_env_line, parse_single_kv_row, private_atomic_write, read_entry,
+    read_process_identity, registry_path, registry_root, resolve_run_id, result_env_path,
+    shell_quote, validate_initial_merge_rows, validate_merge_result_env, validate_run_id,
+    validate_slug,
 };
 use std::{
     collections::BTreeMap,
@@ -98,10 +99,7 @@ struct SessionValues {
 
 impl SessionValues {
     fn get(&self, key: &str) -> Option<&str> {
-        self.rows
-            .iter()
-            .find(|(candidate, _)| candidate == key)
-            .map(|(_, value)| value.as_str())
+        kv_row_value(&self.rows, key)
     }
 
     fn insert(&mut self, key: String, value: String) {
