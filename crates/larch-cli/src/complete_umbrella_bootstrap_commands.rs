@@ -13,7 +13,8 @@ use larch_adapters::{
 };
 use larch_core::{
     CommentPolicy, CrStrip, DuplicateInputPolicy, DuplicatePolicy, EmptyKeyPolicy, KeyPolicy,
-    KvDocument, MalformedLinePolicy, ParseOptions, WhitespacePolicy, is_valid_claude_pid, kv_text,
+    KvDocument, MalformedLinePolicy, ParseOptions, WhitespacePolicy, is_valid_claude_pid,
+    kv_row_value, kv_text,
 };
 use std::{
     collections::BTreeMap,
@@ -115,10 +116,7 @@ impl OrderedRows {
     }
 
     fn get(&self, key: &str) -> Option<&str> {
-        self.rows
-            .iter()
-            .find(|(candidate, _)| candidate == key)
-            .map(|(_, value)| value.as_str())
+        kv_row_value(&self.rows, key)
     }
 
     fn render(&self) -> Result<String, String> {

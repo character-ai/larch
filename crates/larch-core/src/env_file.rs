@@ -377,6 +377,14 @@ pub fn select_kv_bytes(
     selected.unwrap_or(default).to_vec()
 }
 
+/// Return the first matching value from caller-ordered `KEY=value` rows.
+#[must_use]
+pub fn kv_row_value<'a>(rows: &'a [(String, String)], key: &str) -> Option<&'a str> {
+    rows.iter()
+        .find(|(candidate, _)| candidate == key)
+        .map(|(_, value)| value.as_str())
+}
+
 /// Render caller-ordered `KEY=value\n` rows after rejecting line forgery.
 ///
 /// # Errors
@@ -728,8 +736,8 @@ fn validate_key(key: &str, policy: KeyPolicy, line: usize) -> Result<(), KvError
 mod tests {
     use super::{
         CommentPolicy, CrStrip, DuplicatePolicy, EmptyKeyPolicy, EnvFile, KeyPolicy, KvDocument,
-        KvErrorKind, KvRow, MalformedLinePolicy, ParseOptions, RenderOptions, kv_text,
-        parse_allowlisted_env_line, parse_single_kv_row, select_kv_bytes,
+        KvErrorKind, KvRow, MalformedLinePolicy, ParseOptions, RenderOptions, kv_row_value,
+        kv_text, parse_allowlisted_env_line, parse_single_kv_row, select_kv_bytes,
     };
 
     #[test]
@@ -926,6 +934,18 @@ mod tests {
         assert!(parse_allowlisted_env_line("SAFE=a\\\nb", &allowed, None, false).is_none());
         assert!(parse_allowlisted_env_line("NOPE=value", &allowed, None, false).is_none());
         assert!(parse_allowlisted_env_line("SAFE='line\nbreak'", &allowed, None, false).is_none());
+    }
+
+    #[test]
+    fn kv_row_value_returns_the_first_matching_row() {
+        let rows = vec![
+            ("A".to_owned(), "one".to_owned()),
+            ("B".to_owned(), "two".to_owned()),
+            ("A".to_owned(), "later".to_owned()),
+        ];
+        assert_eq!(kv_row_value(&rows, "A"), Some("one"));
+        assert_eq!(kv_row_value(&rows, "B"), Some("two"));
+        assert_eq!(kv_row_value(&rows, "missing"), None);
     }
 
     #[test]
