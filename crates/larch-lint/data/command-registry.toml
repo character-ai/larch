@@ -10424,6 +10424,12 @@ python = []
 rust = ["diagrams upsert", "mermaid sanitize"]
 
 [[callers]]
+path = "skills/shared/oos-acceptance-rubric.md"
+kind = "skill"
+python = []
+rust = ["render voter"]
+
+[[callers]]
 path = "skills/shared/orchestrator-never.md"
 kind = "skill"
 python = []

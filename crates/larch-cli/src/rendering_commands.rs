@@ -1332,10 +1332,7 @@ pub fn voter_result(arguments: &[OsString]) -> Result<VoterRenderOutput, VoterEr
             "--id-grammar must be finding-oos or finding-only".to_owned(),
         ));
     }
-    if !matches!(
-        verification_context.as_str(),
-        "plan" | "diff-plan" | "code"
-    ) {
+    if !matches!(verification_context.as_str(), "plan" | "diff-plan" | "code") {
         return Err(VoterError::Usage(
             "--verification-context must be plan, diff-plan, or code".to_owned(),
         ));
@@ -1356,11 +1353,10 @@ pub fn voter_result(arguments: &[OsString]) -> Result<VoterRenderOutput, VoterEr
     if !voter_tool.is_empty() && !matches!(voter_tool.as_str(), "claude" | "codex" | "cursor") {
         return Err(VoterError::Usage("2".to_owned()));
     }
-    let plugin_root =
-        plugin_root_directory().ok_or_else(|| VoterError::Usage("2".to_owned()))?;
+    let plugin_root = plugin_root_directory().ok_or_else(|| VoterError::Usage("2".to_owned()))?;
     let rubric_path = plugin_root.join("skills/shared/review-acceptance-rubric.md");
-    let rubric_raw = fs::read_to_string(&rubric_path)
-        .map_err(|_error| VoterError::Usage("2".to_owned()))?;
+    let rubric_raw =
+        fs::read_to_string(&rubric_path).map_err(|_error| VoterError::Usage("2".to_owned()))?;
     let rubric = rubric_raw
         .split_once("\n---")
         .map_or(rubric_raw.as_str(), |(head, _)| head)
@@ -1405,7 +1401,9 @@ pub fn voter_result(arguments: &[OsString]) -> Result<VoterRenderOutput, VoterEr
     }
     let oos_rule = "apply the OOS Acceptance Rubric (`skills/shared/oos-acceptance-rubric.md`). Vote YES when the OOS observation is genuine, concrete, and non-duplicate; vote NO for style, noise, duplicates, false positives, or speculative items with no concrete trigger. Remedies are informational; do not vote NO for remedy disagreement.";
     if id_grammar == "finding-only" {
-        out.push(format!("For items prefixed with `[OUT_OF_SCOPE]`: {oos_rule}"));
+        out.push(format!(
+            "For items prefixed with `[OUT_OF_SCOPE]`: {oos_rule}"
+        ));
     } else {
         out.push(format!(
             "For `OOS_N:` items in plan review (or `[OUT_OF_SCOPE]` items in code review): {oos_rule}"
@@ -1549,7 +1547,9 @@ fn voter_calibration_feedback_block(stats_file: &str, voter_tool: &str) -> Strin
 fn voter_code_ledger_section(path_value: &str, session_env_path: &str) -> String {
     if !path_value.is_empty() {
         return prompt_section(
-            Path::new(path_value).parent().unwrap_or_else(|| Path::new(".")),
+            Path::new(path_value)
+                .parent()
+                .unwrap_or_else(|| Path::new(".")),
             "judge",
         )
         .unwrap_or_default();

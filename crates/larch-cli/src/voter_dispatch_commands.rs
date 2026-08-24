@@ -308,13 +308,6 @@ fn run(options: &Options) -> ExitCode {
     let Some(plugin_root) = plugin_root_directory() else {
         return refuse(&format!("{PROG}: cannot resolve the plugin root"));
     };
-    let dispatcher = plugin_root.join("python/cli.py");
-    if !dispatcher.is_file() {
-        return refuse(&format!(
-            "{PROG}: missing python/cli.py at {}",
-            dispatcher.display()
-        ));
-    }
     if let Err(error) = fs::create_dir_all(&options.review_tmpdir) {
         return refuse(&format!("{PROG}: cannot create the review tmpdir: {error}"));
     }
