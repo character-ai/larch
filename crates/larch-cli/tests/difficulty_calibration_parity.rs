@@ -8,7 +8,7 @@ use std::{
 };
 
 use larch_core::review::code_review_classification_header;
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 
 const DESIGN_HEADER: &str =
     "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv2_vote\tv3_vote\tscope";
@@ -195,7 +195,7 @@ fn difficulty_calibration_analyze_has_frozen_black_box_parity() {
     ];
     let goldens = fixtures.join("goldens");
     for case in cases {
-        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
+        assert_rust_golden_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
 }

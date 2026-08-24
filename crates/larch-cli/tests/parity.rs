@@ -12,7 +12,9 @@ use std::{
 use std::os::unix::fs::PermissionsExt as _;
 
 use larch_core::{ClassifyTextInput, classify_text, shell_quote};
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{
+    NormalizationRule, ParityCase, Program, SeedFile, assert_case, assert_rust_golden_case,
+};
 use sha2::{Digest as _, Sha256};
 use tempfile::TempDir;
 
@@ -4787,6 +4789,9 @@ const PHASE_DETAIL_CASES: &[PhaseDetailFixture] = &[
     },
 ];
 
+/// The recorded goldens came from the frozen pre-cutover Python owner. The
+/// reference now depends on packages retired by #8901, so these cases execute
+/// only the Rust owner and check it against that recorded contract.
 #[test]
 fn phase_detail_commands_have_reviewed_parity() {
     let fixture_directory = fixture_directory();
@@ -4804,7 +4809,7 @@ fn phase_detail_commands_have_reviewed_parity() {
     for fixture in PHASE_DETAIL_CASES {
         let case = fixture.build(&python, &python_fixture, &rust, &python_path);
         let golden = golden_directory.join(format!("{}.golden.json", fixture.name));
-        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+        assert_rust_golden_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
     }
 }
 

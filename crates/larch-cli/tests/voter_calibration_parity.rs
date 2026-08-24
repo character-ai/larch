@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 
 const REPORT_HEADER: &str = "# Voter Calibration Report";
 const GROUND_TRUTH_HEADER: &str = "## Ground-truth Voter Calibration";
@@ -627,7 +627,7 @@ fn voter_calibration_analyze_has_frozen_black_box_parity() {
     let goldens = fixtures.join("goldens");
     for case in cases {
         let golden = goldens.join(format!("{}.golden.json", case.name));
-        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+        assert_rust_golden_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
         if success_cases.contains(&case.name) {
             assert_success_report(&golden, "stdout", REPORT_HEADER);
         }

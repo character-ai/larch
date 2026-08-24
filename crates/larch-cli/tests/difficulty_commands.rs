@@ -17,14 +17,6 @@ fn plugin_root() -> PathBuf {
         .expect("plugin root")
 }
 
-fn python_root() -> PathBuf {
-    plugin_root().join("python")
-}
-
-fn oracle_path() -> PathBuf {
-    plugin_root().join("fixtures/rust-parity/difficulty_reference.py")
-}
-
 fn larch(arguments: &[&str]) -> Output {
     Command::cargo_bin("larch")
         .expect("larch binary should build")
@@ -32,28 +24,6 @@ fn larch(arguments: &[&str]) -> Output {
         .args(arguments)
         .output()
         .expect("run larch difficulty command")
-}
-
-fn oracle(arguments: &[&str]) -> Output {
-    ProcessCommand::new("python3") // lint-subprocess-via-runner: ok frozen test-only Python parity oracle
-        .arg(oracle_path())
-        .args(arguments)
-        .env("PYTHONPATH", python_root())
-        .env("CLAUDE_PLUGIN_ROOT", plugin_root())
-        .output()
-        .expect("run frozen Python difficulty oracle")
-}
-
-fn assert_same_output(left: &Output, right: &Output) {
-    assert_eq!(
-        code(left),
-        code(right),
-        "stderr rust={} python={}",
-        stderr(left),
-        stderr(right)
-    );
-    assert_eq!(stdout(left), stdout(right));
-    assert_eq!(stderr(left), stderr(right));
 }
 
 fn stdout(output: &Output) -> String {
@@ -319,106 +289,6 @@ fn write_record_rejects_an_invalid_rater_choice() {
     ]);
     assert_eq!(code(&output), 2);
     assert!(stderr(&output).contains("argument --rater: invalid choice: 'EASY'"));
-}
-
-#[test]
-fn help_text_matches_the_frozen_python_oracle() {
-    for verb in [
-        "validate-rating",
-        "extract-plan-metadata",
-        "write-record",
-        "render-rubric",
-        "render-line",
-        "resolve-panel",
-        "sync-labels",
-    ] {
-        assert_same_output(
-            &larch(&["difficulty", verb, "--help"]),
-            &oracle(&[verb, "--help"]),
-        );
-    }
-}
-
-#[test]
-fn validate_rating_stdout_matches_the_frozen_python_oracle() {
-    let dir = TempDir::new().expect("tempdir");
-    let input = dir.path().join("rating.json");
-    fs::write(
-        &input,
-        json!({
-            "predicted_tier": "trivial",
-            "confidence": "low",
-            "rationale": "line\nwith\tcontrols"
-        })
-        .to_string(),
-    )
-    .expect("write rating");
-    let path = input.to_str().expect("utf8");
-    assert_same_output(
-        &larch(&["difficulty", "validate-rating", "--input-file", path]),
-        &oracle(&["validate-rating", "--input-file", path]),
-    );
-}
-
-#[test]
-fn write_record_wire_file_matches_the_frozen_python_oracle() {
-    let dir = TempDir::new().expect("tempdir");
-    let rust_out = dir.path().join("rust.json");
-    let python_out = dir.path().join("python.json");
-    let rust = larch(&[
-        "difficulty",
-        "write-record",
-        "--output",
-        rust_out.to_str().expect("utf8"),
-        "--rater",
-        "implement",
-        "--fallback-tier",
-        "MODERATE",
-        "--fallback-rationale",
-        "new",
-    ]);
-    let python = oracle(&[
-        "write-record",
-        "--output",
-        python_out.to_str().expect("utf8"),
-        "--rater",
-        "implement",
-        "--fallback-tier",
-        "MODERATE",
-        "--fallback-rationale",
-        "new",
-    ]);
-    assert_eq!(code(&rust), 0, "{}", stdout(&rust));
-    assert_eq!(code(&python), 0, "{}", stdout(&python));
-    assert_eq!(
-        fs::read_to_string(&rust_out).expect("rust record"),
-        fs::read_to_string(&python_out).expect("python record")
-    );
-}
-
-#[test]
-fn sync_labels_invalid_tier_matches_the_frozen_python_oracle() {
-    assert_same_output(
-        &larch(&[
-            "difficulty",
-            "sync-labels",
-            "--issue",
-            "9",
-            "--tier",
-            "EASY",
-            "--repo",
-            "o/r",
-        ]),
-        &oracle(&[
-            "sync-labels",
-            "--issue",
-            "9",
-            "--tier",
-            "EASY",
-            "--repo",
-            "o/r",
-        ]),
-    );
 }
 
 #[test]

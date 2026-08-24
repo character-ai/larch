@@ -4,7 +4,7 @@ mod parity_support;
 
 use std::{env, fs, path::PathBuf, process::Command};
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 
 fn repository_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -424,7 +424,7 @@ fn migrated_cases() -> Vec<ParityCase> {
 fn scope_anchor_verbs_have_frozen_black_box_parity() {
     let goldens = repository_root().join("fixtures/rust-parity/goldens");
     for case in migrated_cases() {
-        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
+        assert_rust_golden_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
 }

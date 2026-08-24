@@ -927,6 +927,7 @@ Issue #8836 completes the later scope-anchor cutover. `crates/larch-cli/src/rend
 - #8901 recomputes reachability from `python/cli.py` after all blocker leaves. The registry is empty, and `python/larch/cli.py` is the only Python file reachable below `python/larch/`.
 - Every unreachable runtime module and each test dedicated to deleted code is removed. The remaining Python tests cover the empty dispatcher, temporary development tooling, and live repository contracts without importing deleted runtime packages.
 - Shared Python test helpers, analysis scripts, and Python-owned fixture directories are removed. The live Rust calibration corpus moves to `fixtures/plan-fidelity-calibration/`.
+- Rust parity suites whose frozen references imported retired shared packages now execute the Rust owner against their recorded pre-cutover goldens. Self-contained frozen references continue to provide live differential coverage.
 - Production commands remain Rust-owned through `scripts/larch.sh`. Issues #8902 and #8903 own the later development-tooling and release-artifact cleanup.
 
 ## E3 terminal Bash sweep

@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 
 const BALLOT: &str = "### FINDING_1:\nproblem text\n";
 const LEDGER: &str = concat!(
@@ -170,7 +170,7 @@ fn render_voter_has_frozen_black_box_parity() {
     let goldens = fixture_directory().join("goldens");
     for definition in CASES {
         let case = parity_case(definition);
-        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
+        assert_rust_golden_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
 }

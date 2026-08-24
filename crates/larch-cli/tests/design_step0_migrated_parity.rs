@@ -1,10 +1,10 @@
 //! Golden-driven black-box parity for the migrated `/design` Step 0 verbs (#8578).
 //!
-//! The frozen Python reference at
-//! `fixtures/rust-parity/design_step0_migrated_reference.py` executes the
-//! byte-frozen pre-cutover modules; each case runs both it and the Rust owner in
-//! isolated sandboxes and asserts stdout/stderr/exit/wire-file parity plus a
-//! recorded golden, mirroring `design_router_migrated_parity.rs`.
+//! The recorded goldens came from the frozen pre-cutover Python owner at
+//! `fixtures/rust-parity/design_step0_migrated_reference.py`. After #8901
+//! retired its shared Python dependencies, each case runs the Rust owner in an
+//! isolated sandbox and checks stdout, stderr, exit status, and wire files
+//! against that recorded contract.
 //!
 //! Scope note: the heavy `step0-session` orchestration and the `step0-route`
 //! success path (a proceed route folding `INIT_STATUS=ok` with a non-empty
@@ -23,7 +23,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -434,7 +434,7 @@ fn design_step0_migrated_verbs_match_frozen_python_reference() {
         .chain(route_cases())
         .chain(init_cases())
     {
-        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
+        assert_rust_golden_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
 }

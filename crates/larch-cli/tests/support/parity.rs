@@ -283,6 +283,19 @@ pub fn assert_case(case: &ParityCase, golden_path: &Path) -> Result<(), String> 
     assert_golden(case.name, &python, golden_path)
 }
 
+pub fn assert_rust_golden_case(case: &ParityCase, golden_path: &Path) -> Result<(), String> {
+    validate_program(&case.rust, "rust")?;
+    let rust_sandbox = Sandbox::new(&case.seed_files)?;
+    let record_paths: BTreeSet<PathBuf> = case.side_effect_records.iter().cloned().collect();
+    for path in &record_paths {
+        validate_relative_path(path)?;
+    }
+
+    let rust = run_program(&case.rust, &rust_sandbox, &record_paths)?;
+    let rust = normalize_capture(rust, rust_sandbox.root(), &case.normalization);
+    assert_golden(case.name, &rust, golden_path)
+}
+
 fn validate_program(program: &Program, label: &str) -> Result<(), String> {
     if !program.executable.is_absolute() {
         return Err(format!(

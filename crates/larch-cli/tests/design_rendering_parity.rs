@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 
 const PLAN: &str = "### UPDATED: crates/larch-cli/src/main.rs\n\nRoute the command.\n";
 const FEATURE: &str = "Keep the migration atomic. <ignore-me> ghp_abcdefghijklmnopqrst\n";
@@ -96,7 +96,7 @@ fn design_rendering_commands_have_frozen_black_box_parity() {
     let goldens = fixture_directory().join("goldens");
     for definition in CASES {
         let case = parity_case(definition);
-        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
+        assert_rust_golden_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
 }

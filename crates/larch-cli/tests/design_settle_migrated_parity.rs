@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -326,7 +326,7 @@ fn annotate_success_case() -> ParityCase {
 fn assert_cases(cases: impl IntoIterator<Item = ParityCase>) {
     let goldens = fixture_directory().join("goldens");
     for case in cases {
-        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
+        assert_rust_golden_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
 }
