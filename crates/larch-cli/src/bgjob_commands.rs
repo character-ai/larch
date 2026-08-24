@@ -22,21 +22,21 @@ use larch_core::{
     BGJOB_STATUS_WAIT, BGJOB_STDERR_TAIL_KEY, BGJOB_STDOUT_TAIL_KEY, BGJOB_WAIT_DEFAULT_CHUNK_S,
     BGJOB_WAIT_HARD_DEADLINE_GRACE_S, BGJOB_WAIT_LEASE_TTL_S, BGJOB_WAIT_MAX_CHUNK_S, BgjobError,
     DaemonStatus, DaemonTermination, ENV_BGJOB_CAFFEINATE, JobSpec, MonitorLivenessState,
-    OwnerIdentity, ProcessBirthIdentity, ProcessIdentityHost, ProcessIdentityValidationPolicy,
-    RecordedProcessIdentity, RegistryEntry, ValidationResult, bgjob_dir, check_monitor_liveness,
-    checked_dir, child_liveness, clear_completion_residue, collect_process_group_members_checked,
-    confirm_process_group_absent, daemon_liveness, daemon_poll_interval_s, daemon_status_path,
-    daemon_status_rows, ensure_under, epoch_now, finish_completion_transaction, iter_entries,
-    log_paths, log_tail_bytes, merge_rows, ordered_rows, orphan_diagnostic, owner_grace_s,
-    owner_pid_candidate, parse_daemon_status, phase_barrier, prepare_completion_transaction,
-    private_atomic_write, read_confined_regular_tail, read_confined_result_env, read_entry,
-    read_for, read_merge_result_env, read_process_identity, refresh_wait_lease, registry_path,
-    render_rows, resolve_run_id, result_env_path, result_rows, startup_ack_timeout_s,
-    startup_env_path, startup_in_progress, startup_rows,
-    terminate_validated_process_group_with_policy, unlink_entry, validate_merge_result_env,
-    validate_run_id, validate_slug, validate_terminal_stdout_key, validate_timing_overrides,
-    wait_lease_is_fresh_at, worker_status_path, write_entry, write_entry_at,
-    write_merge_result_env as write_merge_result_env_file,
+    OwnerIdentity, ParseOptions, ProcessBirthIdentity, ProcessIdentityHost,
+    ProcessIdentityValidationPolicy, RecordedProcessIdentity, RegistryEntry, ValidationResult,
+    bgjob_dir, check_monitor_liveness, checked_dir, child_liveness, clear_completion_residue,
+    collect_process_group_members_checked, confirm_process_group_absent, daemon_liveness,
+    daemon_poll_interval_s, daemon_status_path, daemon_status_rows, ensure_under, epoch_now,
+    finish_completion_transaction, iter_entries, log_paths, log_tail_bytes, merge_rows,
+    ordered_rows, orphan_diagnostic, owner_grace_s, owner_pid_candidate, parse_daemon_status,
+    parse_single_kv_row, phase_barrier, prepare_completion_transaction, private_atomic_write,
+    read_confined_regular_tail, read_confined_result_env, read_entry, read_for,
+    read_merge_result_env, read_process_identity, refresh_wait_lease, registry_path, render_rows,
+    resolve_run_id, result_env_path, result_rows, startup_ack_timeout_s, startup_env_path,
+    startup_in_progress, startup_rows, terminate_validated_process_group_with_policy, unlink_entry,
+    validate_merge_result_env, validate_run_id, validate_slug, validate_terminal_stdout_key,
+    validate_timing_overrides, wait_lease_is_fresh_at, worker_status_path, write_entry,
+    write_entry_at, write_merge_result_env as write_merge_result_env_file,
 };
 use nix::{
     sys::signal::{Signal, killpg},
@@ -832,8 +832,10 @@ fn parse_write_merge_result_env(
             "--row" => {
                 let raw =
                     take_option_value(&values, &mut index, inline, "missing-option-argument")?;
-                let row = raw.split_once('=').ok_or("invalid-row")?;
-                parsed.rows.push((row.0.to_owned(), row.1.to_owned()));
+                let row = parse_single_kv_row(&raw, ParseOptions::legacy()).ok_or("invalid-row")?;
+                parsed
+                    .rows
+                    .push((row.key().to_owned(), row.value().to_owned()));
             }
             "--require-key" => parsed.required_keys.push(take_option_value(
                 &values,

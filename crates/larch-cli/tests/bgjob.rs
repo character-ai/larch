@@ -371,7 +371,8 @@ fn write_merge_result_env_rejects_malformed_inputs_before_mutation() {
         .arg(&tmpdir)
         .args(["--row", "STATUS=bad\nvalue"])
         .assert()
-        .code(1);
+        .code(2)
+        .stderr(predicates::str::contains("invalid-row"));
     assert!(!invalid_parent.exists());
 
     fs::write(&source, "NEXT_ACTION=step3b\r\nLOOP_STATUS=complete\r\n")

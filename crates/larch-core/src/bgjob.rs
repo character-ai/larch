@@ -2412,7 +2412,7 @@ mod tests {
         temporary_path, unlink_entry, validate_initial_merge_rows, validate_merge_result_env,
         validate_parent_chain, validate_run_id, validate_slug, validate_terminal_stdout_key,
         validated_path, wait_lease_is_fresh, wait_lease_is_fresh_at, wait_lease_path,
-        write_entry_at,
+        write_entry_at, write_merge_result_env,
     };
     use crate::{
         IdentityProbeOutput, ProcessBirthIdentity, ProcessBirthIdentityProbeOutput,
@@ -3351,6 +3351,17 @@ mod tests {
         assert!(read_entry(&path).is_none());
         assert!(registry_path("current", "demo-step", Some(&registry)).is_err());
         assert!(registry_path("run-1", "bad/step", Some(&registry)).is_err());
+    }
+
+    #[test]
+    fn merge_result_writer_rejects_rows_before_creating_the_parent() {
+        let sandbox = tempfile::tempdir().expect("tempdir");
+        let parent = sandbox.path().join("missing-parent");
+        let destination = parent.join("merge.env");
+        let rows = [("STATUS".to_owned(), "bad\nvalue".to_owned())];
+
+        assert!(write_merge_result_env(&destination, sandbox.path(), &rows).is_err());
+        assert!(!parent.exists());
     }
 
     #[test]
