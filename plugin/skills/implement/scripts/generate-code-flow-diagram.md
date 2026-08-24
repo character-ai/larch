@@ -2,10 +2,8 @@
 
 Generates the Step 7a Mermaid code-flow diagram through a context-isolated
 Claude subprocess, then validates the candidate with
-`scripts/larch.sh mermaid sanitize`. Emits `python3 python/cli.py token` and
-`scripts/larch.sh timing` marks for "Step 7a — code flow diagram" on entry,
-inheriting `LARCH_TIMING_LEDGER` and `LARCH_TOKEN_SESSION_ID` from the
-caller environment.
+`scripts/larch.sh mermaid sanitize`. It hands timing attribution through
+`agent launch-claude-subprocess --timing-task-kind implement-code-flow`.
 
 Usage:
 
