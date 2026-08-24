@@ -144,7 +144,7 @@ pub use bgjob::{
     release_recovery_claim, resolve_run_id, result_env_path, startup_env_path, unlink_entry,
     validate_initial_merge_rows, validate_merge_result_env, validate_run_id, validate_slug,
     validate_terminal_stdout_key, wait_lease_is_fresh, wait_lease_is_fresh_at, wait_lease_path,
-    worker_status_path, write_entry, write_entry_at,
+    worker_status_path, write_entry, write_entry_at, write_merge_result_env,
 };
 pub use bgjob_daemon::{
     BGJOB_DAEMON_EXIT_KEY, BGJOB_DAEMON_POLL_INTERVAL_S, BGJOB_DAEMON_SIGNAL_KEY,

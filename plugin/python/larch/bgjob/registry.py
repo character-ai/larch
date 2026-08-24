@@ -5,42 +5,12 @@ from __future__ import annotations
 import contextlib
 import stat
 import time
-from collections.abc import Iterable
 from pathlib import Path
 
 from larch import io as larch_io
 from larch.bgjob import model
 from larch.core import config, process_identity
 from larch.report.progress_file import resolve_owned_run_id
-
-
-def write_merge_result_env(
-    *, path: Path, tmpdir: Path, rows: Iterable[tuple[str, object]]
-) -> None:
-    """Write a child result envelope beneath its validated session directory."""
-    root = tmpdir.resolve()
-    target = path.resolve(strict=False)
-    try:
-        _ = target.relative_to(root)
-    except ValueError as exc:
-        raise OSError(f"merge env escapes DESIGN_TMPDIR: {path}") from exc
-    safe_rows: list[tuple[str, str]] = []
-    for key, value in rows:
-        if not key or "\n" in key or "\r" in key:
-            raise ValueError(f"invalid merge env key: {key!r}")
-        text = str(value)
-        if "\n" in text or "\r" in text:
-            raise ValueError(f"merge env value contains newline: {key}")
-        safe_rows.append((key, text))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.parent.is_symlink() or not path.parent.is_dir():
-        raise OSError(f"merge env parent is not a regular directory: {path.parent}")
-    larch_io.atomic_write(
-        path=path,
-        text=larch_io.format_kvs(safe_rows),
-        nofollow=True,
-        mode=0o600,
-    )
 
 
 def _identity_rows(prefix: str, identity: process_identity.RecordedProcessIdentity | None) -> list[tuple[str, str]]:

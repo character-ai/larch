@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-design-step3-review.sh — Step 3 bgjob reporting contract checks.
-unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR PYTHONPATH
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 RUST_OWNER="$ROOT/crates/larch-cli/src/plan_review_commands.rs"
@@ -9,6 +9,11 @@ WRAPPER="$ROOT/skills/design/scripts/design-step3-review.sh"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$*"; }
+
+command grep -Fq 'bgjob write-merge-result-env' "$WRAPPER" || fail 'wrapper must publish through the Rust merge-result writer'
+if grep -Fq 'PYTHONPATH=' "$WRAPPER" || grep -Fq 'python3 -' "$WRAPPER"; then
+  fail 'wrapper must not retain an inline Python runtime path'
+fi
 
 make_fake_step3_plugin() {
   local dir="$1"
@@ -136,6 +141,7 @@ cat >"$dir/scripts/larch.sh" <<'LARCH'
 #!/usr/bin/env bash
 case "${1:-} ${2:-}" in
   "session require-plugin-root"|"session validate-design-tmpdir") exit 0 ;;
+  "bgjob write-merge-result-env") exec "${LARCH_BINARY:?}" "$@" ;;
   "scope-anchor validate") exec "${LARCH_BINARY:?}" "$@" ;;
   "plan-review run") exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" "$@" ;;
   "plan-review normalize-status"|"plan-review prelaunch-failure") exec "${LARCH_BINARY:?}" "$@" ;;

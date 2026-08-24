@@ -114,4 +114,4 @@ Runtime logic is Python-first where its command owner remains Python. Residual B
 
 ## Bgjob runtime package
 
-`bgjob {adapt,start,wait,status,reap}` is Rust-owned; invoke it through `scripts/larch.sh`. `python/larch/bgjob/` retains only the shared record, path-validation, and registry-reading helpers that other Python runtime modules still import.
+`bgjob {adapt,start,wait,status,reap,write-merge-result-env}` is Rust-owned; invoke it through `scripts/larch.sh`. `python/larch/bgjob/` retains only the shared record, path-validation, and registry-reading helpers that other Python runtime modules still import.
