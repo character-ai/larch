@@ -597,6 +597,65 @@ fn report_commands_return_usage_errors_for_invalid_public_inputs() {
     assert!(String::from_utf8_lossy(&dedup_help.stdout).contains("dedup-tier-a-report"));
 }
 
+#[test]
+fn cross_repo_response_helpers_preserve_stdout_and_exit_contracts() {
+    let fixture = Fixture::new();
+    let marker = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    fixture.write(
+        "comment-response.json",
+        r#"{"html_url":"https://github.com/owner/repo/issues/7#issuecomment-99"}"#,
+    );
+    fixture.write(
+        "open-issues.jsonl",
+        &format!(
+            "{{\"number\":7,\"body\":\"contains <!-- larch-stall:signature={marker} -->\",\"pull_request\":null}}\n"
+        ),
+    );
+    let tmpdir = fixture.tmpdir.to_string_lossy().into_owned();
+
+    let comment = fixture.run(
+        "comment-url-from-response",
+        &[
+            "--implement-tmpdir".to_owned(),
+            tmpdir.clone(),
+            "--response-file".to_owned(),
+            fixture
+                .path("comment-response.json")
+                .to_string_lossy()
+                .into_owned(),
+        ],
+    );
+    assert!(comment.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&comment.stdout),
+        "https://github.com/owner/repo/issues/7#issuecomment-99\n"
+    );
+    assert!(comment.stderr.is_empty());
+
+    let issue_arguments = [
+        "--implement-tmpdir".to_owned(),
+        tmpdir,
+        "--issues-file".to_owned(),
+        fixture
+            .path("open-issues.jsonl")
+            .to_string_lossy()
+            .into_owned(),
+        "--marker".to_owned(),
+        marker.to_owned(),
+    ];
+    let found = fixture.run("find-open-stall-issue", &issue_arguments);
+    assert!(found.status.success());
+    assert_eq!(String::from_utf8_lossy(&found.stdout), "7\n");
+    assert!(found.stderr.is_empty());
+
+    let mut absent_arguments = issue_arguments;
+    absent_arguments[5] = "f".repeat(64);
+    let absent = fixture.run("find-open-stall-issue", &absent_arguments);
+    assert_eq!(absent.status.code(), Some(1));
+    assert!(absent.stdout.is_empty());
+    assert!(absent.stderr.is_empty());
+}
+
 #[cfg(unix)]
 #[test]
 fn authorized_filing_helpers_use_validated_tier_boundaries() {

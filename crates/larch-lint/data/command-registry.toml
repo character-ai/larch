@@ -1188,6 +1188,20 @@ migration_issue = 8063
 clean_install_test = "clean-install-bgjob-wait"
 
 [[commands]]
+domain = "bgjob"
+verb = "write-merge-result-env"
+python_module = "larch.bgjob.registry"
+python_function = "write_merge_result_env"
+machine_stdout = false
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7686
+migration_issue = 8898
+clean_install_test = "clean-install-bgjob-write-merge-result-env"
+
+[[commands]]
 domain = "block-issue"
 verb = "add-blocked-by"
 python_module = "larch.issue.issue_block"
@@ -6485,11 +6499,13 @@ verb = "voter"
 python_module = "larch.rendering.rendering"
 python_function = "render_voter_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7686
+migration_issue = 8896
+clean_install_test = "clean-install-render-voter"
 
 [[commands]]
 domain = "repo"
@@ -9473,7 +9489,7 @@ rust = ["agent check-reviewers", "agent collect-results", "agent model-args", "a
 path = "scripts/file-failure-report-cross-repo.sh"
 kind = "script"
 python = []
-rust = ["redact secrets", "session check-live-mutation-auth", "stall-recovery validate-tier-b-public-file"]
+rust = ["redact secrets", "session check-live-mutation-auth", "stall-recovery *"]
 
 [[callers]]
 path = "scripts/hook-anti-read-poll.sh"
@@ -9682,14 +9698,14 @@ rust = ["design step5b-prepare"]
 [[callers]]
 path = "skills/design/references/plan-review-runtime.md"
 kind = "skill"
-python = ["render voter"]
-rust = ["agent launch-claude-review", "bgjob wait", "decompose panel-dispatch", "plan-review panel-dispatch", "plan-review run", "plan-review step3-entry-preview", "plan-review voter-dispatch", "render plan-review", "render specialist", "scout filter-manifest"]
+python = []
+rust = ["agent launch-claude-review", "bgjob wait", "decompose panel-dispatch", "plan-review panel-dispatch", "plan-review run", "plan-review step3-entry-preview", "plan-review voter-dispatch", "render plan-review", "render specialist", "render voter", "scout filter-manifest"]
 
 [[callers]]
 path = "skills/design/references/plan-review.md"
 kind = "skill"
-python = ["render voter"]
-rust = ["render plan-review"]
+python = []
+rust = ["render plan-review", "render voter"]
 
 [[callers]]
 path = "skills/design/references/sentinel-host-table.md"
@@ -9779,7 +9795,7 @@ rust = ["bgjob adapt"]
 path = "skills/design/scripts/design-step3-review.sh"
 kind = "skill"
 python = []
-rust = ["bgjob adapt", "design pause-save", "plan-review normalize-status", "plan-review prelaunch-failure", "plan-review run", "scope-anchor validate", "session require-plugin-root", "session validate-design-tmpdir"]
+rust = ["bgjob adapt", "bgjob write-merge-result-env", "design pause-save", "plan-review normalize-status", "plan-review prelaunch-failure", "plan-review run", "scope-anchor validate", "session require-plugin-root", "session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/design/scripts/design-step35.sh"
@@ -9791,7 +9807,7 @@ rust = ["design pause-save", "session require-plugin-root", "timing mark"]
 path = "skills/design/scripts/design-step3b-tail.sh"
 kind = "skill"
 python = []
-rust = ["bgjob adapt", "design dialectic-gatec", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview", "session validate-design-tmpdir", "timing mark"]
+rust = ["bgjob adapt", "bgjob write-merge-result-env", "design dialectic-gatec", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview", "session validate-design-tmpdir", "timing mark"]
 
 [[callers]]
 path = "skills/design/scripts/design-step5b-annotate.md"
@@ -10366,8 +10382,8 @@ rust = ["checks run-relevant", "redact scrub-submodule-paths", "review compose-f
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["render voter"]
-rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "checks run-relevant", "render specialist", "review aggregate-findings", "review check-reviewer-failure-threshold", "review collect-findings", "review core", "review dispatch-panel", "review emit-tally", "review gather-context", "review log-phase", "review prune-nit-findings", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "scout dynamic-archetypes", "session cleanup-tmpdir", "session setup", "token claude-source"]
+python = []
+rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "checks run-relevant", "render specialist", "render voter", "review aggregate-findings", "review check-reviewer-failure-threshold", "review collect-findings", "review core", "review dispatch-panel", "review emit-tally", "review gather-context", "review log-phase", "review prune-nit-findings", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "scout dynamic-archetypes", "session cleanup-tmpdir", "session setup", "token claude-source"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"
@@ -10418,6 +10434,12 @@ python = []
 rust = ["diagrams upsert", "mermaid sanitize"]
 
 [[callers]]
+path = "skills/shared/oos-acceptance-rubric.md"
+kind = "skill"
+python = []
+rust = ["render voter"]
+
+[[callers]]
 path = "skills/shared/orchestrator-never.md"
 kind = "skill"
 python = []
@@ -10426,8 +10448,8 @@ rust = ["bgjob wait"]
 [[callers]]
 path = "skills/shared/review-acceptance-rubric.md"
 kind = "skill"
-python = ["render voter"]
-rust = ["generate code-reviewer-agent", "generate pre-rendered-reviewer-prompts", "generate reviewer-code-robustness-agent", "generate reviewer-plan-fidelity-agent", "generate reviewer-security-structure-tests-agent", "render plan-review", "render specialist"]
+python = []
+rust = ["generate code-reviewer-agent", "generate pre-rendered-reviewer-prompts", "generate reviewer-code-robustness-agent", "generate reviewer-plan-fidelity-agent", "generate reviewer-security-structure-tests-agent", "render plan-review", "render specialist", "render voter"]
 
 [[callers]]
 path = "skills/shared/reviewer-templates.md"
@@ -10468,8 +10490,8 @@ rust = ["plan-review panel-dispatch"]
 [[callers]]
 path = "skills/shared/voting-protocol.md"
 kind = "skill"
-python = ["render voter"]
-rust = ["agent dispatch-voters", "agent launch-codex-exec", "oos file", "plan-review tally", "plan-review voter-dispatch", "review tally-code-votes", "voting code-review-classification-header", "voting findings-classification-header"]
+python = []
+rust = ["agent dispatch-voters", "agent launch-codex-exec", "oos file", "plan-review tally", "plan-review voter-dispatch", "render voter", "review tally-code-votes", "voting code-review-classification-header", "voting findings-classification-header"]
 
 [[callers]]
 path = "skills/status/SKILL.md"

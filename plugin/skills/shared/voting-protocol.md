@@ -78,7 +78,7 @@ All voters vote on **all** findings. No self-voting exclusion. Neutralized ballo
 
 Customize the `{VOTER_ROLE}` and `{REVIEW_CONTEXT}` per skill:
 
-<!-- OOS voter rubric: canonical runtime voter text is emitted by python/cli.py render voter. Keep OOS paragraph parity across skills/design/SKILL.md (Step 3 MAV), skills/implement/references/step5-review-branches.md (Step 5 MAV), and this voting-protocol template manually. -->
+<!-- OOS voter rubric: canonical runtime voter text is emitted by scripts/larch.sh render voter. Keep OOS paragraph parity across skills/design/SKILL.md (Step 3 MAV), skills/implement/references/step5-review-branches.md (Step 5 MAV), and this voting-protocol template manually. -->
 
 For items prefixed with `[OUT_OF_SCOPE]`: apply the OOS Acceptance Rubric (`skills/shared/oos-acceptance-rubric.md`). Vote YES when the OOS observation is legitimate, concrete, and non-duplicate. Vote NO for false positives, duplicates, style or polish noise, and speculative items with no concrete trigger. Suggested remedies are informational only; do not vote NO for remedy disagreement. The future implementer of the OOS issue chooses the remedy.
 
@@ -93,7 +93,7 @@ Default-deny. If unsure, vote NO. "Legitimate but not necessary" is a NO.
 
 Do NOT vote YES for cleaner, more robust, more consistent, more flexible, more idiomatic, best-practice, already-met performance, or speculative portability changes. Those are Out-of-Scope signals, not acceptance signals.
 
-**OOS / `[OUT_OF_SCOPE]` / plan `OOS_N:` rows:** Runtime prompts use `python/cli.py render voter` for grammar-specific OOS wording; the paragraph above is the canonical shared clause. Here, YES means a legitimate, concrete, non-duplicate observation worth tracking; NO means false, duplicate, style/polish noise, or speculative with no concrete trigger. OOS items are never implemented in this PR.
+**OOS / `[OUT_OF_SCOPE]` / plan `OOS_N:` rows:** Runtime prompts use `scripts/larch.sh render voter` for grammar-specific OOS wording; the paragraph above is the canonical shared clause. Here, YES means a legitimate, concrete, non-duplicate observation worth tracking; NO means false, duplicate, style/polish noise, or speculative with no concrete trigger. OOS items are never implemented in this PR.
 
 {BALLOT}
 

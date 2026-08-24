@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # test-design-step3b-tail.sh — offline adapter contract for the Step 4 tail.
 unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
+unset PYTHONPATH
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
@@ -9,7 +10,11 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$*"; }
 
 command grep -Fq 'bgjob adapt' "$SUBJECT" || fail 'wrapper must delegate through bgjob adapt'
+command grep -Fq 'bgjob write-merge-result-env' "$SUBJECT" || fail 'wrapper must publish through the Rust merge-result writer'
 command grep -Fq -- '--bgjob-child|--merge-result-env' "$SUBJECT" || fail 'wrapper must parse standard child controls'
+if grep -Fq 'PYTHONPATH=' "$SUBJECT" || grep -Fq 'python3 -' "$SUBJECT"; then
+  fail 'wrapper must not retain an inline Python runtime path'
+fi
 if ( command grep -Fq 'bgjob start' "$SUBJECT" ) || ( command grep -Fq 'design_step4_tail_bgjob_registry_state' "$SUBJECT" ); then
   fail 'wrapper must not retain direct start or local registry policy'
 fi
@@ -43,6 +48,19 @@ import sys
 from pathlib import Path
 
 args = sys.argv[1:]
+if args[:2] == ["bgjob", "write-merge-result-env"]:
+    destination = Path(args[args.index("--path") + 1])
+    tmpdir = Path(args[args.index("--tmpdir") + 1]).resolve()
+    destination.resolve().relative_to(tmpdir)
+    rows = []
+    for index, value in enumerate(args):
+        if value == "--row":
+            rows.append(tuple(args[index + 1].split("=", 1)))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        "".join(f"{key}={value}\n" for key, value in rows), encoding="utf-8"
+    )
+    raise SystemExit(0)
 if args[:2] == ["bgjob", "adapt"] and "--resolve-session-env" in args:
     source = Path(args[args.index("--session-env-path") + 1])
     print(source.read_text(encoding="utf-8"), end="")
@@ -104,6 +122,7 @@ mkdir -p "$D/.completed" "$TMP/registry"
 D="$(cd "$D" && pwd -P)"
 : >"$D/.completed/finalize"
 printf '{"skip_approve_requested":false}\n' >"$D/run-params.json"
+printf 'digest\n' >"$D/dialectic-clarifier-digest.md"
 cat >"$TMP/session-env.sh" <<ENV
 export DESIGN_TMPDIR=$D
 export CLAUDE_PLUGIN_ROOT=$PLUGIN
@@ -121,7 +140,11 @@ result="$D/bgjob/design-step4-tail.result.env"
 command grep -Fxq 'BGJOB_RC=0' "$result" || fail 'successful child result must have BGJOB_RC=0'
 command grep -Fxq 'STEP4_STATUS=complete' "$result" || fail 'successful child must publish terminal status'
 command grep -Fxq 'SKIP_APPROVE_REQUESTED_GATEC=false' "$result" || fail 'Gate C skip row missing'
+command grep -Fxq 'REJECTED_FINDINGS_BEGIN=---LARCH-REJECTED-BEGIN---' "$result" || fail 'rejected-findings opening marker row missing'
+command grep -Fxq 'REJECTED_FINDINGS_END=---LARCH-REJECTED-END---' "$result" || fail 'rejected-findings closing marker row missing'
+command grep -Fxq "REJECTED_FINDINGS_BODY_PATH=$D/gatec-rejected-findings-framed.md" "$result" || fail 'rejected-findings body path row missing'
 command grep -Fxq "GATEC_PREVIEW_PATH=$D/gatec-preview.md" "$result" || fail 'Gate C preview row missing'
+command grep -Fxq "DIALECTIC_GATEC_DIGEST_PATH=$D/dialectic-clarifier-digest.md" "$result" || fail 'dialectic digest row missing'
 pass 'fresh launcher-only session resolution and Gate C publication work'
 
 out=$(env -u DESIGN_TMPDIR CLAUDE_PLUGIN_ROOT="$PLUGIN" LARCH_BGJOB_REGISTRY_ROOT="$TMP/registry" \

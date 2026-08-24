@@ -686,6 +686,9 @@ enum BgjobCommand {
     /// Remove finished, unreadable, and expired registry entries.
     #[command(disable_help_flag = true)]
     Reap(RawCompatibilityArguments),
+    /// Write a confined child-to-daemon merge-result envelope.
+    #[command(name = "write-merge-result-env", disable_help_flag = true)]
+    WriteMergeResultEnv(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -885,6 +888,9 @@ enum RenderCommand {
     /// Render one code-review specialist prompt.
     #[command(disable_help_flag = true)]
     Specialist(RawCompatibilityArguments),
+    /// Render one panel-voter prompt.
+    #[command(disable_help_flag = true)]
+    Voter(RawCompatibilityArguments),
     /// Render the plan-review scope anchor as untrusted evidence.
     #[command(name = "scope-anchor", disable_help_flag = true)]
     ScopeAnchor(RawCompatibilityArguments),
@@ -2433,6 +2439,8 @@ enum ReleaseCommand {
 enum PluginCommand {
     /// Print the active plugin version as a machine-readable row.
     ReadVersion(TrailingArguments),
+    /// Print the canonical upstream repository from plugin metadata.
+    ResolveRepository(TrailingArguments),
 }
 
 #[derive(Args)]
@@ -2833,6 +2841,9 @@ fn run(
         }
         Domain::Bgjob(BgjobCommand::Reap(arguments)) => {
             Ok(bgjob_commands::reap(&arguments.arguments))
+        }
+        Domain::Bgjob(BgjobCommand::WriteMergeResultEnv(arguments)) => {
+            Ok(bgjob_commands::write_merge_result_env(&arguments.arguments))
         }
         Domain::Clarify(command) => Ok(command.run()),
         Domain::Cleanup(CleanupCommand::Run(arguments)) => {
@@ -3557,6 +3568,9 @@ fn run(
         },
         Domain::Plugin(PluginCommand::ReadVersion(arguments)) => {
             Ok(release_prepare::read_plugin_version(&arguments.args))
+        }
+        Domain::Plugin(PluginCommand::ResolveRepository(arguments)) => {
+            Ok(release_prepare::resolve_plugin_repository(&arguments.args))
         }
         Domain::ObjectStore(ObjectStoreCommand::Gcs(arguments)) => {
             Ok(object_store_commands::run(&arguments))
@@ -4916,6 +4930,7 @@ fn dispatch_render(command: RenderCommand) -> ExitCode {
         RenderCommand::Specialist(arguments) => {
             rendering_commands::render_specialist(&arguments.arguments)
         }
+        RenderCommand::Voter(arguments) => rendering_commands::render_voter(&arguments.arguments),
         RenderCommand::ScopeAnchor(arguments) => {
             rendering_commands::render_scope_anchor(&arguments.arguments)
         }

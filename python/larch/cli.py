@@ -13,9 +13,7 @@ import importlib
 import os
 import sys
 
-_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("render", "voter"): ("larch.rendering.rendering", "render_voter_main", False),
-}
+_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {}
 
 # Compatibility view: keys whose registry row has machine_stdout=True.
 # Derived from _REGISTRY; do not hand-maintain.

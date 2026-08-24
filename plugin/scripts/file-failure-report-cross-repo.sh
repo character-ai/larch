@@ -5,7 +5,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-STALL_RECOVERY_VALIDATE_PUBLIC_CLI=("$PLUGIN_ROOT/scripts/larch.sh" stall-recovery validate-tier-b-public-file)
+STALL_RECOVERY_CLI=("$PLUGIN_ROOT/scripts/larch.sh" stall-recovery)
+STALL_RECOVERY_VALIDATE_PUBLIC_CLI=("${STALL_RECOVERY_CLI[@]}" validate-tier-b-public-file)
 PUBLIC_SNAPSHOT_FILES=()
 PUBLIC_SNAPSHOT_FDS=()
 PUBLIC_SNAPSHOT_PATH=""
@@ -97,7 +98,8 @@ normalize_issue_url() {
 }
 
 comment_url_from_json() {
-    python3 -c 'import json,re,sys; data=json.load(sys.stdin); url=data.get("html_url", ""); print(url if isinstance(url, str) and re.fullmatch(r"https://github[.]com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+#issuecomment-[0-9]+", url) else "")' 2>/dev/null || true
+    "${STALL_RECOVERY_CLI[@]}" comment-url-from-response \
+        --implement-tmpdir "$tmpdir" --response-file "$1" 2>/dev/null || true
 }
 
 lookup_open_issue() {
@@ -110,24 +112,8 @@ lookup_open_issue() {
     if [ "$(wc -l <"$out")" -ge 100 ]; then
         printf '%s\n' 'WARN: stall-report dedup reached the 100-record recent-open cap; older issues, if any, were omitted' >&2
     fi
-    python3 - "$marker" "$out" <<'PY'
-import json
-import sys
-marker = f"<!-- larch-stall:signature={sys.argv[1]} -->"
-path = sys.argv[2]
-with open(path, "r", encoding="utf-8", errors="replace") as fh:
-    for line in fh:
-        line = line.strip()
-        if not line:
-            continue
-        data = json.loads(line)
-        if "pull_request" in data and data.get("pull_request") is not None:
-            continue
-        if marker in (data.get("body") or ""):
-            print(data.get("number") or "")
-            sys.exit(0)
-sys.exit(1)
-PY
+    "${STALL_RECOVERY_CLI[@]}" find-open-stall-issue \
+        --implement-tmpdir "$tmpdir" --marker "$marker" --issues-file "$out"
 }
 
 append_slice() {
@@ -262,7 +248,7 @@ snapshot_fd_path() {
 }
 
 rewind_public_snapshot_fd() {
-    python3 -c 'import os,sys; os.lseek(int(sys.argv[1]), 0, os.SEEK_SET)' "$1"
+    "${STALL_RECOVERY_CLI[@]}" rewind-public-fd --public-fd "$1"
 }
 
 snapshot_public_file() {
@@ -590,7 +576,7 @@ if issue_number=$(lookup_open_issue "$repo" "$marker" "$lookup_out" "$lookup_err
         status_fallback comment-snapshot-unavailable
         exit 0
     fi
-    if ! python3 -c 'import json,sys; json.dump({"body": open(sys.argv[1], encoding="utf-8").read()}, sys.stdout)' "$comment_snapshot" >"$(snapshot_fd_path 8)"; then
+    if ! "${STALL_RECOVERY_CLI[@]}" compose-comment-request --public-fd 7 --snapshot-fd 8; then
         redact_stderr_file "$comment_err"
         status_fallback comment-snapshot-unavailable
         exit 0
@@ -601,7 +587,7 @@ if issue_number=$(lookup_open_issue "$repo" "$marker" "$lookup_out" "$lookup_err
     fi
     close_public_snapshot_fds_except 8
     if gh api --method POST "repos/$repo/issues/$issue_number/comments" --input "$(snapshot_fd_path 8)" >"$comment_out" 2>"$comment_err"; then
-        comment_url=$(comment_url_from_json <"$comment_out")
+        comment_url=$(comment_url_from_json "$comment_out")
         if [ -z "$comment_url" ]; then
             status_fallback comment-url-missing
             exit 0

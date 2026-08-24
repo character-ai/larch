@@ -1,7 +1,7 @@
 # Plan Review Runtime Reference
 **Consumer**: `/design` Step 3 loads this reference for prompt-side contracts only: panel topology, static identity, round gates, Claude fallback archetype, semantic dedup, accepted/rejected/OOS templates, post-driver tally interpretation, and MainAgent 0-judge fallback. Scout, panel dispatch, collection, aggregation, ballot rebuild, voter dispatch, tally, and finalize writes are internal to the Rust plan-review owner.
 
-**Contract**: `crates/larch-cli/src/plan_prompt_commands.rs` owns runtime prompts from `scripts/larch.sh render plan-review`; `python/larch/rendering/rendering.py` retains `python/cli.py render voter`. `crates/larch-cli/src/plan_review_commands.rs`, reached through `scripts/larch.sh plan-review panel-dispatch`, owns runtime slot manifests, including Step 2b scouts from `$DESIGN_TMPDIR/scout-plan-manifest.json`. The same Rust owner exposes `plan-review voter-dispatch` and owns the Codex-primary voter matrix plus its one-Claude degraded floor. Prompt-side loads stay limited to Consumer.
+**Contract**: `crates/larch-cli/src/plan_prompt_commands.rs` owns runtime prompts from `scripts/larch.sh render plan-review`; `crates/larch-cli/src/rendering_commands.rs` owns `scripts/larch.sh render voter`. `crates/larch-cli/src/plan_review_commands.rs`, reached through `scripts/larch.sh plan-review panel-dispatch`, owns runtime slot manifests, including Step 2b scouts from `$DESIGN_TMPDIR/scout-plan-manifest.json`. The same Rust owner exposes `plan-review voter-dispatch` and owns the Codex-primary voter matrix plus its one-Claude degraded floor. Prompt-side loads stay limited to Consumer.
 
 **Topology anchor**: round-gated static plus dynamic panel; keep synced with `crates/larch-cli/src/plan_review_commands.rs`.
 
@@ -111,7 +111,7 @@ Plan-review **reviewer** panels dispatch with `--no-fallback`; missing vendors d
 
 ## Voter prompts
 
-Voter prompts are emitted at runtime by `python/cli.py render voter` through `scripts/larch.sh plan-review voter-dispatch`. Do not duplicate them here; rubric prose lives in `skills/shared/review-acceptance-rubric.md`, `skills/shared/oos-acceptance-rubric.md`, and `skills/shared/voting-protocol.md`.
+Voter prompts are emitted at runtime by `scripts/larch.sh render voter` through `scripts/larch.sh plan-review voter-dispatch`. Do not duplicate them here; rubric prose lives in `skills/shared/review-acceptance-rubric.md`, `skills/shared/oos-acceptance-rubric.md`, and `skills/shared/voting-protocol.md`.
 
 ---
 

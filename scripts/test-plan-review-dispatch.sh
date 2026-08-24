@@ -20,6 +20,10 @@ if [[ "${1:-}" == render && "${2:-}" == plan-review ]]; then
     exec "${LARCH_BINARY:?}" "$@"
 fi
 
+if [[ "${1:-}" == render && "${2:-}" == voter ]]; then
+    exec "${LARCH_BINARY:?}" "$@"
+fi
+
 if [[ "${1:-}" == review && "${2:-}" == reviewer-prune ]]; then
     out=""
     previous=""
@@ -58,21 +62,9 @@ EOF
 chmod +x "$launcher"
 
 fast_plugin="$tmpdir/fast-plugin"
-mkdir -p "$fast_plugin/scripts" "$fast_plugin/python"
+mkdir -p "$fast_plugin/scripts"
 cp "$launcher" "$fast_plugin/scripts/larch.sh"
 ln -s "$repo_root/skills" "$fast_plugin/skills"
-cat >"$fast_plugin/python/cli.py" <<'PY'
-#!/usr/bin/env python3
-import pathlib
-import sys
-
-args = sys.argv[1:]
-if args[:2] != ["render", "voter"]:
-    raise SystemExit(0)
-sidecar = pathlib.Path(args[args.index("--payload-bytes-output") + 1])
-sidecar.write_text("17\n", encoding="utf-8")
-print("Fast voter fixture.\nRead the ballot from this path: fixture")
-PY
 
 run_larch() {
     env \
@@ -211,7 +203,7 @@ PY
 for voter_tool in codex cursor claude; do
     expected="$tmpdir/expected-plan-voter-$voter_tool.prompt"
     env CLAUDE_PLUGIN_ROOT="$tmpdir/plugin" LARCH_VOTER_CALIBRATION_FEEDBACK=0 \
-        python3 "$tmpdir/plugin/python/cli.py" render voter \
+        "$tmpdir/plugin/scripts/larch.sh" render voter \
         --ballot-file "$design/ballot.md" \
         --panel-role 'senior engineer on a voting panel deciding which proposed plan modifications should be accepted' \
         --id-grammar finding-oos --verification-context plan \

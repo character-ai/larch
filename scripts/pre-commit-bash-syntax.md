@@ -28,3 +28,5 @@ developers. On Linux the system bash (5.x) catches generic syntax errors.
 ## E3 residual scope
 
 This check reads the residual Bash manifest through `scripts/larch.sh residual-bash paths --root "$ROOT"` or the equivalent root-local manifest read. The manifest covers kept hooks, linters, thin wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when present, and residual harnesses. Terminal shared libraries and retired non-thin helpers are out of scope.
+
+This wrapper is developer and CI tooling, not a runtime-projection file. Its manifest filtering is Bash-only and adds no Python requirement.

@@ -144,7 +144,7 @@ pub use bgjob::{
     release_recovery_claim, resolve_run_id, result_env_path, startup_env_path, unlink_entry,
     validate_initial_merge_rows, validate_merge_result_env, validate_run_id, validate_slug,
     validate_terminal_stdout_key, wait_lease_is_fresh, wait_lease_is_fresh_at, wait_lease_path,
-    worker_status_path, write_entry, write_entry_at,
+    worker_status_path, write_entry, write_entry_at, write_merge_result_env,
 };
 pub use bgjob_daemon::{
     BGJOB_DAEMON_EXIT_KEY, BGJOB_DAEMON_POLL_INTERVAL_S, BGJOB_DAEMON_SIGNAL_KEY,
@@ -749,9 +749,10 @@ pub use vendor_usage::{
     parse_codex_usage,
 };
 pub use voter_calibration::{
-    EraBoundaryDisplay, VoterCalibrationCorpus, render_era_boundary_unavailable,
-    render_voter_calibration_era_report, render_voter_calibration_report,
-    voter_agreement_row_from_panel,
+    EraBoundaryDisplay, VoterCalibrationCorpus, VoterCalibrationStat,
+    normalize_voter_label_to_base_tool, read_voter_calibration_stats,
+    render_era_boundary_unavailable, render_voter_calibration_era_report,
+    render_voter_calibration_report, voter_agreement_row_from_panel,
 };
 
 /// Immutable metadata about the running larch build.

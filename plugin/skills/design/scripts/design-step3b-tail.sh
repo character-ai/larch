@@ -71,31 +71,22 @@ export DESIGN_TMPDIR
 
 publish_step4_result() {
   local _status="$1"
-  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - \
-    "$MERGE_RESULT_ENV" "$DESIGN_TMPDIR" "$_status" \
-    "${_skip_approve_requested_gatec:-false}" \
-    "$DESIGN_TMPDIR/gatec-rejected-findings-framed.md" \
-    "$DESIGN_TMPDIR/gatec-preview.md" \
-    "$DESIGN_TMPDIR/dialectic-clarifier-digest.md" <<'PY'
-from pathlib import Path
-import sys
-from larch.bgjob.registry import write_merge_result_env
-
-merge_env, design_tmpdir = Path(sys.argv[1]), Path(sys.argv[2])
-status, skip_gatec = sys.argv[3], sys.argv[4]
-rejected_path, preview_path, digest_path = map(Path, sys.argv[5:8])
-rows = [
-    ("STEP4_STATUS", status),
-    ("SKIP_APPROVE_REQUESTED_GATEC", skip_gatec),
-    ("REJECTED_FINDINGS_BEGIN", "---LARCH-REJECTED-BEGIN---"),
-    ("REJECTED_FINDINGS_END", "---LARCH-REJECTED-END---"),
-    ("REJECTED_FINDINGS_BODY_PATH", str(rejected_path)),
-    ("GATEC_PREVIEW_PATH", str(preview_path)),
-]
-if digest_path.is_file() and not digest_path.is_symlink():
-    rows.append(("DIALECTIC_GATEC_DIGEST_PATH", str(digest_path)))
-write_merge_result_env(path=merge_env, tmpdir=design_tmpdir, rows=rows)
-PY
+  local _digest_path="$DESIGN_TMPDIR/dialectic-clarifier-digest.md"
+  local _optional_rows=()
+  if [ -f "$_digest_path" ] && [ ! -L "$_digest_path" ]; then
+    _optional_rows[${#_optional_rows[@]}]=--row
+    _optional_rows[${#_optional_rows[@]}]="DIALECTIC_GATEC_DIGEST_PATH=$_digest_path"
+  fi
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob write-merge-result-env \
+    --path "$MERGE_RESULT_ENV" \
+    --tmpdir "$DESIGN_TMPDIR" \
+    --row "STEP4_STATUS=$_status" \
+    --row "SKIP_APPROVE_REQUESTED_GATEC=${_skip_approve_requested_gatec:-false}" \
+    --row REJECTED_FINDINGS_BEGIN=---LARCH-REJECTED-BEGIN--- \
+    --row REJECTED_FINDINGS_END=---LARCH-REJECTED-END--- \
+    --row "REJECTED_FINDINGS_BODY_PATH=$DESIGN_TMPDIR/gatec-rejected-findings-framed.md" \
+    --row "GATEC_PREVIEW_PATH=$DESIGN_TMPDIR/gatec-preview.md" \
+    ${_optional_rows[@]+"${_optional_rows[@]}"}
 }
 
 pause_save() {

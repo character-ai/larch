@@ -12,7 +12,7 @@
 //!
 //! This command owns no external spawn of its own. Parse-rate checks call their
 //! Rust owner in process. `agent dispatch-waterfall` uses the verified bootstrap,
-//! while Python-owned render and timing verbs use the delegated seam.
+//! while timing verbs use the delegated seam.
 
 use std::{
     collections::BTreeMap,
@@ -38,7 +38,8 @@ use crate::argparse_compat::parse;
 use crate::calibration_commands::{positive_window, write_calibration_snapshot};
 use crate::child_process::{bounded_request, run_bounded};
 use crate::launcher_support::{confined_target, parse_presence, validate_site, write_confined};
-use crate::python_verb::{plugin_root_directory, run_python_verb};
+use crate::python_verb::plugin_root_directory;
+use crate::rendering_commands::voter_result;
 use crate::waterfall_commands::inherited_child_rows;
 
 /// Program name every refusal carries, matching the retired Python command.
@@ -61,8 +62,6 @@ const WATERFALL_MARGIN: Duration = Duration::from_secs(900);
 const WATERFALL_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 /// Bounded capture for the waterfall child's standard streams.
 const WATERFALL_OUTPUT_LIMIT: usize = 1024 * 1024;
-/// Deadline for one delegated Python verb.
-const VERB_TIMEOUT: Duration = Duration::from_secs(900);
 /// Every long flag this command accepts.
 const OPTIONS: [&str; 10] = [
     "--ballot-file",
@@ -309,13 +308,6 @@ fn run(options: &Options) -> ExitCode {
     let Some(plugin_root) = plugin_root_directory() else {
         return refuse(&format!("{PROG}: cannot resolve the plugin root"));
     };
-    let dispatcher = plugin_root.join("python/cli.py");
-    if !dispatcher.is_file() {
-        return refuse(&format!(
-            "{PROG}: missing python/cli.py at {}",
-            dispatcher.display()
-        ));
-    }
     if let Err(error) = fs::create_dir_all(&options.review_tmpdir) {
         return refuse(&format!("{PROG}: cannot create the review tmpdir: {error}"));
     }
@@ -658,8 +650,6 @@ fn render_voter_prompt(
     let sidecar = PathBuf::from(sidecar);
     let ledger = findings_ledger_path(&options.review_tmpdir, &options.session_env_path);
     let mut arguments = vec![
-        OsString::from("render"),
-        OsString::from("voter"),
         OsString::from("--ballot-file"),
         OsString::from(&options.ballot_file),
         OsString::from("--panel-role"),
@@ -684,22 +674,18 @@ fn render_voter_prompt(
         ]);
     }
     let failure = format!(
-        "{PROG}: python/cli.py render voter failed for {} voter; aborting",
+        "{PROG}: render voter failed for {} voter; aborting",
         policy.prompt_label
     );
-    let output = run_python_verb(arguments, VERB_TIMEOUT).map_err(|_error| failure.clone())?;
-    let text = String::from_utf8_lossy(output.stdout()).into_owned();
-    write_confined(prompt, &text);
-    if !output.status().success() || output.stdout_truncated() {
-        return Err(failure);
-    }
-    if !text.contains(BALLOT_POINTER) {
+    let output = voter_result(&arguments).map_err(|_error| failure.clone())?;
+    write_confined(prompt, &output.prompt);
+    if !output.prompt.contains(BALLOT_POINTER) {
         return Err(format!(
-            "{PROG}: python/cli.py render voter output for {} voter is missing ballot pointer; aborting",
+            "{PROG}: render voter output for {} voter is missing ballot pointer; aborting",
             policy.prompt_label
         ));
     }
-    Ok(read_payload_bytes(&sidecar))
+    Ok(i64::try_from(output.payload_bytes).unwrap_or_else(|_| read_payload_bytes(&sidecar)))
 }
 
 pub fn read_payload_bytes(path: &Path) -> i64 {

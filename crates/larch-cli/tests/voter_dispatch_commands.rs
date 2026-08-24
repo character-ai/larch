@@ -1,10 +1,10 @@
 //! End-to-end coverage for the code-review voter panel dispatcher.
 //!
 //! Every case runs the real command against a fixture plugin root. The
-//! waterfall owner is a stub reached through `scripts/larch.sh`, and the verbs
-//! Python still owns are a stub `python/cli.py`. Both are steered by marker
-//! files in the review tmpdir, because the dispatch publishes a typed child
-//! environment rather than the ambient one.
+//! waterfall owner is a stub reached through `scripts/larch.sh`, steered by
+//! marker files in the review tmpdir, because the dispatch publishes a typed
+//! child environment rather than the ambient one. Voter prompts render
+//! in-process against a seeded review-acceptance rubric under the plugin root.
 
 #![cfg(unix)]
 
@@ -96,45 +96,6 @@ sys.stderr.write("waterfall stub diagnostics\n")
 sys.exit(3 if marker("WATERFALL-FAIL") else 0)
 "#;
 
-/// Stub Python dispatcher for the verbs this command still delegates.
-const CLI_STUB: &str = r#"import os
-import sys
-
-args = sys.argv[1:]
-verb = tuple(args[:2])
-review = os.environ.get("REVIEW_TMPDIR", "")
-
-
-def value(flag):
-    return args[args.index(flag) + 1] if flag in args else ""
-
-
-def marker(name):
-    return os.path.exists(os.path.join(review, name))
-
-
-with open(os.path.join(review, "cli-argv.log"), "a") as handle:
-    handle.write(" ".join(args) + "\n")
-
-if verb == ("render", "voter"):
-    sidecar = value("--payload-bytes-output")
-    if sidecar:
-        with open(sidecar, "w") as handle:
-            handle.write("128\n")
-    sys.stdout.write("stub voter prompt for %s\n" % value("--voter-tool"))
-    if not marker("RENDER-NO-POINTER"):
-        sys.stdout.write("Read the ballot from this path: %s\n" % value("--ballot-file"))
-    sys.exit(1 if marker("RENDER-FAIL") else 0)
-
-if verb == ("timing", "record-vendor-task"):
-    with open(os.path.join(review, "timing.log"), "a") as handle:
-        handle.write(" ".join(args) + "\n")
-    sys.exit(0)
-
-sys.stderr.write("unexpected verb: %s\n" % " ".join(args))
-sys.exit(2)
-"#;
-
 fn write(path: &Path, contents: &str) {
     fs::create_dir_all(path.parent().expect("fixture parent")).expect("create fixture parent");
     fs::write(path, contents).expect("write fixture");
@@ -162,7 +123,10 @@ impl Fixture {
         let review = root.path().join("review");
         let consumer = root.path().join("consumer");
         write_executable(&plugin.join("scripts/larch.sh"), WATERFALL_STUB);
-        write(&plugin.join("python/cli.py"), CLI_STUB);
+        write(
+            &plugin.join("skills/shared/review-acceptance-rubric.md"),
+            "# Review Acceptance Rubric (Necessity Gate)\n\nFixture rubric body.\n",
+        );
         fs::create_dir_all(&review).expect("review tmpdir");
         fs::create_dir_all(&consumer).expect("consumer root");
         let classification =
@@ -285,8 +249,6 @@ fn a_full_panel_publishes_three_launched_voters() {
         fixture.path("code-voter-paths.txt").display().to_string()
     );
     assert_eq!(fixture.read("code-voter-paths.txt").lines().count(), 3);
-    let cli = fixture.read("cli-argv.log");
-    assert!(!cli.contains("voting parse-rate-retry"));
     assert!(!stdout.contains("DEGRADED_PANEL_WARNING"), "{stdout}");
 }
 
@@ -332,7 +294,10 @@ fn the_manifest_carries_one_row_per_launched_slot() {
     assert_eq!(rows[0]["tool"], "codex");
     assert_eq!(rows[0]["model_role"], "vote");
     assert_eq!(rows[0]["resolved_model"], "gpt-5.6-terra");
-    assert_eq!(rows[0]["payload_files"]["codex"], 128);
+    assert!(
+        rows[0]["payload_files"]["codex"].as_i64().unwrap_or(0) > 0,
+        "{manifest}"
+    );
     let prompts = rows[0]["prompt_files"]
         .as_object()
         .expect("prompt files object");
@@ -489,7 +454,8 @@ fn a_failed_waterfall_reports_a_degraded_dispatch() {
 #[test]
 fn a_render_failure_aborts_before_any_launch() {
     let fixture = Fixture::create();
-    fixture.marker("RENDER-FAIL");
+    fs::remove_file(fixture.plugin.join("skills/shared/review-acceptance-rubric.md"))
+        .expect("remove fixture rubric");
     let output = fixture.dispatch("true", "true", &[]);
     assert_eq!(output.status.code(), Some(2));
     assert!(
@@ -502,17 +468,17 @@ fn a_render_failure_aborts_before_any_launch() {
 }
 
 #[test]
-fn a_prompt_without_its_ballot_pointer_aborts_before_any_launch() {
+fn launched_prompts_include_the_ballot_pointer() {
     let fixture = Fixture::create();
-    fixture.marker("RENDER-NO-POINTER");
     let output = fixture.dispatch("true", "true", &[]);
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(0), "{}", stderr_of(&output));
+    let ballot = fixture.path("findings.md").display().to_string();
+    let prompt = fixture.read("validity-vote-prompt-codex.txt");
     assert!(
-        stderr_of(&output).contains("missing ballot pointer"),
-        "{}",
-        stderr_of(&output)
+        prompt.contains("Read the ballot from this path"),
+        "{prompt}"
     );
-    assert!(!fixture.path("waterfall-argv.log").exists());
+    assert!(prompt.contains(&ballot), "{prompt}");
 }
 
 #[test]
@@ -635,19 +601,17 @@ fn a_review_tmpdir_that_is_its_own_round_owns_the_panel_artifacts() {
 fn the_calibration_snapshot_reaches_every_prompt_render() {
     let fixture = Fixture::create();
     let _output = fixture.dispatch("true", "true", &[]);
-    let cli = fixture.read("cli-argv.log");
-    assert!(!cli.contains("voter-calibration snapshot"), "{cli}");
-    assert!(
-        cli.contains(&format!(
-            "--calibration-stats-file {}",
-            fixture.path("voter-calibration-stats.tsv").display()
-        )),
-        "{cli}"
-    );
     assert!(
         fixture
             .read("voter-calibration-stats.tsv")
             .contains("codex\t1\t1\t1\t0\t0\t0\t1.000\t0.000\ttrue")
+    );
+    // Codex has a valid YES severity in the fixture corpus, so its prompt carries
+    // the calibration feedback block when the snapshot is attached.
+    let prompt = fixture.read("validity-vote-prompt-codex.txt");
+    assert!(
+        prompt.contains("Your recent calibration"),
+        "missing calibration in codex prompt: {prompt}"
     );
 }
 
@@ -668,9 +632,9 @@ fn a_disabled_feedback_flag_skips_the_snapshot() {
     ]);
     let output = command.output().expect("dispatch runs");
     assert_eq!(output.status.code(), Some(0), "{}", stderr_of(&output));
-    let cli = fixture.read("cli-argv.log");
-    assert!(!cli.contains("voter-calibration"), "{cli}");
-    assert!(!cli.contains("--calibration-stats-file"), "{cli}");
+    assert!(!fixture.path("voter-calibration-stats.tsv").exists());
+    let prompt = fixture.read("validity-vote-prompt-codex.txt");
+    assert!(!prompt.contains("Your recent calibration"), "{prompt}");
 }
 
 #[test]
@@ -686,13 +650,8 @@ fn a_failed_snapshot_leaves_no_stale_calibration_file() {
     let output = fixture.dispatch("true", "true", &[]);
     assert_eq!(output.status.code(), Some(0), "{}", stderr_of(&output));
     assert!(!fixture.path("voter-calibration-stats.tsv").exists());
-    assert!(
-        !fixture
-            .read("cli-argv.log")
-            .contains("--calibration-stats-file"),
-        "{}",
-        fixture.read("cli-argv.log")
-    );
+    let prompt = fixture.read("validity-vote-prompt-codex.txt");
+    assert!(!prompt.contains("Your recent calibration"), "{prompt}");
 }
 
 #[test]
@@ -854,9 +813,14 @@ fn standard_dispatch(fixture: &Fixture) -> AssertCommand {
 
 /// Assert the snapshot resolved the fixture's consumer repository.
 fn assert_consumer_log_root(fixture: &Fixture) {
-    let cli = fixture.read("cli-argv.log");
-    assert!(cli.contains("--calibration-stats-file"), "{cli}");
     assert!(fixture.path("voter-calibration-stats.tsv").is_file());
+    assert!(
+        fixture
+            .read("validity-vote-prompt-codex.txt")
+            .contains("Your recent calibration"),
+        "{}",
+        fixture.read("validity-vote-prompt-codex.txt")
+    );
 }
 
 #[test]
@@ -901,9 +865,9 @@ fn an_unresolvable_calibration_corpus_skips_the_snapshot() {
     command.env_remove("LARCH_CONSUMER_REPO");
     let output = command.output().expect("dispatch runs");
     assert_eq!(output.status.code(), Some(0), "{}", stderr_of(&output));
-    let cli = fixture.read("cli-argv.log");
-    assert!(!cli.contains("voter-calibration"), "{cli}");
-    assert!(!cli.contains("--calibration-stats-file"), "{cli}");
+    assert!(!fixture.path("voter-calibration-stats.tsv").exists());
+    let prompt = fixture.read("validity-vote-prompt-codex.txt");
+    assert!(!prompt.contains("Your recent calibration"), "{prompt}");
 }
 
 #[test]
@@ -951,14 +915,20 @@ fn the_published_result_list_binds_every_slot() {
 }
 
 #[test]
-fn a_missing_plugin_dispatcher_is_refused() {
+fn a_missing_waterfall_launcher_degrades_after_render() {
     let fixture = Fixture::create();
-    fs::remove_file(fixture.plugin.join("python/cli.py")).expect("remove dispatcher");
+    fs::remove_file(fixture.plugin.join("scripts/larch.sh")).expect("remove waterfall launcher");
     let output = standard_dispatch(&fixture).output().expect("dispatch runs");
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(0), "{}", stderr_of(&output));
     assert!(
-        stderr_of(&output).contains("missing python/cli.py at"),
+        fixture.path("validity-vote-prompt-codex.txt").is_file(),
+        "render should finish before the waterfall launch"
+    );
+    assert!(
+        stderr_of(&output).contains("agent dispatch-waterfall did not run")
+            || stderr_of(&output).contains("proceeding with partial"),
         "{}",
         stderr_of(&output)
     );
+    assert_eq!(kv(&stdout_of(&output), "DISPATCH_OK"), "false");
 }

@@ -1,5 +1,5 @@
 # pyright: reportUnusedCallResult=false
-"""Retained untrusted-content helpers for the #7686 Python voter renderer."""
+"""Retained untrusted-content helpers for rust-parity fixtures after #8896."""
 
 from __future__ import annotations
 

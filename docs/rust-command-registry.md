@@ -131,7 +131,7 @@ umbrella that owns their remaining consumers:
 | `render reviewer`, `lane-status`, and `findings-view` | 3 | #7684 | Research and analytical presentation consumers. |
 | `render plan-review` | 1 | #8837 | Migrated with its design caller, frozen parity, Python removal, and clean-install coverage. |
 | `render specialist` | 1 | #7681 | Migrated by #8800 with in-process review callers, frozen parity, and clean-install coverage. |
-| `render voter` | 1 | #7686 | Shared design and implementation consumers make this a final-cutover surface. |
+| `render voter` | 0 | #8896 | Migrated; review and plan-review callers use `scripts/larch.sh`. |
 | `render scope-anchor` | 1 | #7680 | Migrated with all four `scope-anchor` verbs by #8836, including Step 3 caller cutover, in-process findings validation, frozen parity, and clean-install coverage. |
 | `render run-summary` | 1 | #7680 | Recorded in the retained-surface table below as a bounded `/design` payload. |
 | `token check-budget`, `compute-pr-line-counts`, `compute-pr-lines` | 3 | #8797 | Rust CLI cutover with in-process callers, Python entrypoint removal, and clean-install coverage. |
@@ -597,8 +597,8 @@ title verbs, and the four `untrusted` verbs — and adds `larch_core::plan_scope
 as the single owner of the `## Files to modify/create` grammar that
 `dirty-tree scope-check` and `plan scope-paths` both read. Issue 8786 removes the
 remaining Python owner-block, lease, executable-plan, and scope readers;
-`larch.issue.issue_wire` now retains the untrusted-content helpers used by
-the #7686 Python `render voter` consumer.
+`larch.issue.issue_wire` retains untrusted-content helpers for rust-parity fixtures after
+rust-parity fixtures after the #8896 `render voter` cutover.
 `larch_core::report::markdown_block` remains the Markdown block owner, and
 `larch_core::balanced_fence_line_indices` plus
 `larch_core::split_lines_keep_ends` are the shared owners the Rust plan grammar

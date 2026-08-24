@@ -29,7 +29,7 @@ use larch_core::{
 };
 use serde_json::Value;
 
-use crate::github_repository_resolution::parse_github_remote_url;
+use crate::github_repository_resolution::{parse_github_remote_url, validate_repo_slug};
 
 const PLUGIN_JSON: &str = ".claude-plugin/plugin.json";
 const TRANSPARENT_LOG_PREFIX: &str = "chore(larch-logs): ";
@@ -150,6 +150,90 @@ pub fn read_plugin_version(arguments: &[String]) -> ExitCode {
         .unwrap_or_else(|| "unknown".to_owned());
     emit_kv("LARCH_PLUGIN_VERSION", &version);
     ExitCode::SUCCESS
+}
+
+pub fn resolve_plugin_repository(arguments: &[String]) -> ExitCode {
+    if !arguments.is_empty() {
+        eprintln!("Usage: larch plugin resolve-repository");
+        return ExitCode::from(2);
+    }
+    let root = env::var_os("CLAUDE_PLUGIN_ROOT").map_or_else(
+        || env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+        PathBuf::from,
+    );
+    let repository = fs::read_to_string(root.join(PLUGIN_JSON))
+        .map_err(|_| "could not read plugin metadata")
+        .and_then(|text| {
+            serde_json::from_str::<Value>(&text).map_err(|_| "could not read plugin metadata")
+        })
+        .and_then(|value| {
+            value
+                .get("repository")
+                .and_then(Value::as_str)
+                .filter(|repository| !repository.trim().is_empty())
+                .map(str::to_owned)
+                .ok_or("repository metadata missing")
+        })
+        .and_then(|repository| normalize_plugin_repository(&repository));
+    match repository {
+        Ok(repository) => {
+            println!("{repository}");
+            ExitCode::SUCCESS
+        }
+        Err(message) => {
+            eprintln!("resolve-upstream-larch-repo: {message}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn normalize_plugin_repository(repository: &str) -> Result<String, &'static str> {
+    if repository.contains(['\r', '\n', '\t']) {
+        return Err("repository metadata must be single-value");
+    }
+    let repository = repository.trim();
+    if repository.contains("..") || repository.starts_with('/') {
+        return Err("repository metadata is malformed");
+    }
+    let plain = repository.strip_suffix(".git").unwrap_or(repository);
+    if validate_repo_slug(plain) {
+        return Ok(plain.to_owned());
+    }
+
+    let candidate = repository.strip_prefix("git+").unwrap_or(repository);
+    let owner_repo = if let Some(path) = candidate.strip_prefix("git@github.com:") {
+        path.to_owned()
+    } else {
+        let (scheme, rest) = candidate
+            .split_once("://")
+            .ok_or("repository must be a GitHub URL or OWNER/REPO")?;
+        if !["https", "ssh", "git"]
+            .iter()
+            .any(|allowed| scheme.eq_ignore_ascii_case(allowed))
+        {
+            return Err("repository must be a GitHub URL or OWNER/REPO");
+        }
+        let (authority, path) = rest
+            .split_once('/')
+            .ok_or("repository owner/name is malformed")?;
+        let host = authority
+            .rsplit_once('@')
+            .map_or(authority, |(_, host)| host);
+        if !host.eq_ignore_ascii_case("github.com") {
+            return Err("repository must be a GitHub URL or OWNER/REPO");
+        }
+        path.split(['?', '#'])
+            .next()
+            .unwrap_or_default()
+            .trim_start_matches('/')
+            .to_owned()
+    };
+    let owner_repo = owner_repo.strip_suffix(".git").unwrap_or(&owner_repo);
+    if validate_repo_slug(owner_repo) {
+        Ok(owner_repo.to_owned())
+    } else {
+        Err("repository owner/name is malformed")
+    }
 }
 
 pub fn classify_bump(arguments: &ClassifyArguments) -> ExitCode {
