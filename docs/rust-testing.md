@@ -306,20 +306,23 @@ follows:
 - `rust-deny` runs the locked all-feature dependency policy in parallel.
 - `rust-full`, `rust-partial`, and `rust-skip` remain the mutually exclusive
   full, partial, and skip mode results. The full result is composed from the
-  `rust-full-shards` matrix and the stable `rust-full` merge-and-gate job.
+  `rust-full-shards` matrix, the parallel `rust-full-policy` job, and the
+  stable `rust-full` merge-and-gate job.
   `rust-coverage` is not an execution lane: it is the stable required
   aggregate. Under `if: always()`, it validates the selected mode and every
   mode result, then passes only when the selected mode succeeds and the other
   two are skipped. `rust-gate` and `python-rust-integration` use that stable
   aggregate status.
-- `rust-full-shards` owns the full locked-workspace coverage execution. Four
+- `rust-full-shards` owns the full locked-workspace test coverage. Four
   cells run `cargo llvm-cov nextest` with disjoint
   `--partition hash:N/4` partitions and upload distinct LCOV reports. Shard 1
-  alone runs workspace doctests, repository policy, plugin projection
-  validation, cache-candidate staging, and the Linux executable artifact.
-  `rust-full` requires every cell to pass, merges exactly four same-run LCOV
-  reports, and applies the unchanged 88% line threshold once to the combined
-  workspace coverage.
+  alone runs workspace doctests and plugin projection validation, stages cache
+  candidates, and uploads the Linux executable artifact. `rust-full-policy`
+  runs beside the four cells. It builds only the instrumented `larch` binary,
+  runs the single `larch lint all` scan, and uploads its LCOV and per-rule
+  timing artifacts. `rust-full` requires all five producers to pass, merges
+  exactly five same-run LCOV reports, and applies the unchanged 88% line
+  threshold once to the combined workspace coverage.
   After coverage-target pruning, an exact cache miss in a successful
   `merge_group` full lane stages and verifies a policy-cache candidate from
   that preserved artifact. The trusted main publisher may promote it only after
@@ -365,25 +368,17 @@ follows:
 ### Rust coverage shard count
 
 The production matrix uses four hash partitions. This is a measured tradeoff,
-not a claim that hash partitioning balances test runtime exactly.
-[Merge-group run 32684348532](https://github.com/character-ai/larch/actions/runs/32684348532)
-recorded a 711-second monolithic `rust-full` job. Its timing artifact attributed
-about 209 seconds to compilation, 184 seconds to nextest, 132 seconds to
-repository policy, and 107 seconds to the coverage report. The following rough
-predictions hold the measured fixed phases constant, divide only nextest time,
-and assume shard 1 retains the policy work:
+not a claim that hash partitioning balances test runtime exactly. The policy
+job runs in parallel with every test shard. A resize changes only the test
+matrix; the stable merger expects one policy report in addition to the
+configured shard count.
 
-| Matrix width | Shard 1 | Each other shard | Critical shard |
-| ---: | ---: | ---: | ---: |
-| 2 | about 10.2 min | about 8.0 min | about 10.2 min |
-| 4 | about 9.4 min | about 7.2 min | about 9.4 min |
-| 8 | about 9.0 min | about 6.8 min | about 9.0 min |
-
-Treat each estimate as having roughly one minute of uncertainty. A four-cell
-matrix captures most of the predicted critical-path reduction: moving from two
-to four cells saves about 46 seconds, while moving from four to eight saves only
-about 23 more seconds and doubles duplicated compilation, setup, report, and
-artifact work. New production timing can revise the count through
+[Merge-group run 32695855775](https://github.com/character-ai/larch/actions/runs/32695855775)
+measured shard 1 at 470 seconds and the other three shards at 286 to 331
+seconds. Shard 1 spent 131 seconds on repository policy after its 202-second
+compilation. Moving that scan to the dedicated binary-only job removes the
+serial policy phase without duplicating the full workspace test build. New
+production timing can revise the shard count through
 `/rebalance-tests --kind rust --n-rust-shards N`; the command verifies complete
 post-change shard cohorts before it accepts the result.
 
@@ -421,10 +416,11 @@ The focused targets remain available for local debugging. They are not
 `test-harnesses-N` prerequisites, so a fresh Bash-harness runner does not
 duplicate the workspace test compilation.
 
-`rust-full-shards` and the dispatch-only coverage measurement jobs install
+`rust-full-shards` and the dispatch-only combined coverage jobs install
 checksum-verified pinned `cargo-nextest` and `cargo-llvm-cov` binaries without
-a source-install fallback. Normal local checks use changed-path Clippy and do
-not install coverage tooling or create instrumented artifacts.
+a source-install fallback. `rust-full-policy` installs only the pinned
+`cargo-llvm-cov` binary. Normal local checks use changed-path Clippy and do not
+install coverage tooling or create instrumented artifacts.
 
 `rust-full-shards` sets `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_TEST_DEBUG=0`,
 `CARGO_PROFILE_TEST_OPT_LEVEL=0`, and runs nextest with
@@ -441,16 +437,20 @@ also runs a separate `cargo test --doc --workspace --all-features --locked
 artifact set between normal test phases; the stable toolchain runs doctests
 without cargo-llvm-cov's nightly-only doctest instrumentation. Each shard
 report retains the existing filename exclusions. The stable `rust-full` job
-applies the line threshold after it merges all four reports. After nextest and
-before its report, shard 1
-fails closed unless the coverage-target executable is runnable and reports its
-version, then uses it for exactly one `larch lint all` invocation.
-That invocation writes a sorted per-rule timing TSV and contributes to the
-merged line gate. After the report, shard 1 uses the executable for
-both plugin-runtime commands and the generated-projection clean-diff check
-before uploading it for Python integration tests. The separate doctest command
-stays required even when the workspace currently has no doctests. Nextest's
-slow-test status and final status output remain visible in the job log.
+applies the line threshold after it merges the four test reports and the policy
+report. After its report, shard 1 uses the executable for both plugin-runtime
+commands and the generated-projection clean-diff check before uploading it for
+Python integration tests. The separate doctest command stays required even
+when the workspace currently has no doctests. Nextest's slow-test status and
+final status output remain visible in the job log.
+
+`rust-full-policy` exports the same coverage environment, then runs
+`cargo build --locked --package larch-cli --bin larch --all-features --profile test`.
+It does not install nextest or build the workspace test executables. It fails
+closed unless the coverage-target executable is runnable and reports its
+version, then uses it for exactly one `larch lint all` invocation. That scan
+writes a sorted per-rule timing TSV. Its LCOV report contributes to the merged
+line gate before the stable `rust-full` job applies the threshold.
 
 Repository-policy execution has a fixed four-worker bound. Measured
 whole-repository scans may start before ordinary rules to avoid a worker-tail,
@@ -758,10 +758,11 @@ making that final claim.
 
 A final production claim needs three comparable warm full-path successful
 `push` runs on `refs/heads/main` after the relevant repair. Record each run's
-direct URL and the results for every `rust-full shard N` cell, `rust-full`,
-`rust-coverage`, `rust-gate`, and `python-tests-gate`. For every sample, link
-each shard's coverage-timing TSV and LCOV artifact, the merged LCOV artifact,
-and the `larch-linux-test-binary` artifact. Record each job duration, cache hit
+direct URL and the results for every `rust-full shard N` cell, `rust-full
+policy`, `rust-full`, `rust-coverage`, `rust-gate`, and `python-tests-gate`.
+For every sample, link each producer's coverage-timing TSV and LCOV artifact,
+the merged LCOV artifact, and the `larch-linux-test-binary` artifact. Record
+each job duration, cache hit
 or miss, restored bytes and restore time, compile time, cache-save outcome and
 time, and end-to-end time. Keep warm exact hits separate from cold or miss
 samples. Report raw values and medians. A pull-request or manual run does not
@@ -800,22 +801,24 @@ An event-level profile from [run 31226975876](https://github.com/character-ai/la
 identified two obsolete live-repository command-registry tests in the nextest
 tail: the CLI explicit-root test took 53.7 s and the command-registry report
 test took 33.0 s. Their contracts are command routing and report rendering, so
-they use isolated tracked fixtures. The coverage executable remains the only
-full-repository policy execution and still runs `larch lint all` before its
-coverage report.
+they use isolated tracked fixtures. The policy coverage executable remains the
+only full-repository policy execution and still runs `larch lint all` before
+its coverage report.
 
 The remaining parallelization work keeps each independent Git differential
 family in its own test entrypoint without removing a success or failure case.
 The clean-install matrix uses deterministic, isolated partitions that together
 cover every route once.
 
-Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact,
-a `rust-repository-policy-rule-timings-*` artifact, and a GitHub step summary.
-The coverage TSV records cache restore, tool setup, profile cleanup,
-compilation, doctests, every test, repository-policy, report, plugin-validation
-phase, each end-to-end total, and cache-candidate staging. The policy artifact has one
-deterministically ordered `rule\tmilliseconds` table per coverage path; it is
-written by the covered `larch lint all` invocation before its report. Cache
+Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact
+and a GitHub step summary. The dedicated policy job and combined benchmark jobs
+also publish a `rust-repository-policy-rule-timings-*` artifact. The coverage
+TSV records cache restore, tool setup, profile cleanup, compilation, doctests,
+tests, repository policy, report, plugin validation, each end-to-end total, and
+cache-candidate staging. A role records explicit skip rows for phases owned by
+another producer. The policy artifact has one deterministically ordered
+`rule\tmilliseconds` table per policy path; it is written by the covered
+`larch lint all` invocation before its report. Cache
 candidate staging records an explicit validation-read-only skip outside an
 eligible merge-group miss. The documented pre-consolidation run measured 3–8 s for cache
 restore, 8–12 s for tool setup, 172 s for the former post-report repository

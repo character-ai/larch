@@ -179,13 +179,16 @@ cold and warm comparisons.
 Each `rust-full-shards` coverage job builds the `larch` CLI under the same
 instrumented target directory and Cargo test profile as its full workspace
 test partition. Every cell uploads a uniquely named LCOV artifact. Shard 1 is
-the only cell permitted to run repository policy and plugin validation, stage
-cache candidates, or upload `larch-linux-test-binary`. Before shard 1 uploads
-that binary, it fails closed unless
+the only cell permitted to run plugin validation, stage cache candidates, or
+upload `larch-linux-test-binary`. Before shard 1 uploads that binary, it fails
+closed unless
 the coverage-target executable at `target/llvm-cov-target/debug/larch` is
-runnable and reports its version. The same executable runs repository policy
-and plugin projection validation before it is uploaded. The artifact contains
-the executable plus its SHA-256, source SHA,
+runnable and reports its version. The same executable runs plugin projection
+validation before it is uploaded. The parallel `rust-full-policy` job installs
+only the pinned coverage tool, builds an instrumented `larch` binary without
+the workspace test executables, runs the single repository-policy scan, and
+uploads distinct LCOV and per-rule timing artifacts. The artifact contains the
+executable plus its SHA-256, source SHA,
 reported version, Rust-input digest, and producer reference. The required
 `python-rust-integration` job publishes the stable `python-tests-gate` check.
 It verifies both prerequisite results, regular-file shape, checksum, Rust-input
@@ -195,11 +198,12 @@ checkout; a trusted-main artifact is accepted only for an enforced `skip` run.
 The stub-safe `python-tests` matrix has no Rust artifact dependency. The
 producer's `if-no-files-found: error` prevents an absent producer artifact from
 being treated as a successful handoff. The stable `rust-full` gate first
-requires the complete matrix to pass, downloads same-run artifacts by the
-fixed shard prefix, requires exactly the configured count of regular,
-non-symlink `lcov.info` files, and merges them with the exact pinned Ubuntu
-LCOV package before applying the 88% line threshold. It uploads only the merged
-report under the legacy stable artifact and member names.
+requires the complete matrix and the policy job to pass. It downloads the
+same-run test artifacts by the fixed shard prefix and the policy artifact by
+its exact name, requires exactly one more regular, non-symlink `lcov.info` file
+than the configured test-shard count, and merges them with the exact pinned
+Ubuntu LCOV package before applying the 88% line threshold. It uploads only the
+merged report under the legacy stable artifact and member names.
 
 On an exact Rust-policy miss, shard 1 of a successful `rust-full` merge-group
 run stages and verifies a policy-cache candidate after the coverage target has
@@ -215,9 +219,10 @@ rewrites that one provenance field to `refs/heads/main` and rechecks the bundle.
 The `trusted-main-rust-policy` cache is a distinct executable cache, not a
 compiler-output cache or an artifact-provenance substitute. Only the trusted
 publisher may save it, and only after an exact successful merge-group source
-for the newly landed `main` SHA produced a coverage-built binary that completed
-repository policy and plugin validation. Its exact key binds the runner OS and
-architecture plus tracked crate Rust sources (not generated target output),
+for the newly landed `main` SHA produced the shard-1 coverage binary and the
+stable aggregate proved both its plugin validation and the same-SHA policy
+job. Its exact key binds the runner OS and architecture plus tracked crate Rust
+sources (not generated target output),
 root and crate manifests, root or crate build scripts, lockfile, toolchain, and
 Cargo configuration. It has no restore-key fallback.
 For a pull request, the isolated base checkout's trusted cache-key action
