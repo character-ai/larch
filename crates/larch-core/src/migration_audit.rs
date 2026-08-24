@@ -18,7 +18,8 @@ use crate::{
     BlockerSnapshotRow, GovernanceIssueSnapshot, OwnerAdmissionRequest, ReceiptFreshnessRequest,
     RepositoryName, ScopeSnapshot, audit_stale_implementation_leases, balanced_fence_line_indices,
     compare_blocker_parity, ensure_ascii_json, evaluate_owner_admission, issue_plan_marker_defect,
-    normalize_state, parse_named_block, parse_native_blocker_refs,
+    normalize_state, parse_implementation_lease, parse_named_block, parse_native_blocker_refs,
+    receipt_marker_present,
 };
 
 pub const MIGRATION_AUDIT_SCHEMA_VERSION: u64 = 2;
@@ -321,7 +322,7 @@ pub fn build_migration_audit_report(
     let active = governance_issues(&normalized.open);
     let sources = governance_issues(issue_map.values());
     let mut findings = classify_repository_findings(&request.repository_findings);
-    let mut plan_validity = audit_current_leaves(
+    let current_evidence = audit_current_leaves(
         &executable,
         &CurrentAudit {
             plan_evidence: &plan_evidence,
@@ -334,6 +335,7 @@ pub fn build_migration_audit_report(
         },
         &mut findings,
     )?;
+    let mut plan_validity = current_evidence.plan_validity;
 
     let historical =
         historical_leaves(&normalized.closed, &issue_map, request.snapshot.chief_issue);
@@ -366,7 +368,9 @@ pub fn build_migration_audit_report(
         &historical_evidence,
         &findings,
     );
-    let issues = issue_evidence(&plan_validity, &historical_evidence.reasons, &findings);
+    let mut report_only_reasons = current_evidence.report_only_reasons;
+    report_only_reasons.extend(historical_evidence.reasons.clone());
+    let issues = issue_evidence(&plan_validity, &report_only_reasons, &findings);
     Ok(MigrationAuditReport {
         repository: repository.as_str().to_owned(),
         chief_issue: request.snapshot.chief_issue,
@@ -595,6 +599,12 @@ struct HistoricalEvidence {
     recorded_deviations: u64,
 }
 
+#[derive(Default)]
+struct CurrentEvidence {
+    plan_validity: BTreeMap<u64, bool>,
+    report_only_reasons: BTreeMap<u64, Vec<String>>,
+}
+
 struct CurrentAudit<'a> {
     plan_evidence: &'a BTreeMap<u64, PlanAuditEvidence>,
     dependencies: &'a BTreeMap<u64, Vec<u64>>,
@@ -624,26 +634,36 @@ fn audit_current_leaves(
     leaves: &[MigrationIssueSnapshot],
     context: &CurrentAudit<'_>,
     findings: &mut Vec<AggregateFinding>,
-) -> Result<BTreeMap<u64, bool>, MigrationAuditDefect> {
-    let mut validity = BTreeMap::new();
+) -> Result<CurrentEvidence, MigrationAuditDefect> {
+    let mut current = CurrentEvidence::default();
     for leaf in leaves {
         let evidence = context
             .plan_evidence
             .get(&leaf.number)
             .ok_or(MigrationAuditDefect::MISSING_PLAN_EVIDENCE)?;
-        let _ = validity.insert(leaf.number, evidence.defects.is_empty());
-        findings.extend(
-            evidence
-                .defects
-                .iter()
-                .cloned()
-                .map(|reason| AggregateFinding {
-                    category: FindingCategory::InvalidPlan,
-                    cleanup_command: None,
-                    issue: Some(leaf.number),
-                    reason,
-                }),
-        );
+        let _ = current
+            .plan_validity
+            .insert(leaf.number, evidence.defects.is_empty());
+        let missing_plan_only =
+            matches!(evidence.defects.as_slice(), [defect] if defect == crate::MISSING_PLAN_BLOCK);
+        if missing_plan_only && !plan_lifecycle_evidence_present(leaf) {
+            let _ = current
+                .report_only_reasons
+                .insert(leaf.number, evidence.defects.clone());
+        } else {
+            findings.extend(
+                evidence
+                    .defects
+                    .iter()
+                    .cloned()
+                    .map(|reason| AggregateFinding {
+                        category: FindingCategory::InvalidPlan,
+                        cleanup_command: None,
+                        issue: Some(leaf.number),
+                        reason,
+                    }),
+            );
+        }
 
         let native = context
             .dependencies
@@ -698,7 +718,15 @@ fn audit_current_leaves(
             reason,
         }));
     }
-    Ok(validity)
+    Ok(current)
+}
+
+fn plan_lifecycle_evidence_present(issue: &MigrationIssueSnapshot) -> bool {
+    issue.title.starts_with(crate::DESIGNED_PREFIX)
+        || issue.title.starts_with(crate::IMPLEMENTING_PREFIX)
+        || !matches!(parse_named_block(&issue.body, crate::PLAN_MARKER), Ok(None))
+        || receipt_marker_present(&issue.body)
+        || parse_implementation_lease(&issue.body).is_some()
 }
 
 fn normalize_snapshot_issues(

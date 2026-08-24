@@ -620,17 +620,17 @@ pub fn compute_scope_fingerprint(
 }
 #[must_use]
 pub fn validate_receipt_freshness(request: &ReceiptFreshnessRequest) -> FreshnessVerdict {
+    if !receipt_marker_present(&request.body) {
+        return FreshnessVerdict {
+            reasons: Vec::new(),
+        };
+    }
     let Ok(Some(plan_inner)) = parse_named_block(&request.body, PLAN_MARKER) else {
         return FreshnessVerdict {
             reasons: vec![REASON_STALE_PLAN_BODY.to_owned()],
         };
     };
     let Some(receipt) = parse_receipt(&request.body) else {
-        if !receipt_marker_present(&request.body) {
-            return FreshnessVerdict {
-                reasons: Vec::new(),
-            };
-        }
         return FreshnessVerdict {
             reasons: vec![REASON_STALE_PLAN_BODY.to_owned()],
         };

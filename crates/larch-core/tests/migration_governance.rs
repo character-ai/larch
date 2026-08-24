@@ -482,7 +482,7 @@ fn assert_scope_identity_validation() {
 #[test]
 fn migration_governance_fail_closed_branches_remain_explicit_and_fence_aware() {
     assert_receipt_and_parser_fail_closed();
-    assert_scope_gate_and_freshness_fail_closed();
+    assert_scope_gate_and_freshness_boundaries();
     assert_owner_admission_fails_closed_without_complete_evidence();
 }
 
@@ -533,7 +533,7 @@ fn assert_receipt_and_parser_fail_closed() {
     .contains(&"invalid-owner-key".to_owned()));
 }
 
-fn assert_scope_gate_and_freshness_fail_closed() {
+fn assert_scope_gate_and_freshness_boundaries() {
     assert_eq!(
         declared_scope_paths(
             "### UPDATED: docs/?.md\n### UPDATED: docs/[.md\n",
@@ -573,15 +573,14 @@ fn assert_scope_gate_and_freshness_fail_closed() {
         ),
         "**❌ preflight: migration governance blocked: `unknown`.**"
     );
-    assert_eq!(
+    assert!(
         validate_receipt_freshness(&ReceiptFreshnessRequest {
             body: "no receipt".to_owned(),
             blocker_rows: Vec::new(),
             base_scope: None,
             head_scope: None,
         })
-        .reasons,
-        vec![REASON_STALE_PLAN_BODY.to_owned()]
+        .ok()
     );
 }
 

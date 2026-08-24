@@ -7,7 +7,7 @@ use larch_core::{
     ScopeFile, ScopeSnapshot, build_command_audit_issue, build_migration_audit_report,
     compose_named_block, hash_blocker_rows, hash_owner_rows, hash_plan_block,
     parse_rust_line_budget_deviation, render_command_audit_input, render_migration_audit_json,
-    render_migration_audit_table, upsert_implementation_lease, upsert_receipt,
+    render_migration_audit_table, render_receipt, upsert_implementation_lease, upsert_receipt,
     validate_plan_facets,
 };
 
@@ -57,6 +57,17 @@ fn leaf(number: u64) -> MigrationIssueSnapshot {
             &receipt,
         )
         .unwrap(),
+    )
+}
+fn scope_only_leaf(number: u64, body: impl Into<String>) -> MigrationIssueSnapshot {
+    issue(
+        number,
+        &format!("[LEAF OF 7779] Scope-only fixture {number}"),
+        "open",
+        format!(
+            "Chief umbrella: #7687.\nNative blockers: none.\n{}",
+            body.into()
+        ),
     )
 }
 fn evidence(issue: u64, defects: &[&str]) -> PlanAuditEvidence {
@@ -159,6 +170,112 @@ fn report_json_matches_the_current_empty_report_golden() {
 }
 
 #[test]
+fn undesigned_scope_only_leaves_are_report_only() {
+    let mut designing = scope_only_leaf(
+        11,
+        "Run `/design` before `/implement`: design is still in progress.\n",
+    );
+    designing.title = "[DESIGNING] [LEAF OF 7779] In-progress fixture".to_owned();
+    let report = build_migration_audit_report(&request(
+        snapshot(
+            vec![
+                scope_only_leaf(
+                    10,
+                    "Run `/design` before `/implement`: this body states scope, not a plan.\n",
+                ),
+                designing,
+            ],
+            dependencies(&[10, 11]),
+            vec![],
+        ),
+        vec![
+            evidence(10, &["missing-plan-block"]),
+            evidence(11, &["missing-plan-block"]),
+        ],
+    ))
+    .expect("scope-only report");
+
+    assert!(report.findings.is_empty(), "{:?}", report.findings);
+    assert_eq!(
+        report
+            .counts
+            .iter()
+            .copied()
+            .find(|(key, _)| *key == "valid_plans"),
+        Some(("valid_plans", 0))
+    );
+    assert_eq!(report.issues.len(), 2);
+    for issue in report.issues {
+        assert_eq!(issue.plan_valid, Some(false));
+        assert_eq!(issue.finding_reasons, vec!["missing-plan-block"]);
+    }
+}
+
+#[test]
+fn durable_plan_lifecycle_evidence_keeps_missing_plans_gated() {
+    let receipt = render_receipt(&PlanReceipt {
+        plan_sha256: "a".repeat(64),
+        base_sha: head(),
+        blockers_sha256: hash_blocker_rows(&[]),
+        owners_sha256: hash_owner_rows(&[]),
+    })
+    .expect("receipt marker");
+    let leased = upsert_implementation_lease(
+        &scope_only_leaf(12, "").body,
+        &ImplementationLease {
+            run_id: "run-12".to_owned(),
+            branch: "feature/leaf-12".to_owned(),
+            base: head(),
+            plan: "b".repeat(64),
+            updated_at: TIME.to_owned(),
+        },
+    )
+    .expect("implementation lease");
+    let leaves = vec![
+        scope_only_leaf(11, format!("{receipt}\n")),
+        issue(12, "[LEAF OF 7779] Leased fixture", "open", leased),
+        scope_only_leaf(13, "<!-- larch:plan:start -->\nunclosed\n"),
+        issue(
+            14,
+            "[DESIGNED] [LEAF OF 7779] Published fixture",
+            "open",
+            scope_only_leaf(14, "").body,
+        ),
+        issue(
+            15,
+            "[IMPLEMENTING] [LEAF OF 7779] Active fixture",
+            "open",
+            scope_only_leaf(15, "").body,
+        ),
+    ];
+    let report = build_migration_audit_report(&request(
+        snapshot(leaves, dependencies(&[11, 12, 13, 14, 15]), vec![]),
+        vec![
+            evidence(11, &["missing-plan-block"]),
+            evidence(12, &["missing-plan-block"]),
+            evidence(13, &["missing-plan-block"]),
+            evidence(14, &["missing-plan-block"]),
+            evidence(15, &["missing-plan-block"]),
+        ],
+    ))
+    .expect("gated lifecycle report");
+
+    for number in [11, 12, 13, 14, 15] {
+        assert!(report.findings.iter().any(|finding| {
+            finding.issue == Some(number)
+                && finding.category == larch_core::FindingCategory::InvalidPlan
+                && finding.reason == "missing-plan-block"
+        }));
+    }
+    assert!(report.findings.iter().any(|finding| {
+        finding.issue == Some(11)
+            && finding.category == larch_core::FindingCategory::MissingOrStaleBlocker
+            && finding.reason == "stale-plan-body"
+    }));
+    assert_eq!(report.findings.len(), 6, "{:?}", report.findings);
+}
+
+#[test]
 fn owner_conflicts_and_missing_reuse_sources_are_snapshot_findings() {
     let owner_block = "<!-- larch:owners:start -->\nCOMMAND\tissue\tmigration-audit\nCREATE\tshared-owner\tREADME.md\nREUSE\treused-owner\t#99\tREADME.md\n<!-- larch:owners:end -->\n";
     let managed = issue(
@@ -249,7 +366,7 @@ fn classifications_and_rendering_are_order_independent() {
         render_migration_audit_json(&build_migration_audit_report(&second).unwrap())
     );
     for needle in [
-        "\"missing_or_stale_blockers\":2",
+        "\"missing_or_stale_blockers\":1",
         "\"registry_state_violations\":1",
         "\"valid_plans\":1",
     ] {
