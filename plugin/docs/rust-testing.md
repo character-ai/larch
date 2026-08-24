@@ -339,8 +339,13 @@ follows:
   `rust-coverage` aggregate, then consumes the selected producer's verified
   `larch-linux-test-binary`. It verifies the artifact checksum, source SHA, and
   version before running the marker-selected Rust-backed tests and publishing
-  the stable `python-tests-gate` check. This avoids a second post-integration
-  runner tail.
+  the stable `python-tests-gate` check. The integration test requires an
+  explicit `full`, `partial`, or `skip` mode. Coverage-built `full` and `skip`
+  executables must emit their redirected LLVM profile; the uninstrumented
+  `partial` executable still exercises the same verified bootstrap without a
+  profile-output requirement. Every mode rejects default profile files in the
+  temporary client repository. This avoids a second post-integration runner
+  tail.
 - `rust-coverage-benchmark` runs only when a manual dispatch sets
   `coverage_profile_benchmark=true`. Its matrix keeps the profile sweep out of
   the protected production path and does not upload a competing Python artifact.

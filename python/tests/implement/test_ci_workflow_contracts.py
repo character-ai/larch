@@ -1432,13 +1432,16 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     )
 
     assert (
-        "rust_integration: requires the coverage-built Rust larch executable"
+        "rust_integration: requires the verified Rust larch executable"
         in python_pyproject
     )
     assert (
         "@pytest.mark.rust_integration\ndef test_consumer_reaches_rust_through_its_bootstrap"
         in lifecycle_consumer
     )
+    assert 'rust_ci_mode = os.environ.get("RUST_CI_MODE", "")' in lifecycle_consumer
+    assert 'rust_ci_mode in {"full", "partial", "skip"}' in lifecycle_consumer
+    assert 'if rust_ci_mode != "partial":' in lifecycle_consumer
     marker_paths = sorted(
         path.relative_to(repo_root).as_posix()
         for path in (repo_root / "python" / "tests").rglob("test_*.py")
