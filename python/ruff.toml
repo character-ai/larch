@@ -288,12 +288,6 @@ ignore = [
     "PLR0912",
     "PLR0913",
 ]
-"git.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-]
 "issue_wire.py" = [
     "C901",
     "PLR0911",
@@ -327,13 +321,6 @@ ignore = [
 "push.py" = [
     "C901",
     "PLR0911",
-]
-"rebase.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
 ]
 "rendering.py" = [
     "C901",

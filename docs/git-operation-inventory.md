@@ -108,14 +108,12 @@ crates/larch-cli/src/token_measurement_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/triage_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked-paths
 python/larch/agents/_run_external.py	later-domain	#7678	dynamic
+python/larch/agents/_claude_runner.py	later-domain	#7678	checkout,diff,ls-files,restore
 crates/larch-cli/src/agent_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/oos_commands.rs	gix-read	#7671	typed-read
 python/larch/core/architectural_guidelines.py	later-domain	#7686	diff,merge-base,rev-parse
-python/larch/core/coder_delta_guards.py	later-domain	#7686	config,diff,ls-files,submodule
 python/larch/core/redact.py	later-domain	#7686	submodule
 python/larch/git/gh.py	later-domain	#7676	remote
-python/larch/git/git.py	later-domain	#7681	add,branch,checkout,commit,diff,diff-tree,fetch,log,ls-files,ls-remote,ls-tree,merge-base,push,rebase,reset,restore,rev-list,rev-parse,rm,show,show-ref,status,symbolic-ref
-python/larch/git/rebase.py	later-domain	#7681	checkout
 python/larch/report/storage_config.py	later-domain	#7683	dynamic
 scripts/block-submodule-edit.sh	later-domain	#7677	rev-parse
 scripts/check-stale-plugin.sh	later-domain	#7674	rev-parse

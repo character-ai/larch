@@ -14,7 +14,6 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from larch.core import config
-from larch.git import git
 from larch import io as larch_io
 from larch.core import proc
 from larch.core import redact
@@ -40,6 +39,51 @@ from larch.agents._launch_failure import (
 )
 from larch.agents._failure_diag import _num, _first_not_none
 from larch.agents._run_external import _stop_policy_rejected_process, _under
+
+
+def _tracked_dirty_paths(runner: Runner, *, cwd: str | None = None) -> frozenset[str]:
+    """Tracked dirty paths vs HEAD (local copy; ``larch.git.git`` retired in #8880)."""
+    result = runner.run(["git", "diff", "--name-only", "HEAD"], cwd=cwd)
+    return frozenset(line for line in result.stdout.splitlines() if line)
+
+
+def _untracked_dirty_paths(runner: Runner, *, cwd: str | None = None) -> frozenset[str]:
+    """Untracked non-ignored paths (local copy; ``larch.git.git`` retired in #8880)."""
+    result = runner.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=cwd,
+    )
+    return frozenset(line for line in result.stdout.splitlines() if line)
+
+
+def _paths_delta_revert(
+    runner: Runner,
+    baseline_tracked: frozenset[str],
+    baseline_untracked: frozenset[str],
+    *,
+    cwd: str | None = None,
+) -> None:
+    """Revert tracked/untracked deltas since baseline (local copy; #8880)."""
+    cur_tracked = _tracked_dirty_paths(runner, cwd=cwd)
+    cur_untracked = _untracked_dirty_paths(runner, cwd=cwd)
+    root = Path(cwd) if cwd else Path.cwd()
+    for path in cur_tracked:
+        if path in baseline_tracked:
+            continue
+        if path in cur_untracked:
+            target = root / path
+            if target.exists() or target.is_symlink():
+                target.unlink(missing_ok=True)
+        else:
+            _ = runner.run(["git", "restore", "--staged", "--", path], cwd=cwd)
+            _ = runner.run(["git", "checkout", "--", path], cwd=cwd)
+    for path in cur_untracked:
+        if path in baseline_untracked:
+            continue
+        target = root / path
+        if target.exists() or target.is_symlink():
+            target.unlink(missing_ok=True)
+
 
 def _panel_payload_bytes_from_env() -> int:
     raw = os.environ.get("LARCH_PANEL_PAYLOAD_BYTES", "").strip()
@@ -469,8 +513,8 @@ def run_waterfall(
     baseline_tracked: frozenset[str] | None = None
     baseline_untracked: frozenset[str] | None = None
     if runner is not None:
-        baseline_tracked = git.tracked_dirty_paths(runner, cwd=cwd)
-        baseline_untracked = git.untracked_dirty_paths(runner, cwd=cwd)
+        baseline_tracked = _tracked_dirty_paths(runner, cwd=cwd)
+        baseline_untracked = _untracked_dirty_paths(runner, cwd=cwd)
     attempts: list[TierAttempt] = []
     first = tier_list[0] if tier_list else ""
     for idx, tier in enumerate(tier_list):
@@ -479,7 +523,7 @@ def run_waterfall(
         if attempt.launcher_exit == 0 and attempt.wrapper_rc == 0:
             return WaterfallResult(winning_tier=tier, attempts=tuple(attempts))
         if runner is not None and baseline_tracked is not None and baseline_untracked is not None:
-            git.paths_delta_revert(runner, baseline_tracked, baseline_untracked, cwd=cwd)
+            _paths_delta_revert(runner, baseline_tracked, baseline_untracked, cwd=cwd)
         failure_class = effective_failure_class(attempt)
         if idx == 0 and tier == first and attempt.wrapper_rc == 0 and failure_class == "other":
             return WaterfallResult(winning_tier=None, attempts=tuple(attempts), short_circuited=True)

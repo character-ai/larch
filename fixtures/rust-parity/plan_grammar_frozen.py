@@ -481,11 +481,13 @@ def _path_has_unsafe_shape(path: str) -> bool:
 
 def _load_tracked_paths(repo_root: Path) -> frozenset[str]:
     from larch.core import proc  # noqa: PLC0415 - avoid module-level git/proc coupling in the grammar owner
-    from larch.git import git  # noqa: PLC0415 - avoid module-level git/proc coupling in the grammar owner
     from larch.errors import ShipError  # noqa: PLC0415 - avoid module-level git/proc coupling in the grammar owner
 
     try:
-        return frozenset(git.ls_files(proc, cwd=str(repo_root)))
+        result = proc.run(["git", "ls-files"], cwd=str(repo_root))
+        if result.returncode != 0:
+            return frozenset()
+        return frozenset(line for line in result.stdout.splitlines() if line)
     except (OSError, ShipError):
         return frozenset()
 
