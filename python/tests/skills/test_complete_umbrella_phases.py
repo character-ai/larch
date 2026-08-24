@@ -225,6 +225,9 @@ def test_top_level_uses_one_call_bootstrap_before_start() -> None:
     step_zero = skill.split("## Step 0:", 1)[1].split("## Step 1:", 1)[0]
     assert step_zero.count("```bash") == 1
     assert "complete-umbrella bootstrap" in step_zero
+    assert "scripts/larch.sh" in step_zero
+    assert "python3" not in step_zero
+    assert "python/cli.py" not in step_zero
     assert "The bootstrap calls `resume` before session setup or `start`." in step_zero
     assert "complete-umbrella resume" not in step_zero
     assert "complete-umbrella start" not in step_zero

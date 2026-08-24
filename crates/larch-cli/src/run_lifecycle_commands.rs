@@ -1,6 +1,11 @@
 //! CLI composition for the five shared run-lifecycle commands.
 
-use std::{collections::HashMap, fmt::Write as _, path::PathBuf, process::ExitCode};
+use std::{
+    collections::HashMap,
+    fmt::Write as _,
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
 use clap::Args;
 use larch_adapters::{
@@ -59,9 +64,37 @@ pub struct LifecycleTerminalArguments {
     pre_scrub_violations: u64,
 }
 
+/// Start a lifecycle for an in-process composer that owns stdout.
+#[must_use]
+pub fn start_for_composer(
+    repo_root: &Path,
+    skill: &str,
+    lifecycle_parent_context: Option<&Path>,
+) -> (u8, String, String) {
+    start_captured(&LifecycleStartArguments {
+        repo_root: repo_root.to_path_buf(),
+        skill: skill.to_owned(),
+        run_id: None,
+        log_root: None,
+        parent_skill: String::new(),
+        parent_run_id: String::new(),
+        issue: String::new(),
+        lifecycle_parent_context: lifecycle_parent_context.map(Path::to_path_buf),
+        adopt_existing: false,
+        rehydrate: false,
+    })
+}
+
 /// Execute `run-log lifecycle-start`.
 #[must_use]
 pub fn start(arguments: &LifecycleStartArguments) -> ExitCode {
+    let (code, stdout, stderr) = start_captured(arguments);
+    print!("{stdout}");
+    eprint!("{stderr}");
+    ExitCode::from(code)
+}
+
+fn start_captured(arguments: &LifecycleStartArguments) -> (u8, String, String) {
     let adopt_existing = arguments.adopt_existing || arguments.rehydrate;
     if arguments.rehydrate
         && (arguments.run_id.is_none()
@@ -71,10 +104,12 @@ pub fn start(arguments: &LifecycleStartArguments) -> ExitCode {
             || arguments.lifecycle_parent_context.is_some()
             || !arguments.issue.is_empty())
     {
-        eprintln!(
-            "run lifecycle start failed: --rehydrate requires only --repo-root, --skill, and --run-id"
+        return (
+            1,
+            String::new(),
+            "run lifecycle start failed: --rehydrate requires only --repo-root, --skill, and --run-id\n"
+                .to_owned(),
         );
-        return ExitCode::FAILURE;
     }
     let persisted = if adopt_existing {
         arguments
@@ -88,8 +123,11 @@ pub fn start(arguments: &LifecycleStartArguments) -> ExitCode {
         match resolve(&arguments.repo_root, persisted) {
             Ok(value) => value,
             Err((code, error)) => {
-                eprintln!("run lifecycle start failed: {error}");
-                return ExitCode::from(code);
+                return (
+                    code,
+                    String::new(),
+                    format!("run lifecycle start failed: {error}\n"),
+                );
             }
         };
     if arguments.rehydrate {
@@ -104,21 +142,22 @@ pub fn start(arguments: &LifecycleStartArguments) -> ExitCode {
             &local,
             &homes,
         ) {
-            Ok(started) => {
-                print_start(&started, false);
-                ExitCode::SUCCESS
-            }
-            Err(error) => {
-                eprintln!("run lifecycle start failed: {error}");
-                ExitCode::FAILURE
-            }
+            Ok(started) => captured_start_success(&started, false),
+            Err(error) => (
+                1,
+                String::new(),
+                format!("run lifecycle start failed: {error}\n"),
+            ),
         };
     }
     if let Some(storage) = resolution.storage()
         && let Err(error) = preflight_enabled_storage(storage, &environment)
     {
-        eprintln!("run lifecycle start failed: {}", preflight_message(error));
-        return ExitCode::FAILURE;
+        return (
+            1,
+            String::new(),
+            format!("run lifecycle start failed: {}\n", preflight_message(error)),
+        );
     }
     match run_lifecycle::start(&StartRequest {
         repo_root: &repo_root,
@@ -135,15 +174,25 @@ pub fn start(arguments: &LifecycleStartArguments) -> ExitCode {
         issue: &arguments.issue,
         adopt_existing: arguments.adopt_existing,
     }) {
-        Ok(started) => {
-            print_start(&started, !arguments.rehydrate);
-            ExitCode::SUCCESS
-        }
-        Err(error) => {
-            eprintln!("run lifecycle start failed: {error}");
-            ExitCode::FAILURE
-        }
+        Ok(started) => captured_start_success(&started, !arguments.rehydrate),
+        Err(error) => (
+            1,
+            String::new(),
+            format!("run lifecycle start failed: {error}\n"),
+        ),
     }
+}
+
+fn captured_start_success(started: &StartedRun, preflight_performed: bool) -> (u8, String, String) {
+    let stderr = if started.resolution.mode() == RunLogStorageMode::Disabled {
+        format!(
+            "**⚠ Run-log publication is disabled ({}). This skill will run, but no remote run-log archive or synchronized cache entry will be created.**\n",
+            started.resolution.reason()
+        )
+    } else {
+        String::new()
+    };
+    (0, render_start(started, preflight_performed), stderr)
 }
 
 /// Execute one of the four terminal lifecycle commands.
@@ -283,16 +332,6 @@ fn preflight_message(error: PreflightFailure) -> String {
     match error {
         PreflightFailure::Configuration(error) => error.to_string(),
         PreflightFailure::Provider(error) => error.to_string(),
-    }
-}
-
-fn print_start(started: &StartedRun, preflight_performed: bool) {
-    print!("{}", render_start(started, preflight_performed));
-    if started.resolution.mode() == RunLogStorageMode::Disabled {
-        eprintln!(
-            "**⚠ Run-log publication is disabled ({}). This skill will run, but no remote run-log archive or synchronized cache entry will be created.**",
-            started.resolution.reason()
-        );
     }
 }
 

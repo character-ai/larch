@@ -14,11 +14,6 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("complete-umbrella", "bootstrap"): (
-        "larch.complete_umbrella",
-        "bootstrap_main",
-        True,
-    ),
     ("render", "voter"): ("larch.rendering.rendering", "render_voter_main", False),
 }
 

@@ -355,6 +355,19 @@ registration, implementation module, exclusive tests, and shard assignments
 were removed in the same cutover. Clean-install and black-box Rust tests cover
 the production executable boundary, so no fallback or dual owner remains.
 
+### Complete-umbrella Step 0 bootstrap cutover
+
+Issue #8897 moved `complete-umbrella bootstrap` to
+`crates/larch-cli/src/complete_umbrella_bootstrap_commands.rs`. The Rust owner
+composes the existing lifecycle, repository, resume, session, start, Write-hook,
+and model owners in process instead of shelling out through `scripts/larch.sh`.
+It keeps the exact consolidated `KEY=value` envelope, named failure stages, and
+session-tmpdir diagnostic copies. Production callers enter through
+`scripts/larch.sh complete-umbrella bootstrap`. The Python CLI registration,
+`python/larch/complete_umbrella.py`, and its exclusive tests were removed in the
+same cutover. Clean-install and unit tests cover the production executable
+boundary, so no fallback or dual owner remains.
+
 ### Ship PR lifecycle cutover
 
 Issue #8626 added the fresh-path parity implementation. Issue #8628 completed

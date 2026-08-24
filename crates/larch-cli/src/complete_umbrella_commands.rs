@@ -62,6 +62,9 @@ use std::{
     time::Duration,
 };
 
+#[path = "complete_umbrella_bootstrap_commands.rs"]
+mod bootstrap;
+
 const CHILD_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 const CHILD_SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 const CHILD_OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
@@ -798,6 +801,8 @@ fn child_terminal_status(text: &str) -> Option<ChildResultStatus> {
 
 #[derive(Subcommand)]
 pub enum CompleteUmbrellaCommand {
+    /// Compose the one-call Step 0 bootstrap envelope.
+    Bootstrap(bootstrap::BootstrapArguments),
     /// Prepare, ship, verify, or measure one standalone umbrella leaf.
     #[command(name = "ship-leaf", disable_help_flag = true)]
     ShipLeaf(crate::complete_umbrella_ship_commands::ShipLeafArguments),
@@ -1347,6 +1352,9 @@ trait RunLeavesOperations {
 #[must_use]
 pub fn run(command: CompleteUmbrellaCommand) -> ExitCode {
     let result = match command {
+        CompleteUmbrellaCommand::Bootstrap(arguments) => {
+            return bootstrap::run(&arguments);
+        }
         CompleteUmbrellaCommand::ShipLeaf(arguments) => {
             return crate::complete_umbrella_ship_commands::run(&arguments);
         }
@@ -1376,6 +1384,11 @@ pub fn run(command: CompleteUmbrellaCommand) -> ExitCode {
 }
 
 fn start(arguments: &StartArguments) -> Result<(), String> {
+    print!("{}", start_envelope(arguments)?);
+    Ok(())
+}
+
+fn start_envelope(arguments: &StartArguments) -> Result<String, String> {
     require_operator(arguments.operator_invoked)?;
     require_issue(arguments.issue, "--issue")?;
     let repository = parse_repository(&arguments.repository)?;
@@ -1398,17 +1411,30 @@ fn start(arguments: &StartArguments) -> Result<(), String> {
     let mut state = record.state.clone();
     state.current_step = RunPointerStep::Select;
     let record = store.update(&record, state)?;
-    emit_kv("UMBRELLA_STARTED", "true");
-    emit_kv("UMBRELLA_ISSUE", &arguments.issue.to_string());
-    emit_kv(
-        "COMPLETE_UMBRELLA_TMPDIR",
-        &record.state.tmpdir.display().to_string(),
-    );
-    emit_kv(
-        "COMPLETE_UMBRELLA_POINTER",
-        &record.path.display().to_string(),
-    );
-    Ok(())
+    let issue = arguments.issue.to_string();
+    let tmpdir = record.state.tmpdir.display().to_string();
+    let pointer = record.path.display().to_string();
+    Ok(kv_block(&[
+        ("UMBRELLA_STARTED", "true"),
+        ("UMBRELLA_ISSUE", issue.as_str()),
+        ("COMPLETE_UMBRELLA_TMPDIR", tmpdir.as_str()),
+        ("COMPLETE_UMBRELLA_POINTER", pointer.as_str()),
+    ]))
+}
+
+fn captured_start(
+    repository: String,
+    issue: u64,
+    tmpdir: PathBuf,
+    claude_pid: u32,
+) -> Result<String, String> {
+    start_envelope(&StartArguments {
+        repository,
+        issue,
+        tmpdir,
+        claude_pid,
+        operator_invoked: true,
+    })
 }
 
 async fn start_remote(
@@ -1461,19 +1487,27 @@ enum ResumeLeafState {
 fn resume(arguments: &ResumeArguments) -> Result<(), String> {
     let (session_pid, repository, repository_name) = validate_resume_arguments(arguments)?;
     let store = RunPointerStore::live()?;
-    resume_from_store(
-        arguments,
-        &store,
-        session_pid,
-        &repository,
-        &repository_name,
-    )
+    print!(
+        "{}",
+        resume_from_store(
+            arguments,
+            &store,
+            session_pid,
+            &repository,
+            &repository_name,
+        )?
+    );
+    Ok(())
 }
 
 #[cfg(test)]
 fn resume_with_store(arguments: &ResumeArguments, store: &RunPointerStore) -> Result<(), String> {
     let (session_pid, repository, repository_name) = validate_resume_arguments(arguments)?;
-    resume_from_store(arguments, store, session_pid, &repository, &repository_name)
+    print!(
+        "{}",
+        resume_from_store(arguments, store, session_pid, &repository, &repository_name,)?
+    );
+    Ok(())
 }
 
 fn validate_resume_arguments(
@@ -1493,10 +1527,9 @@ fn resume_from_store(
     session_pid: u32,
     repository: &GitHubRepositoryRef,
     repository_name: &str,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let Some(record) = store.resume_candidate(repository_name, arguments.issue)? else {
-        emit_kv("RESUME_FOUND", "false");
-        return Ok(());
+        return Ok(kv_block(&[("RESUME_FOUND", "false")]));
     };
     let tmpdir = canonical_directory(&record.state.tmpdir, "run pointer tmpdir")?;
     if tmpdir != record.state.tmpdir {
@@ -1513,12 +1546,10 @@ fn resume_from_store(
             state.current_step = RunPointerStep::Select;
             state.transient_attempt_count = 0;
             record = store.update(&record, state)?;
-            emit_resume(&record, ResumeAction::Reselect, None, None);
-            return Ok(());
+            return Ok(resume_envelope(&record, ResumeAction::Reselect, None, None));
         }
         ResumeBgjobState::Live | ResumeBgjobState::Completed => {
-            emit_resume(&record, ResumeAction::Wait, None, None);
-            return Ok(());
+            return Ok(resume_envelope(&record, ResumeAction::Wait, None, None));
         }
         ResumeBgjobState::None => {}
     }
@@ -1553,13 +1584,33 @@ fn resume_from_store(
         ResumeAction::Wait => record.state.current_step,
     };
     record = store.update(&record, state)?;
-    emit_resume(
+    Ok(resume_envelope(
         &record,
         decision.action,
         child_result,
         decision.failure_reason,
-    );
-    Ok(())
+    ))
+}
+
+fn captured_resume(repository: String, issue: u64, claude_pid: u32) -> Result<String, String> {
+    resume_envelope_from_args(&ResumeArguments {
+        repository,
+        issue,
+        claude_pid: Some(claude_pid),
+        operator_invoked: true,
+    })
+}
+
+fn resume_envelope_from_args(arguments: &ResumeArguments) -> Result<String, String> {
+    let (session_pid, repository, repository_name) = validate_resume_arguments(arguments)?;
+    let store = RunPointerStore::live()?;
+    resume_from_store(
+        arguments,
+        &store,
+        session_pid,
+        &repository,
+        &repository_name,
+    )
 }
 
 fn decide_resume_recovery(
@@ -1904,54 +1955,58 @@ fn reset_resume_leaf_if_active(
     .map_err(ServiceFailure::into_detail)
 }
 
-fn emit_resume(
+fn resume_envelope(
     record: &RunPointerRecord,
     action: ResumeAction,
     child_result: Option<DurableChildResult>,
     failure_reason: Option<&str>,
-) {
-    emit_kv("RESUME_FOUND", "true");
-    emit_kv("RESUME_ACTION", action.value());
-    emit_kv(
-        "COMPLETE_UMBRELLA_TMPDIR",
-        &record.state.tmpdir.display().to_string(),
-    );
-    emit_kv(
-        "COMPLETE_UMBRELLA_POINTER",
-        &record.path.display().to_string(),
-    );
-    emit_kv("BGJOB_STEP", &record.state.bgjob_step);
-    emit_kv(
-        "CURRENT_LEAF",
-        &record.state.current_leaf.map_or(0, |leaf| leaf).to_string(),
-    );
-    emit_kv("CURRENT_STEP", record.state.current_step.value());
-    emit_kv(
-        "TRANSIENT_ATTEMPT_COUNT",
-        &record.state.transient_attempt_count.to_string(),
-    );
+) -> String {
+    let tmpdir = record.state.tmpdir.display().to_string();
+    let pointer = record.path.display().to_string();
+    let current_leaf = record.state.current_leaf.map_or(0, |leaf| leaf).to_string();
+    let transient = record.state.transient_attempt_count.to_string();
+    let mut rows: Vec<(&str, &str)> = vec![
+        ("RESUME_FOUND", "true"),
+        ("RESUME_ACTION", action.value()),
+        ("COMPLETE_UMBRELLA_TMPDIR", tmpdir.as_str()),
+        ("COMPLETE_UMBRELLA_POINTER", pointer.as_str()),
+        ("BGJOB_STEP", record.state.bgjob_step.as_str()),
+        ("CURRENT_LEAF", current_leaf.as_str()),
+        ("CURRENT_STEP", record.state.current_step.value()),
+        ("TRANSIENT_ATTEMPT_COUNT", transient.as_str()),
+    ];
     if let Some(result) = child_result {
-        emit_kv("CHILD_STATUS", result.status());
-        if let Some(class) = result.failure_class() {
-            emit_kv("CHILD_FAILURE_CLASS", class);
+        rows.push(("CHILD_STATUS", result.status()));
+        if let Some(failure_class) = result.failure_class() {
+            rows.push(("CHILD_FAILURE_CLASS", failure_class));
         }
     }
     if matches!(action, ResumeAction::NeedsDesign | ResumeAction::Failed) {
-        emit_kv(
+        rows.push((
             "NEXT_ACTION",
             if action == ResumeAction::NeedsDesign {
                 "needs-design"
             } else {
                 "failed"
             },
-        );
-        emit_kv("FAILED_STEP", "run-child");
-        emit_kv(
-            "FAILED_LEAF",
-            &record.state.current_leaf.map_or(0, |leaf| leaf).to_string(),
-        );
-        emit_kv("FAILURE_REASON", failure_reason.unwrap_or("resume failed"));
+        ));
+        rows.push(("FAILED_STEP", "run-child"));
+        rows.push(("FAILED_LEAF", current_leaf.as_str()));
+        rows.push(("FAILURE_REASON", failure_reason.unwrap_or("resume failed")));
     }
+    kv_block(&rows)
+}
+
+fn kv_block(rows: &[(&str, &str)]) -> String {
+    let mut output = String::new();
+    for (key, value) in rows {
+        assert!(
+            !key.contains(['\n', '\r']) && !value.contains(['\n', '\r']),
+            "complete-umbrella envelope value contains a line break"
+        );
+        let _ = writeln!(output, "{key}={value}");
+    }
+    output
 }
 
 fn clear_pointer(arguments: &ClearPointerArguments) -> Result<(), String> {

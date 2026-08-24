@@ -58,13 +58,13 @@ Parse `$ARGUMENTS` as exactly one positive integer, accepting an optional leadin
 
 ```bash
 LARCH_CLAUDE_PID="${LARCH_CLAUDE_PID:-${CLAUDE_PID:-$PPID}}" \
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" complete-umbrella bootstrap \
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" complete-umbrella bootstrap \
     --issue "$UMBRELLA" \
     --lifecycle-parent-context "${LIFECYCLE_PARENT_CONTEXT:-}" \
     --operator-invoked
 ```
 
-Do not redirect bootstrap stdout. The Python owner invokes every Rust-owned stage through `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`, writes the exact consolidated stdout block to `complete-umbrella-bootstrap.env` inside the session tmpdir, and keeps `model.env` as the diagnostic copy of a newly resolved model. Those files are diagnostic or resume state, never a second prompt-side parse surface.
+Do not redirect bootstrap stdout. The Rust owner starts the shared lifecycle, resolves the repository, asks the pointer owner to resume, creates and starts a fresh session only when no pointer exists, writes the exact consolidated stdout block to `complete-umbrella-bootstrap.env` inside the session tmpdir, and keeps `model.env` as the diagnostic copy of a newly resolved model. Those files are diagnostic or resume state, never a second prompt-side parse surface.
 
 On exit `0`, require `BOOTSTRAP_OK=true` and every shared lifecycle key, including non-empty `RUN_ID` and `CONTEXT_FILE`, `LIFECYCLE_STARTED=true`, `PREFLIGHT_OK=true`, and one valid enabled or disabled storage pair from the shared lifecycle contract. Require exact `REPO` syntax, `UMBRELLA_STARTED=true`, matching absolute `SESSION_TMPDIR` and `COMPLETE_UMBRELLA_TMPDIR`, a positive `COMPLETE_UMBRELLA_OWNER_PID`, and an absolute `COMPLETE_UMBRELLA_WRITE_SENTINEL`. Retain `COMPLETE_UMBRELLA_POINTER`.
 

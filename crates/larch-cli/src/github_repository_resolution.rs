@@ -367,6 +367,15 @@ pub fn resolve_remote_repo(
     })
 }
 
+/// Resolve `OWNER/REPO` from one explicit repository root for in-process callers.
+pub fn resolve_repo_from(root: &Path) -> Result<String, String> {
+    let repository = GixRepository::discover(root).ok();
+    resolve_repo_detailed(repository.as_ref(), query_github_repository)
+        .repo()
+        .map(str::to_owned)
+        .ok_or_else(|| RESOLVE_ERROR.to_owned())
+}
+
 /// Ambient repository discovery with service-first precedence and origin fallback.
 #[must_use]
 pub fn resolve_repo_detailed<F>(

@@ -202,6 +202,12 @@ def test_machine_stdout_keys_derived_from_registry() -> None:
     assert derived == cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
 
 
+def test_complete_umbrella_bootstrap_entrypoint_is_retired() -> None:
+    assert ("complete-umbrella", "bootstrap") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert ("complete-umbrella", "bootstrap") not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+    assert importlib.util.find_spec("larch.complete_umbrella") is None
+
+
 def test_rust_owned_design_commands_are_absent_from_python_registry() -> None:
     for key in (
         ("design", "prelude"),

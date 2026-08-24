@@ -148,6 +148,89 @@ pub fn setup(arguments: &[OsString]) -> ExitCode {
     }
 }
 
+/// Set up one skipped-preflight session for an in-process composer that owns stdout.
+#[must_use]
+pub fn setup_for_composer(prefix: &str) -> (u8, String, String) {
+    let options = SetupOptions {
+        prefix: prefix.to_owned(),
+        deny_edit_write: String::new(),
+        preflight: PreflightOptions {
+            skip: true,
+            skip_branch_check: true,
+        },
+        skip_repo_check: true,
+        reviewers: ReviewerOptions {
+            check: false,
+            skip_codex_probe: false,
+            skip_cursor_probe: false,
+        },
+        write_session_env: String::new(),
+        caller_env: String::new(),
+    };
+    let transfer = SetupTransfer::new();
+    let listener = match SetupSignalListener::install(transfer.clone()) {
+        Ok(listener) => listener,
+        Err(message) => {
+            return (1, String::new(), format!("session-setup.sh: {message}\n"));
+        }
+    };
+    match run_setup(&options, listener.cancellation()) {
+        Ok(pending) => captured_setup_success(pending, listener.cancellation(), &transfer),
+        Err(failure) => (failure.exit_code, failure.stdout, failure.stderr),
+    }
+}
+
+fn captured_setup_success(
+    pending: PendingSetup,
+    cancellation: &Cancellation,
+    transfer: &SetupTransfer,
+) -> (u8, String, String) {
+    let PendingSetup { result, session } = pending;
+    if let Err(failure) = test_setup_before_publication(&session, cancellation) {
+        let failure = session.discard(failure);
+        return (failure.exit_code, failure.stdout, failure.stderr);
+    }
+    if let Err(failure) = check_setup_cancellation(cancellation) {
+        let failure = session.discard(failure);
+        return (failure.exit_code, failure.stdout, failure.stderr);
+    }
+    let mut stdout = Vec::new();
+    if let Err(error) = write_setup_envelope(&result, &mut stdout) {
+        let failure = session.discard(SetupFailure {
+            exit_code: 1,
+            stdout: String::new(),
+            stderr: format!("session-setup.sh: failed to publish session setup: {error}\n"),
+        });
+        return (failure.exit_code, failure.stdout, failure.stderr);
+    }
+    if transfer.is_cancelled() {
+        let failure = session.discard(cancelled_setup_failure());
+        return (failure.exit_code, failure.stdout, failure.stderr);
+    }
+    if let Err(failure) = transfer.transfer() {
+        let failure = session.discard(failure);
+        return (failure.exit_code, failure.stdout, failure.stderr);
+    }
+    test_setup_after_transfer(&session, cancellation);
+    if let Err(failure) = session.commit_after_publication() {
+        // Publication already happened into `stdout`; keep that envelope so the
+        // in-process composer can preserve SESSION_TMPDIR the same way a
+        // subprocess capture of the CLI would.
+        return (
+            failure.exit_code,
+            String::from_utf8_lossy(&stdout).into_owned(),
+            failure.stderr,
+        );
+    }
+    let stdout = String::from_utf8_lossy(&stdout).into_owned();
+    let mut stderr = String::new();
+    for diagnostic in &result.diagnostics {
+        stderr.push_str(diagnostic);
+        stderr.push('\n');
+    }
+    (result.exit_code, stdout, stderr)
+}
+
 #[derive(Clone, Debug)]
 struct SetupOptions {
     prefix: String,
@@ -1086,6 +1169,11 @@ fn append_deny_edit_write_sentinel(
 /// refusing when both are unset or empty. The hook never consults a `/tmp`
 /// fallback root, so writing one there would silently skip enforcement.
 fn activate_deny_edit_write_sentinel(token: &str) -> Result<PathBuf, String> {
+    activate_named_write_sentinel(token, std::process::id())
+}
+
+/// Activate the scoped deny-edit-write sentinel using an explicit owner pid.
+pub fn activate_named_write_sentinel(token: &str, pid: u32) -> Result<PathBuf, String> {
     let cache_home = env::var("XDG_CACHE_HOME")
         .ok()
         .filter(|value| !value.is_empty())
@@ -1100,11 +1188,23 @@ fn activate_deny_edit_write_sentinel(token: &str) -> Result<PathBuf, String> {
             "failed to activate deny-edit-write sentinel: XDG_CACHE_HOME and HOME are unset"
                 .to_owned()
         })?;
+    activate_named_write_sentinel_in(&cache_home, token, pid)
+}
+
+/// Activate the scoped deny-edit-write sentinel under an explicit cache home.
+pub fn activate_named_write_sentinel_in(
+    cache_home: &Path,
+    token: &str,
+    pid: u32,
+) -> Result<PathBuf, String> {
+    if !DENY_EDIT_WRITE_TOKENS.contains(&token) {
+        return Err(format!("invalid deny-edit-write token: {token}"));
+    }
     let directory = cache_home.join("larch/deny-edit-write-active");
     ensure_directory_chain(&directory)
         .map_err(|error| format!("failed to activate deny-edit-write sentinel: {error}"))?;
     // The PID suffix is informational only; the hook matches `<token>-*`.
-    let sentinel = directory.join(format!("{token}-{}", std::process::id()));
+    let sentinel = directory.join(format!("{token}-{pid}"));
     write_confined_file(&sentinel, "", 0o600, "deny-edit-write activation sentinel")
         .map_err(|error| format!("failed to activate deny-edit-write sentinel: {error}"))?;
     Ok(sentinel)
