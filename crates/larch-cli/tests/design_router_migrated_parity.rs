@@ -432,16 +432,30 @@ fn init_runparams_cases() -> Vec<ParityCase> {
     ]
 }
 
-#[test]
-fn design_router_migrated_verbs_match_frozen_python_reference() {
+fn assert_cases(cases: impl IntoIterator<Item = ParityCase>) {
     let goldens = fixture_directory().join("goldens");
-    for case in parse_flags_cases()
-        .into_iter()
-        .chain(parse_flags_rejection_cases())
-        .chain(route_cases())
-        .chain(init_runparams_cases())
-    {
+    for case in cases {
         assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
+}
+
+#[test]
+fn design_parse_flags_matches_frozen_python_reference() {
+    assert_cases(parse_flags_cases());
+}
+
+#[test]
+fn design_parse_flags_rejections_match_frozen_python_reference() {
+    assert_cases(parse_flags_rejection_cases());
+}
+
+#[test]
+fn design_route_matches_frozen_python_reference() {
+    assert_cases(route_cases());
+}
+
+#[test]
+fn design_init_runparams_matches_frozen_python_reference() {
+    assert_cases(init_runparams_cases());
 }

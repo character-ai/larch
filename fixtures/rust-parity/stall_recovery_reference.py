@@ -855,6 +855,24 @@ def main() -> int:
         )
         print(f"FAILURE_CLASS={klass}\nCLASSIFIED_HINT={hint}\nPATTERN={pattern}")
         return 0
+    if verb == "classify-text-table":
+        header = ("name", "text", "bail", "step", "detail_valid", "exit_code", "implement")
+        cases = Path(opts.get("--cases", ""))
+        if not cases.is_file() or cases.is_symlink():
+            return 2
+        rows = cases.read_text(encoding="utf-8").splitlines()
+        if not rows or tuple(rows[0].split("\t")) != header:
+            return 2
+        for row in rows[1:]:
+            columns = row.split("\t")
+            if len(columns) != len(header) or columns[4] not in {"true", "false"} or columns[6] not in {"true", "false"}:
+                return 2
+            name, text, bail, step, detail, exit_code, implement = columns
+            klass, hint, pattern = classify_text(
+                text, bail, step, detail == "true", exit_code, implement == "true",
+            )
+            print(f"{name}\t{klass}\t{hint}\t{pattern}")
+        return 0
     if verb == "validate-token":
         token = opts.get("--token") or opts.get("--value", "")
         return emit("TOKEN_VALID", token_valid(token, opts.get("--token-kind", ""), opts.get("--profile") == "generic"))

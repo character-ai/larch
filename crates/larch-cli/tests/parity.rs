@@ -3606,19 +3606,23 @@ const STALL_RECOVERY_CASES: &[StallRecoveryFixture] = &[
 fn every_text_classifier_branch_matches_the_frozen_python_table() {
     let python = find_executable("python3");
     let fixture = fixture_directory().join("stall_recovery_reference.py");
-    for line in include_str!("../../../fixtures/rust-parity/stall-classifier-cases.tsv").lines().skip(1) {
+    let cases_path = fixture_directory().join("stall-classifier-cases.tsv");
+    let output = Command::new(&python)
+        .args([path_text(&fixture), "classify-text-table", "--cases", path_text(&cases_path)])
+        .output().expect("run frozen classifier table");
+    assert!(output.status.success(), "Python classifier table failed: {}", String::from_utf8_lossy(&output.stderr));
+    let python_output = String::from_utf8(output.stdout).expect("UTF-8");
+    let python_rows = python_output.lines().collect::<Vec<_>>();
+    let case_rows = include_str!("../../../fixtures/rust-parity/stall-classifier-cases.tsv").lines().skip(1).collect::<Vec<_>>();
+    assert_eq!(python_rows.len(), case_rows.len(), "Python classifier table row count");
+    for (line, python_row) in case_rows.into_iter().zip(python_rows) {
         let [name, text, bail, step, detail, exit, implement] = line.split('\t').collect::<Vec<_>>().try_into().expect("seven columns");
         let detail = detail == "true";
         let implement = implement == "true";
-        let output = Command::new(&python)
-            .args([path_text(&fixture), "classify-text", "--text", text, "--bail", bail, "--step", step,
-                "--detail-valid", if detail { "true" } else { "false" }, "--exit-code", exit,
-                "--implement", if implement { "true" } else { "false" }])
-            .output().expect("run frozen classifier");
-        assert!(output.status.success(), "Python classifier failed for {name}");
+        let [python_name, python_class, python_hint, python_pattern] = python_row.split('\t').collect::<Vec<_>>().try_into().expect("four Python columns");
+        assert_eq!(python_name, name, "classifier table case order");
         let result = classify_text(ClassifyTextInput { text, bail, step, detail_log_valid: detail, exit_code: exit, implement });
-        let expected = format!("FAILURE_CLASS={}\nCLASSIFIED_HINT={}\nPATTERN={}\n", result.failure_class, result.resume_hint, result.pattern);
-        assert_eq!(String::from_utf8(output.stdout).expect("UTF-8"), expected, "classifier parity case {name}");
+        assert_eq!((python_class, python_hint, python_pattern), (result.failure_class, result.resume_hint, result.pattern), "classifier parity case {name}");
     }
 }
 
@@ -9363,7 +9367,7 @@ fn hung_command_fails_at_the_case_boundary() {
     assert!(error.contains("timed out after 50ms"));
 }
 
-const CLEAN_INSTALL_PARTITION_COUNT: usize = 8;
+const CLEAN_INSTALL_PARTITION_COUNT: usize = 12;
 
 #[test]
 fn rust_owned_selector_matrix_partition_0_enters_through_verified_clean_install_script() {
@@ -9403,6 +9407,26 @@ fn rust_owned_selector_matrix_partition_6_enters_through_verified_clean_install_
 #[test]
 fn rust_owned_selector_matrix_partition_7_enters_through_verified_clean_install_script() {
     assert_clean_install_partition(7);
+}
+
+#[test]
+fn rust_owned_selector_matrix_partition_8_enters_through_verified_clean_install_script() {
+    assert_clean_install_partition(8);
+}
+
+#[test]
+fn rust_owned_selector_matrix_partition_9_enters_through_verified_clean_install_script() {
+    assert_clean_install_partition(9);
+}
+
+#[test]
+fn rust_owned_selector_matrix_partition_10_enters_through_verified_clean_install_script() {
+    assert_clean_install_partition(10);
+}
+
+#[test]
+fn rust_owned_selector_matrix_partition_11_enters_through_verified_clean_install_script() {
+    assert_clean_install_partition(11);
 }
 
 fn assert_clean_install_partition(partition: usize) {

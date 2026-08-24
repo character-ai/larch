@@ -771,8 +771,8 @@ coverage report.
 
 The remaining parallelization work keeps each independent Git differential
 family in its own test entrypoint without removing a success or failure case.
-The clean-install matrix uses four deterministic, isolated partitions;
-together they cover every route once.
+The clean-install matrix uses deterministic, isolated partitions that together
+cover every route once.
 
 Every coverage job publishes a compact `rust-coverage-timings-*` TSV artifact,
 a `rust-repository-policy-rule-timings-*` artifact, and a GitHub step summary.
