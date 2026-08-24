@@ -666,4 +666,4 @@ Agent-lint G010/G011 treat `scripts/agent-lint-script-inventory.txt` as their au
 
 `larch lint rule bg-wait-coverage` rejects `run_in_background: true` prose anywhere under `skills/**`. The allowlist is `crates/larch-lint/config/bg-wait-allowlist.txt`; new rows must carry a reason and should be treated as temporary debt.
 
-`make test-bgjob` runs `crates/larch-cli/tests/bgjob.rs`, a real-process harness for bgjob start, wait, cancelled wait, owner death, timeout, external daemon death, status, reap, and slug rejection. The commands are Rust-owned, so the harness is a standalone `cargo test` alias carved out of the `test-harnesses` shards and covered in CI by the coverage execution lane.
+`make test-bgjob` runs `crates/larch-cli/tests/bgjob.rs`, a real-process harness for bgjob start, wait, cancelled wait, owner death, timeout, external daemon death, status, reap, confined merge-result publication, and slug rejection. The commands are Rust-owned, so the harness is a standalone `cargo test` alias carved out of the `test-harnesses` shards and covered in CI by the coverage execution lane.

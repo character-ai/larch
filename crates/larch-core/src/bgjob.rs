@@ -1896,6 +1896,47 @@ pub fn private_atomic_write(path: &Path, text: &str, root: &Path) -> Result<(), 
     result
 }
 
+/// Atomically write caller-supplied rows to a session-confined merge envelope.
+///
+/// The destination parent is created when needed, matching the historical
+/// Step 3 writer. Keys and values remain line-oriented and the final file is
+/// private to the current user.
+///
+/// # Errors
+///
+/// Returns an error when the destination escapes `tmpdir`, any destination
+/// component is unsafe, a row could forge another record, or the write fails.
+pub fn write_merge_result_env(
+    path: &Path,
+    tmpdir: &Path,
+    rows: &[(String, String)],
+) -> Result<(), BgjobError> {
+    let root = checked_dir(tmpdir, "tmpdir", true)?;
+    if !path.is_absolute() {
+        return Err(BgjobError::Invalid(format!(
+            "merge result env must be absolute: {}",
+            path.display()
+        )));
+    }
+    let resolved = ensure_under(path, &root, "merge result env")?;
+    for (key, value) in rows {
+        if key.is_empty() || key.contains(['\n', '\r']) {
+            return Err(BgjobError::Invalid(format!(
+                "invalid merge result env key: {key:?}"
+            )));
+        }
+        let _ = reject_line_value(value, key)?;
+    }
+    let rendered = render_rows(rows)?;
+    let parent = resolved
+        .parent()
+        .ok_or_else(|| BgjobError::Invalid("merge result env has no parent".to_owned()))?;
+    let parent = ensure_under(parent, &root, "merge result env parent")?;
+    ensure_directory(&parent, "merge result env parent")?;
+    let destination = validate_merge_result_env(path, &root)?;
+    private_atomic_write(&destination, &rendered, &root)
+}
+
 fn liveness(host: &dyn ProcessIdentityHost, identity: &RecordedProcessIdentity) -> LivenessVerdict {
     let validation = validate_process_identity(host, identity);
     LivenessVerdict {
@@ -2371,7 +2412,7 @@ mod tests {
         temporary_path, unlink_entry, validate_initial_merge_rows, validate_merge_result_env,
         validate_parent_chain, validate_run_id, validate_slug, validate_terminal_stdout_key,
         validated_path, wait_lease_is_fresh, wait_lease_is_fresh_at, wait_lease_path,
-        write_entry_at,
+        write_entry_at, write_merge_result_env,
     };
     use crate::{
         IdentityProbeOutput, ProcessBirthIdentity, ProcessBirthIdentityProbeOutput,
@@ -3310,6 +3351,17 @@ mod tests {
         assert!(read_entry(&path).is_none());
         assert!(registry_path("current", "demo-step", Some(&registry)).is_err());
         assert!(registry_path("run-1", "bad/step", Some(&registry)).is_err());
+    }
+
+    #[test]
+    fn merge_result_writer_rejects_rows_before_creating_the_parent() {
+        let sandbox = tempfile::tempdir().expect("tempdir");
+        let parent = sandbox.path().join("missing-parent");
+        let destination = parent.join("merge.env");
+        let rows = [("STATUS".to_owned(), "bad\nvalue".to_owned())];
+
+        assert!(write_merge_result_env(&destination, sandbox.path(), &rows).is_err());
+        assert!(!parent.exists());
     }
 
     #[test]

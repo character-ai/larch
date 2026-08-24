@@ -16,7 +16,7 @@ use larch_core::{
 };
 use std::{
     fs,
-    os::unix::fs::symlink,
+    os::unix::fs::{PermissionsExt as _, symlink},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     thread::sleep,
@@ -290,6 +290,190 @@ fn wait_for_file(path: &Path, context: &str) {
         sleep(POLL);
     }
     panic!("timed out waiting for {context}: {}", path.display());
+}
+
+#[test]
+fn write_merge_result_env_writes_rows_and_copies_validated_source() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("writer");
+    let direct = tmpdir.join("nested/direct.env");
+    sandbox
+        .larch()
+        .args(["bgjob", "write-merge-result-env"])
+        .arg("--path")
+        .arg(&direct)
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args(["--row", "STATUS=done", "--row", "ROUND=3"])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr("");
+    assert_eq!(
+        fs::read_to_string(&direct).expect("direct merge env"),
+        "STATUS=done\nROUND=3\n"
+    );
+    assert_eq!(
+        fs::metadata(&direct)
+            .expect("direct merge metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+
+    let source = tmpdir.join("source.env");
+    fs::write(
+        &source,
+        "NEXT_ACTION=step3b\nSTATUS=old\nignored\nSTATUS=complete\nLOOP_STATUS=complete\n",
+    )
+    .expect("source env");
+    let copied = tmpdir.join("copied.env");
+    sandbox
+        .larch()
+        .args(["bgjob", "write-merge-result-env"])
+        .arg("--path")
+        .arg(&copied)
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .arg("--source")
+        .arg(&source)
+        .args([
+            "--require-key",
+            "NEXT_ACTION",
+            "--require-any-key",
+            "STEP3_REVIEW_LOOP_STATUS",
+            "--require-any-key",
+            "LOOP_STATUS",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        fs::read_to_string(copied).expect("copied merge env"),
+        "NEXT_ACTION=step3b\nSTATUS=complete\nLOOP_STATUS=complete\n"
+    );
+}
+
+#[test]
+fn write_merge_result_env_rejects_malformed_inputs_before_mutation() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("writer-rejections");
+    let destination = tmpdir.join("merge.env");
+    let source = tmpdir.join("source.env");
+
+    let invalid_parent = tmpdir.join("invalid-parent");
+    sandbox
+        .larch()
+        .args(["bgjob", "write-merge-result-env"])
+        .arg("--path")
+        .arg(invalid_parent.join("merge.env"))
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args(["--row", "STATUS=bad\nvalue"])
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains("invalid-row"));
+    assert!(!invalid_parent.exists());
+
+    fs::write(&source, "NEXT_ACTION=step3b\r\nLOOP_STATUS=complete\r\n")
+        .expect("CR source");
+    sandbox
+        .larch()
+        .args(["bgjob", "write-merge-result-env"])
+        .arg("--path")
+        .arg(&destination)
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .arg("--source")
+        .arg(&source)
+        .assert()
+        .code(1)
+        .stderr(predicates::str::contains("carriage return"));
+
+    fs::write(&source, "NEXT_ACTION=step3b\n").expect("incomplete source");
+    sandbox
+        .larch()
+        .args(["bgjob", "write-merge-result-env"])
+        .arg("--path")
+        .arg(&destination)
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .arg("--source")
+        .arg(&source)
+        .args(["--require-any-key", "LOOP_STATUS"])
+        .assert()
+        .code(1)
+        .stderr(predicates::str::contains("missing one of LOOP_STATUS"));
+}
+
+#[test]
+fn write_merge_result_env_rejects_unsafe_paths() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("writer-unsafe-paths");
+    let destination = tmpdir.join("merge.env");
+    let source = tmpdir.join("source.env");
+    fs::write(&source, "NEXT_ACTION=step3b\nLOOP_STATUS=complete\n")
+        .expect("safe source");
+    let source_link = tmpdir.join("source-link.env");
+    symlink(&source, &source_link).expect("source symlink");
+    sandbox
+        .larch()
+        .args(["bgjob", "write-merge-result-env"])
+        .arg("--path")
+        .arg(&destination)
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .arg("--source")
+        .arg(&source_link)
+        .assert()
+        .code(1);
+
+    let outside = sandbox.root.path().join("outside.env");
+    sandbox
+        .larch()
+        .args(["bgjob", "write-merge-result-env"])
+        .arg("--path")
+        .arg(&outside)
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args(["--row", "STATUS=bad"])
+        .assert()
+        .code(1);
+    assert!(!outside.exists());
+
+    let target = tmpdir.join("target.env");
+    fs::write(&target, "ORIGINAL=true\n").expect("symlink target");
+    symlink(&target, &destination).expect("destination symlink");
+    sandbox
+        .larch()
+        .args(["bgjob", "write-merge-result-env"])
+        .arg("--path")
+        .arg(&destination)
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args(["--row", "STATUS=bad"])
+        .assert()
+        .code(1);
+    assert_eq!(
+        fs::read_to_string(target).expect("untouched symlink target"),
+        "ORIGINAL=true\n"
+    );
+
+    let real_parent = tmpdir.join("real-parent");
+    fs::create_dir(&real_parent).expect("real parent");
+    let linked_parent = tmpdir.join("linked-parent");
+    symlink(&real_parent, &linked_parent).expect("parent symlink");
+    sandbox
+        .larch()
+        .args(["bgjob", "write-merge-result-env"])
+        .arg("--path")
+        .arg(linked_parent.join("merge.env"))
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args(["--row", "STATUS=bad"])
+        .assert()
+        .code(1);
+    assert!(!real_parent.join("merge.env").exists());
 }
 
 fn phase_process_pid(path: &Path) -> i32 {

@@ -18,7 +18,7 @@ Adapter-backed `/design` Step 3 launcher and plan-review child.
 - Requests `--clear-on-fresh` for `.completed/step-3`. A completed-result reattachment preserves the marker.
 - Accepts child mode only as the terminal `--bgjob-child --merge-result-env <path>` suffix. It preserves every earlier argv cell.
 - Keeps scope-anchor validation, `plan-review run`, stderr capture, and status normalization in the child.
-- Quarantines a prior compatibility sidecar during the child invocation. Only a fresh, complete `.step3-review-result.env` with `NEXT_ACTION` and a status row can publish atomically to the adapter merge path.
+- Quarantines a prior compatibility sidecar during the child invocation. Only a fresh, complete `.step3-review-result.env` with `NEXT_ACTION` and a status row can publish atomically to the adapter merge path through the Rust bgjob writer.
 - Missing scope, panel-init failure, pause routing, and normal normalization publish a complete routing envelope and exit zero. Envelope creation or publication failure exits non-zero.
 - The bgjob result env remains the prompt-side completion source. Continuation requires `BGJOB_RC=0` and route rows.
 

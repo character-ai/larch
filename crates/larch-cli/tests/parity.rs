@@ -1824,6 +1824,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-bgjob-start", "bgjob", "start"),
     CleanInstallCase::new("clean-install-bgjob-status", "bgjob", "status"),
     CleanInstallCase::new("clean-install-bgjob-wait", "bgjob", "wait"),
+    CleanInstallCase::new(
+        "clean-install-bgjob-write-merge-result-env",
+        "bgjob",
+        "write-merge-result-env",
+    ),
     CleanInstallCase::new("clean-install-kv-get", "kv", "get"),
     CleanInstallCase::new(
         "clean-install-session-cleanup-tmpdir",

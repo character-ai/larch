@@ -1188,6 +1188,20 @@ migration_issue = 8063
 clean_install_test = "clean-install-bgjob-wait"
 
 [[commands]]
+domain = "bgjob"
+verb = "write-merge-result-env"
+python_module = "larch.bgjob.registry"
+python_function = "write_merge_result_env"
+machine_stdout = false
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7686
+migration_issue = 8898
+clean_install_test = "clean-install-bgjob-write-merge-result-env"
+
+[[commands]]
 domain = "block-issue"
 verb = "add-blocked-by"
 python_module = "larch.issue.issue_block"
@@ -9785,7 +9799,7 @@ rust = ["bgjob adapt"]
 path = "skills/design/scripts/design-step3-review.sh"
 kind = "skill"
 python = []
-rust = ["bgjob adapt", "design pause-save", "plan-review normalize-status", "plan-review prelaunch-failure", "plan-review run", "scope-anchor validate", "session require-plugin-root", "session validate-design-tmpdir"]
+rust = ["bgjob adapt", "bgjob write-merge-result-env", "design pause-save", "plan-review normalize-status", "plan-review prelaunch-failure", "plan-review run", "scope-anchor validate", "session require-plugin-root", "session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/design/scripts/design-step35.sh"
@@ -9797,7 +9811,7 @@ rust = ["design pause-save", "session require-plugin-root", "timing mark"]
 path = "skills/design/scripts/design-step3b-tail.sh"
 kind = "skill"
 python = []
-rust = ["bgjob adapt", "design dialectic-gatec", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview", "session validate-design-tmpdir", "timing mark"]
+rust = ["bgjob adapt", "bgjob write-merge-result-env", "design dialectic-gatec", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview", "session validate-design-tmpdir", "timing mark"]
 
 [[callers]]
 path = "skills/design/scripts/design-step5b-annotate.md"

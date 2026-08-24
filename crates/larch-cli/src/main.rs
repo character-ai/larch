@@ -686,6 +686,9 @@ enum BgjobCommand {
     /// Remove finished, unreadable, and expired registry entries.
     #[command(disable_help_flag = true)]
     Reap(RawCompatibilityArguments),
+    /// Write a confined child-to-daemon merge-result envelope.
+    #[command(name = "write-merge-result-env", disable_help_flag = true)]
+    WriteMergeResultEnv(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2838,6 +2841,9 @@ fn run(
         }
         Domain::Bgjob(BgjobCommand::Reap(arguments)) => {
             Ok(bgjob_commands::reap(&arguments.arguments))
+        }
+        Domain::Bgjob(BgjobCommand::WriteMergeResultEnv(arguments)) => {
+            Ok(bgjob_commands::write_merge_result_env(&arguments.arguments))
         }
         Domain::Clarify(command) => Ok(command.run()),
         Domain::Cleanup(CleanupCommand::Run(arguments)) => {

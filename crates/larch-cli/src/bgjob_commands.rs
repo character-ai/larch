@@ -1,4 +1,4 @@
-//! Rust-owned background-job daemon start, wait, status, and reap.
+//! Rust-owned background-job daemon lifecycle and merge-result publication.
 //!
 //! `start` validates its request, then re-executes this same binary as a
 //! detached supervisor. The supervisor directly reaps a gated daemon monitor;
@@ -22,20 +22,21 @@ use larch_core::{
     BGJOB_STATUS_WAIT, BGJOB_STDERR_TAIL_KEY, BGJOB_STDOUT_TAIL_KEY, BGJOB_WAIT_DEFAULT_CHUNK_S,
     BGJOB_WAIT_HARD_DEADLINE_GRACE_S, BGJOB_WAIT_LEASE_TTL_S, BGJOB_WAIT_MAX_CHUNK_S, BgjobError,
     DaemonStatus, DaemonTermination, ENV_BGJOB_CAFFEINATE, JobSpec, MonitorLivenessState,
-    OwnerIdentity, ProcessBirthIdentity, ProcessIdentityHost, ProcessIdentityValidationPolicy,
-    RecordedProcessIdentity, RegistryEntry, ValidationResult, bgjob_dir, check_monitor_liveness,
-    checked_dir, child_liveness, clear_completion_residue, collect_process_group_members_checked,
-    confirm_process_group_absent, daemon_liveness, daemon_poll_interval_s, daemon_status_path,
-    daemon_status_rows, ensure_under, epoch_now, finish_completion_transaction, iter_entries,
-    log_paths, log_tail_bytes, merge_rows, ordered_rows, orphan_diagnostic, owner_grace_s,
-    owner_pid_candidate, parse_daemon_status, phase_barrier, prepare_completion_transaction,
-    private_atomic_write, read_confined_regular_tail, read_confined_result_env, read_entry,
-    read_for, read_merge_result_env, read_process_identity, refresh_wait_lease, registry_path,
-    render_rows, resolve_run_id, result_env_path, result_rows, startup_ack_timeout_s,
-    startup_env_path, startup_in_progress, startup_rows,
-    terminate_validated_process_group_with_policy, unlink_entry, validate_merge_result_env,
-    validate_run_id, validate_slug, validate_terminal_stdout_key, validate_timing_overrides,
-    wait_lease_is_fresh_at, worker_status_path, write_entry, write_entry_at,
+    OwnerIdentity, ParseOptions, ProcessBirthIdentity, ProcessIdentityHost,
+    ProcessIdentityValidationPolicy, RecordedProcessIdentity, RegistryEntry, ValidationResult,
+    bgjob_dir, check_monitor_liveness, checked_dir, child_liveness, clear_completion_residue,
+    collect_process_group_members_checked, confirm_process_group_absent, daemon_liveness,
+    daemon_poll_interval_s, daemon_status_path, daemon_status_rows, ensure_under, epoch_now,
+    finish_completion_transaction, iter_entries, log_paths, log_tail_bytes, merge_rows,
+    ordered_rows, orphan_diagnostic, owner_grace_s, owner_pid_candidate, parse_daemon_status,
+    parse_single_kv_row, phase_barrier, prepare_completion_transaction, private_atomic_write,
+    read_confined_regular_tail, read_confined_result_env, read_entry, read_for,
+    read_merge_result_env, read_process_identity, refresh_wait_lease, registry_path, render_rows,
+    resolve_run_id, result_env_path, result_rows, startup_ack_timeout_s, startup_env_path,
+    startup_in_progress, startup_rows, terminate_validated_process_group_with_policy, unlink_entry,
+    validate_merge_result_env, validate_run_id, validate_slug, validate_terminal_stdout_key,
+    validate_timing_overrides, wait_lease_is_fresh_at, worker_status_path, write_entry,
+    write_entry_at, write_merge_result_env as write_merge_result_env_file,
 };
 use nix::{
     sys::signal::{Signal, killpg},
@@ -131,6 +132,16 @@ struct WaitArguments {
     poll_interval_s: f64,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct WriteMergeResultEnvArguments {
+    path: String,
+    tmpdir: String,
+    source: String,
+    rows: Vec<(String, String)>,
+    required_keys: Vec<String>,
+    required_any_keys: Vec<String>,
+}
+
 impl Default for WaitArguments {
     fn default() -> Self {
         Self {
@@ -201,6 +212,69 @@ pub fn wait(arguments: &[OsString]) -> ExitCode {
         }
         Err(message) => error(&message),
     }
+}
+
+/// Write or copy one session-confined merge-result envelope.
+#[must_use]
+pub fn write_merge_result_env(arguments: &[OsString]) -> ExitCode {
+    if requests_help(arguments) {
+        return help(
+            "usage: bgjob write-merge-result-env --path PATH --tmpdir DIR (--row KEY=VALUE ... | --source PATH [--require-key KEY ...] [--require-any-key KEY ...])",
+        );
+    }
+    let parsed = match parse_write_merge_result_env(arguments) {
+        Ok(parsed) => parsed,
+        Err(detail) => return write_merge_result_env_error(detail, 2),
+    };
+    match write_merge_result_env_body(&parsed) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => write_merge_result_env_error(&one_line(&error), 1),
+    }
+}
+
+fn write_merge_result_env_body(arguments: &WriteMergeResultEnvArguments) -> Result<(), BgjobError> {
+    let tmpdir = checked_dir(Path::new(&arguments.tmpdir), "tmpdir", true)?;
+    let rows = if arguments.source.is_empty() {
+        arguments.rows.clone()
+    } else {
+        let source = validate_merge_result_env(Path::new(&arguments.source), &tmpdir)?;
+        let (bytes, _) = read_confined_regular_tail(
+            &source,
+            &tmpdir,
+            u64::MAX,
+            "merge result source is unsafe",
+        )?;
+        if bytes.contains(&b'\r') {
+            return Err(BgjobError::Invalid(
+                "merge result source contains a carriage return".to_owned(),
+            ));
+        }
+        let text = String::from_utf8_lossy(&bytes);
+        let rows = ordered_rows(&text);
+        for key in &arguments.required_keys {
+            if !rows
+                .iter()
+                .any(|(candidate, value)| candidate == key && !value.is_empty())
+            {
+                return Err(BgjobError::Invalid(format!(
+                    "merge result source is missing {key}"
+                )));
+            }
+        }
+        if !arguments.required_any_keys.is_empty()
+            && !arguments.required_any_keys.iter().any(|key| {
+                rows.iter()
+                    .any(|(candidate, value)| candidate == key && !value.is_empty())
+            })
+        {
+            return Err(BgjobError::Invalid(format!(
+                "merge result source is missing one of {}",
+                arguments.required_any_keys.join(", ")
+            )));
+        }
+        rows
+    };
+    write_merge_result_env_file(Path::new(&arguments.path), &tmpdir, rows.as_slice())
 }
 
 /// Print one row per durable registry entry with its child liveness.
@@ -600,6 +674,11 @@ fn error(detail: &str) -> ExitCode {
     ExitCode::from(2)
 }
 
+fn write_merge_result_env_error(detail: &str, code: u8) -> ExitCode {
+    eprintln!("bgjob write-merge-result-env: {detail}");
+    ExitCode::from(code)
+}
+
 fn parse_start(arguments: &[OsString]) -> Result<StartArguments, &'static str> {
     let values = utf8_arguments(arguments, "invalid-argument-encoding")?;
     let mut parsed = StartArguments::default();
@@ -725,6 +804,68 @@ fn parse_wait(arguments: &[OsString]) -> Result<WaitArguments, &'static str> {
     }
     if parsed.tmpdir.is_empty() {
         return Err("missing-tmpdir");
+    }
+    Ok(parsed)
+}
+
+fn parse_write_merge_result_env(
+    arguments: &[OsString],
+) -> Result<WriteMergeResultEnvArguments, &'static str> {
+    let values = utf8_arguments(arguments, "invalid-argument-encoding")?;
+    let mut parsed = WriteMergeResultEnvArguments::default();
+    let mut index = 0;
+    while index < values.len() {
+        let (name, inline) = split_inline_option(&values[index]);
+        match name {
+            "--path" => {
+                parsed.path =
+                    take_option_value(&values, &mut index, inline, "missing-option-argument")?;
+            }
+            "--tmpdir" => {
+                parsed.tmpdir =
+                    take_option_value(&values, &mut index, inline, "missing-option-argument")?;
+            }
+            "--source" => {
+                parsed.source =
+                    take_option_value(&values, &mut index, inline, "missing-option-argument")?;
+            }
+            "--row" => {
+                let raw =
+                    take_option_value(&values, &mut index, inline, "missing-option-argument")?;
+                let row = parse_single_kv_row(&raw, ParseOptions::legacy()).ok_or("invalid-row")?;
+                parsed
+                    .rows
+                    .push((row.key().to_owned(), row.value().to_owned()));
+            }
+            "--require-key" => parsed.required_keys.push(take_option_value(
+                &values,
+                &mut index,
+                inline,
+                "missing-option-argument",
+            )?),
+            "--require-any-key" => parsed.required_any_keys.push(take_option_value(
+                &values,
+                &mut index,
+                inline,
+                "missing-option-argument",
+            )?),
+            _ => return Err("unrecognized-argument"),
+        }
+        index += 1;
+    }
+    if parsed.path.is_empty() {
+        return Err("missing-path");
+    }
+    if parsed.tmpdir.is_empty() {
+        return Err("missing-tmpdir");
+    }
+    if parsed.source.is_empty() == parsed.rows.is_empty() {
+        return Err("require-exactly-one-of-source-or-row");
+    }
+    if parsed.source.is_empty()
+        && (!parsed.required_keys.is_empty() || !parsed.required_any_keys.is_empty())
+    {
+        return Err("source-requirement-without-source");
     }
     Ok(parsed)
 }
@@ -1770,9 +1911,9 @@ mod tests {
     use super::{
         CAFFEINATE_PATH, MIN_POLL_SLEEP, StartArguments, WaitArguments, daemon_arguments,
         dead_rows, done_rows, finish_start, inherited_owner, one_line, open_verified_log,
-        owner_from_rows, owner_rows, parse_start, parse_wait, poll_sleep, read_completed_result,
-        read_merge_text, read_result, remove_result_residue, wait_rows, wall_epoch,
-        worker_command_for, write_result,
+        owner_from_rows, owner_rows, parse_start, parse_wait, parse_write_merge_result_env,
+        poll_sleep, read_completed_result, read_merge_text, read_result, remove_result_residue,
+        wait_rows, wall_epoch, worker_command_for, write_result,
     };
     use larch_core::{
         BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BGJOB_WAIT_DEFAULT_CHUNK_S, BGJOB_WAIT_MAX_CHUNK_S,
@@ -1903,6 +2044,62 @@ mod tests {
             })
             .map_or_else(ToOwned::to_owned, |parsed| parsed.tmpdir),
             std::env::var("IMPLEMENT_TMPDIR").unwrap_or_else(|_| "missing-tmpdir".to_owned())
+        );
+    }
+
+    #[test]
+    fn merge_result_writer_arguments_require_one_input_mode() {
+        let rows = parse_write_merge_result_env(&arguments(&[
+            "--path",
+            "/tmp/session/result.env",
+            "--tmpdir=/tmp/session",
+            "--row",
+            "STATUS=complete=final",
+        ]))
+        .expect("row arguments");
+        assert_eq!(
+            rows.rows,
+            [("STATUS".to_owned(), "complete=final".to_owned())]
+        );
+
+        let source = parse_write_merge_result_env(&arguments(&[
+            "--path=/tmp/session/result.env",
+            "--tmpdir",
+            "/tmp/session",
+            "--source",
+            "/tmp/session/source.env",
+            "--require-key",
+            "NEXT_ACTION",
+            "--require-any-key",
+            "LOOP_STATUS",
+        ]))
+        .expect("source arguments");
+        assert_eq!(source.required_keys, ["NEXT_ACTION"]);
+        assert_eq!(source.required_any_keys, ["LOOP_STATUS"]);
+
+        assert_eq!(
+            parse_write_merge_result_env(&arguments(&[
+                "--path",
+                "/tmp/session/result.env",
+                "--tmpdir",
+                "/tmp/session",
+            ]))
+            .expect_err("missing input mode"),
+            "require-exactly-one-of-source-or-row"
+        );
+        assert_eq!(
+            parse_write_merge_result_env(&arguments(&[
+                "--path",
+                "/tmp/session/result.env",
+                "--tmpdir",
+                "/tmp/session",
+                "--row",
+                "STATUS=done",
+                "--source",
+                "/tmp/session/source.env",
+            ]))
+            .expect_err("conflicting input modes"),
+            "require-exactly-one-of-source-or-row"
         );
     }
 

@@ -441,8 +441,9 @@ same-user authentication boundary. Implement-tempdir routing likewise accepts
 only direct non-symlinked candidates with non-symlinked sentinel and keepalive
 components beneath an approved root.
 
-Rust owns every bgjob command: durable registry records, `bgjob adapt`, and the
-daemon `start`, `wait`, `status`, and `reap` surfaces
+Rust owns every bgjob command: durable registry records, `bgjob adapt`, the
+daemon `start`, `wait`, `status`, and `reap` surfaces, and
+`bgjob write-merge-result-env`
 (`crates/larch-core/src/bgjob.rs`, `crates/larch-core/src/bgjob_daemon.rs`,
 `crates/larch-cli/src/bgjob_adapt.rs`, and
 `crates/larch-cli/src/bgjob_commands.rs`). The adapter confines its state files
@@ -454,6 +455,14 @@ it can reap the monitor and atomically record either its exit code or terminatin
 signal. A DEAD recovery consumes the status only when its PID matches the daemon
 identity in the registry row. A missing or mismatched sidecar grants no process
 claim and yields empty termination fields.
+
+The merge-result writer accepts explicit rows or copies one confined regular
+source envelope. It rejects carriage returns, multiline keys and values,
+symlinked or non-regular inputs and destinations, paths outside the caller's
+validated session tmpdir, and missing routing keys requested by the caller.
+Publication creates a confined parent when needed and uses the shared no-follow
+atomic writer with mode `0600`. The Step 3 copy path preserves first-key order
+and the last value for duplicates, matching the retired Python reader.
 
 The daemon monitor binds the owner's recorded process identity, never a bare
 pid, so a reused pid never keeps an orphaned job alive (#6604). It terminates a

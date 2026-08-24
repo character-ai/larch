@@ -15,7 +15,7 @@ Adapter-backed `/design` Step 4 rejected-findings and Gate C preview tail.
 - Accepts child mode only as the terminal `--bgjob-child --merge-result-env <path>` suffix.
 - Ordinary duplicate calls reattach a valid completed result when the input fingerprint matches. When `.step3-review-result.env` is present, the wrapper passes its sha256 as `--input-fingerprint` to `bgjob adapt`; a fingerprint mismatch (or no stored sidecar for a prior result) is treated as stale and launches fresh. The wrapper does not inspect registry liveness or delete lifecycle artifacts.
 - Keeps FINALIZE, rejected-finding rendering, Gate C, preview generation, and completion markers in child mode.
-- Atomically publishes `STEP4_STATUS`, `SKIP_APPROVE_REQUESTED_GATEC`, rejected-body paths, preview paths, and an optional dialectic digest to the adapter merge env.
+- Atomically publishes `STEP4_STATUS`, `SKIP_APPROVE_REQUESTED_GATEC`, rejected-body paths, preview paths, and an optional dialectic digest to the adapter merge env through the Rust bgjob writer.
 - A pause race runs pause-save, publishes `STEP4_STATUS=pause-save`, and exits zero. Publication failure exits non-zero.
 
 ## Harness
