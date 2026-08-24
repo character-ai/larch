@@ -79,6 +79,22 @@ fn python_verify_request(balance_threshold: f64) -> String {
     )
 }
 
+const RUST_MONOLITHIC_TIMING: &str = r#"{"schema_version":2,"kind":"rust-jobs","sampled_run_ids":[11,12],"rows":[{"run_id":11,"shard":1,"seconds":711.0},{"run_id":12,"shard":1,"seconds":693.0}],"shard_medians":[{"shard":1,"seconds":702.0}],"skipped_run_ids":[]}"#;
+
+const RUST_FOUR_SHARD_TIMING: &str = r#"{"schema_version":2,"kind":"rust-jobs","sampled_run_ids":[21,22],"rows":[{"run_id":21,"shard":1,"seconds":563.0},{"run_id":21,"shard":2,"seconds":431.0},{"run_id":21,"shard":3,"seconds":428.0},{"run_id":21,"shard":4,"seconds":425.0},{"run_id":22,"shard":1,"seconds":557.0},{"run_id":22,"shard":2,"seconds":435.0},{"run_id":22,"shard":3,"seconds":430.0},{"run_id":22,"shard":4,"seconds":427.0}],"shard_medians":[{"shard":1,"seconds":560.0},{"shard":2,"seconds":433.0},{"shard":3,"seconds":429.0},{"shard":4,"seconds":426.0}],"skipped_run_ids":[]}"#;
+
+fn rust_plan_request(target_shards: u32) -> String {
+    format!(
+        r#"{{"schema_version":1,"kind":"plan","selection":"rust","options":{{"max_shard_wall_clock":300.0,"max_rust_shard_wall_clock":600.0,"balance_threshold":15.0,"n_python_shards":null,"n_rust_shards":{target_shards},"experimental_wall_clock_override":null,"compile_affinities":[]}},"harness":null,"python":null,"rust":{{"expected_run_ids":[11,12],"current_shard_count":1,"timing":{RUST_MONOLITHIC_TIMING}}}}}"#
+    )
+}
+
+fn rust_verify_request(timing: &str) -> String {
+    format!(
+        r#"{{"schema_version":1,"kind":"verify","selection":"rust","options":{{"max_shard_wall_clock":300.0,"max_rust_shard_wall_clock":600.0,"balance_threshold":15.0,"experimental_wall_clock_override":null}},"harness":null,"python":null,"rust":{{"expected_run_ids":[21,22],"expected_shard_count":4,"baseline_shard_count":1,"baseline_slowest_wall_clock":702.0,"approved_slowest_wall_clock":600.0,"timing":{timing}}}}}"#
+    )
+}
+
 #[test]
 fn plan_noop_fixture_is_byte_stable_at_the_threshold_boundary() {
     let request = harness_plan_request(136.0, "null");
@@ -96,6 +112,7 @@ fn plan_noop_fixture_is_byte_stable_at_the_threshold_boundary() {
     );
     assert_eq!(result["decision"], "noop");
     assert_eq!(result["harness"]["is_noop"], true);
+    assert!(result.get("rust").is_none());
 }
 
 #[test]
@@ -143,6 +160,71 @@ fn plan_allows_an_explicit_python_matrix_resize() {
         output["python"]["assignments"],
         serde_json::json!({"fast": 3, "medium": 2, "slow": 1})
     );
+}
+
+#[test]
+fn plan_and_verify_support_an_explicit_rust_coverage_resize() {
+    let planned = result("plan", &rust_plan_request(4), true);
+    assert_eq!(planned["decision"], "change");
+    assert_eq!(planned["rust"]["current_shard_count"], 1);
+    assert_eq!(planned["rust"]["shard_count"], 4);
+    assert_eq!(planned["rust"]["baseline_slowest_wall_clock"], 702.0);
+    assert_eq!(planned["rust"]["approved_slowest_wall_clock"], 600.0);
+
+    let verified = result(
+        "verify",
+        &rust_verify_request(RUST_FOUR_SHARD_TIMING),
+        true,
+    );
+    assert_eq!(verified["outcome"], "passed");
+    assert_eq!(verified["rust"]["observed_slowest_wall_clock"], 560.0);
+}
+
+#[test]
+fn an_over_budget_unchanged_leg_rejects_a_multi_leg_change() {
+    let mut request: Value = serde_json::from_str(&harness_plan_request(136.0, "null"))
+        .expect("valid harness request");
+    let python: Value =
+        serde_json::from_str(&python_plan_request("{}")).expect("valid Python request");
+    let rust: Value = serde_json::from_str(&rust_plan_request(1)).expect("valid Rust request");
+    request["selection"] = Value::String("all".to_owned());
+    request["python"] = python["python"].clone();
+    request["rust"] = rust["rust"].clone();
+
+    let rejected = result(
+        "plan",
+        &serde_json::to_string(&request).expect("render all-leg request"),
+        false,
+    );
+
+    assert_eq!(rejected["decision"], "rejected");
+    assert!(rejected["violations"].as_array().is_some_and(|violations| {
+        violations.iter().any(|violation| {
+            violation
+                == "baseline measured slowest Rust coverage shard 702.0s exceeds max_rust_shard_wall_clock 600.0s"
+        })
+    }));
+}
+
+#[test]
+fn rust_coverage_verification_rejects_incomplete_or_slow_cohorts() {
+    let incomplete = RUST_FOUR_SHARD_TIMING.replacen(
+        r#",{"run_id":22,"shard":4,"seconds":427.0}"#,
+        "",
+        1,
+    );
+    invalid(
+        "verify",
+        &rust_verify_request(&incomplete),
+        "missing or duplicate Rust coverage shard rows",
+    );
+
+    let slow = RUST_FOUR_SHARD_TIMING
+        .replace("\"seconds\":563.0", "\"seconds\":640.0")
+        .replace("\"shard\":1,\"seconds\":560.0", "\"shard\":1,\"seconds\":601.0");
+    let rejected = result("verify", &rust_verify_request(&slow), false);
+    assert_eq!(rejected["outcome"], "rejected");
+    assert_eq!(rejected["rust"]["observed_slowest_wall_clock"], 601.0);
 }
 
 #[test]
@@ -218,6 +300,7 @@ fn verify_reports_pass_rejection_and_experimental_override_without_mutation() {
     );
     assert_eq!(passed_json["outcome"], "passed");
     assert_eq!(passed_json["harness"]["observed_slowest_wall_clock"], 136.0);
+    assert!(passed_json.get("rust").is_none());
 
     let rejected_json = result(
         "verify",

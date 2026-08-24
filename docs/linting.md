@@ -317,6 +317,21 @@ count changes, it also rewrites the CI matrix, visible shard total, and
 Python verification fails closed when verification logs contain zero parseable
 rows, do not cover every expected shard, or exceed `--balance-threshold`.
 
+For full Rust coverage shards, use the same dev skill with an explicit target
+count:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" rebalance-tests run --kind rust --n-rust-shards 4
+```
+
+Rust mode reads complete jobs-API cohorts for the configured
+`rust-full-shards` matrix. The legacy monolithic `rust-full` job is a valid
+one-shard baseline. A resize updates the matrix, producer count, and merged
+coverage-gate count in one atomic workflow write. Verification requires every
+expected shard in every dispatched run, then rejects a slowest shard above the
+approved baseline cap or `--max-rust-shard-wall-clock` (default 600s). Missing,
+skipped, duplicate, or incomplete job rows stop the workflow.
+
 Before any write, branch, or PR, the unified pre-write gate runs in memory.
 Python work rejects empty timing rows, dedupes retried shard attempts before
 medians, and requires observed timing to match the configured `python-tests`
@@ -353,8 +368,9 @@ Cargo and pytest commands before changing the rebalance contract.
 atomic-write, and repository-state workflow. `larch rebalance-tests plan` and
 `larch rebalance-tests verify` remain its versioned pure JSON decision core.
 They consume already-collected Rust CI-timing reports and reuse the Rust shard
-packer. They do not inspect or rewrite `Makefile` or
-`python/shard-assignments.json`, make Git or GitHub calls, or dispatch CI. See
+packer. They do not inspect or rewrite `Makefile`,
+`python/shard-assignments.json`, or `.github/workflows/ci.yaml`, make Git or
+GitHub calls, or dispatch CI. See
 `.claude/skills/rebalance-tests/scripts/rebalance.md` for the exact contract.
 
 **Harness timing formats.** The Makefile's `HARNESS_MARK` invokes the
@@ -411,9 +427,9 @@ required context is source-bound to the GitHub Actions integration (`15368`):
 - `python-tests-gate`
 
 Do not require a matrix leg or a conditional implementation detail. In
-particular, `rust-selection`, `rust-lint`, `rust-deny`, `rust-full`,
-`rust-partial`, and `rust-skip` are inputs to the stable Rust aggregates, not
-proof that every required Rust obligation ran.
+particular, `rust-selection`, `rust-lint`, `rust-deny`,
+`rust-full-shards`, `rust-full`, `rust-partial`, and `rust-skip` are inputs to
+the stable Rust aggregates, not proof that every required Rust obligation ran.
 
 The ruleset requires a merge queue with `ALLGREEN`, a 60-minute check-response
 timeout, `max_entries_to_build=1`, `max_entries_to_merge=1`,

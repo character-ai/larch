@@ -736,6 +736,14 @@ impl WorkflowJob {
             .strip_suffix(')')?;
         shard.parse().ok()
     }
+
+    #[must_use]
+    pub fn rust_coverage_shard(&self) -> Option<u32> {
+        if self.name == "rust-full" {
+            return Some(1);
+        }
+        self.name.strip_prefix("rust-full shard ")?.parse().ok()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

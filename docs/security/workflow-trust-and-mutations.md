@@ -583,7 +583,8 @@ final-SHA, event, workflow, producer, or ambiguity verification.
 
 For an expensive Rust cache miss, the publisher treats a merge-group artifact
 as untrusted input. It requires exactly one successful `CI` merge-group run for
-the final `main` SHA and successful named producer jobs, then verifies the
+the final `main` SHA, the `rust-full` aggregate, and the named
+`rust-full shard 1` and `rust-lint` producers, then verifies the
 candidate manifest, source SHA, canonical key and key-input digest, byte bound,
 regular-file tree, checksums, modes, bounded nanosecond modification times,
 artifact identity, and declared tool versions before saving. It restores and
@@ -673,10 +674,12 @@ fields. The structured result preserves the classifier proposal and adds the
 effective execution mode, reason, rollout state, and observation flag after
 cache validation and any safe override; it is an artifact for audit, not an
 authorization token. The stable required `rust-coverage` status accepts only
-one successful producer (`rust-full`, `rust-partial`, or `rust-skip`). An
-unavailable selector requires the full producer, which must succeed before the
-stable status can pass. Main, manual, scheduled, merge-queue, and unknown
-events continue to run the full lane. The `full-rust-ci` label is a
+one successful mode result (`rust-full`, `rust-partial`, or `rust-skip`). The
+full result requires every `rust-full-shards` matrix cell, an exact-count LCOV
+merge, and the combined line gate. An unavailable selector requires that full
+result, which must succeed before the stable status can pass. Main, manual,
+scheduled, merge-queue, and unknown events continue to run the full lane. The
+`full-rust-ci` label is a
 safe pull-request override because it can only force that same full path.
 
 ### Design

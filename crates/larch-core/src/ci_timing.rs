@@ -21,6 +21,7 @@ const MAX_TIMING_REPORT_ROWS: usize = 100_000;
 const HARNESS_KIND: &str = "harness";
 const PYTEST_KIND: &str = "pytest";
 const JOBS_KIND: &str = "jobs";
+const RUST_JOBS_KIND: &str = "rust-jobs";
 const HARNESS_SENTINEL: &str = "LARCH_HARNESS_TIMING\t";
 const HARNESS_BOOTSTRAP_SENTINEL: &str = "LARCH_HARNESS_BOOTSTRAP\t";
 
@@ -57,7 +58,7 @@ pub const MAX_CI_TIMING_RUNS: usize = 20;
 /// Maximum required harness targets accepted by one CI timing operation.
 pub const MAX_CI_TIMING_REQUIRED_TARGETS: usize = 4_096;
 
-/// Run selection shared by the harness and pytest collectors.
+/// Run selection shared by the harness, pytest, and Rust-job collectors.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CiTimingRunSelection {
     /// Fetch recent successful runs with the legacy branch and workflow filters.
@@ -303,6 +304,62 @@ pub async fn collect_job_timing(
     run_ids: &[u64],
     cancellation: &dyn ProcessCancellation,
 ) -> Result<JobTimingReport, GitHubActionsError> {
+    collect_job_timing_for(
+        service,
+        repository,
+        run_ids,
+        JobTimingKind::Harness,
+        cancellation,
+    )
+    .await
+}
+
+/// Fetch and aggregate Rust coverage shard wall-clock durations.
+///
+/// # Errors
+///
+/// Returns a typed GitHub Actions error when run discovery is unavailable or
+/// the operation is cancelled. Individual unreadable or ambiguous jobs
+/// responses are reported in `skipped_run_ids`.
+pub async fn collect_rust_coverage_job_timing(
+    service: &dyn GitHubActionsService,
+    repository: &GitHubRepositoryRef,
+    selection: &CiTimingRunSelection,
+    cancellation: &dyn ProcessCancellation,
+) -> Result<JobTimingReport, GitHubActionsError> {
+    let run_ids = select_run_ids(service, repository, selection, cancellation).await?;
+    collect_job_timing_for(
+        service,
+        repository,
+        &run_ids,
+        JobTimingKind::RustCoverage,
+        cancellation,
+    )
+    .await
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum JobTimingKind {
+    Harness,
+    RustCoverage,
+}
+
+impl JobTimingKind {
+    const fn wire(self) -> &'static str {
+        match self {
+            Self::Harness => JOBS_KIND,
+            Self::RustCoverage => RUST_JOBS_KIND,
+        }
+    }
+}
+
+async fn collect_job_timing_for(
+    service: &dyn GitHubActionsService,
+    repository: &GitHubRepositoryRef,
+    run_ids: &[u64],
+    kind: JobTimingKind,
+    cancellation: &dyn ProcessCancellation,
+) -> Result<JobTimingReport, GitHubActionsError> {
     validate_run_ids(run_ids)?;
     let mut rows = Vec::new();
     let mut skipped_run_ids = Vec::new();
@@ -318,12 +375,21 @@ pub async fn collect_job_timing(
                 continue;
             }
         };
+        let has_rust_matrix = kind == JobTimingKind::RustCoverage
+            && jobs
+                .iter()
+                .any(|job| job.name.starts_with("rust-full shard "));
         let mut run_rows = Vec::<JobTimingRow>::new();
         let mut seen_shards = HashSet::<u32>::new();
         let mut has_duplicate_shard = false;
         for job in jobs {
+            let shard = match kind {
+                JobTimingKind::Harness => job.harness_shard(),
+                JobTimingKind::RustCoverage if has_rust_matrix && job.name == "rust-full" => None,
+                JobTimingKind::RustCoverage => job.rust_coverage_shard(),
+            };
             let (Some(shard), Some(seconds)) = (
-                job.harness_shard().filter(|shard| *shard > 0),
+                shard.filter(|shard| *shard > 0),
                 job.wall_clock_seconds
                     .filter(|seconds| seconds.is_finite() && *seconds > 0.0),
             ) else {
@@ -345,7 +411,12 @@ pub async fn collect_job_timing(
         }
         rows.extend(run_rows);
     }
-    Ok(job_report(run_ids.to_vec(), rows, skipped_run_ids))
+    Ok(job_report(
+        kind.wire(),
+        run_ids.to_vec(),
+        rows,
+        skipped_run_ids,
+    ))
 }
 
 async fn select_run_ids(
@@ -764,6 +835,7 @@ fn pytest_report(
 }
 
 fn job_report(
+    kind: &str,
     sampled_run_ids: Vec<u64>,
     rows: Vec<JobTimingRow>,
     skipped_run_ids: Vec<u64>,
@@ -771,7 +843,7 @@ fn job_report(
     let shard_medians = shard_medians(rows.iter().map(|row| (row.shard, row.seconds)));
     JobTimingReport {
         schema_version: SCHEMA_VERSION,
-        kind: JOBS_KIND.to_owned(),
+        kind: kind.to_owned(),
         sampled_run_ids,
         rows,
         shard_medians,

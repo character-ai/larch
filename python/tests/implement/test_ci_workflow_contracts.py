@@ -52,7 +52,9 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     makefile = (repo_root / "Makefile").read_text(encoding="utf-8")
     hooks = _precommit_hook_rows(precommit)
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
-    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-full:", 1)[0]
+    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split(
+        "\n  rust-full-shards:", 1
+    )[0]
     rust_coverage = (
         repo_root / ".github" / "actions" / "rust-coverage" / "action.yaml"
     ).read_text(encoding="utf-8")
@@ -230,6 +232,7 @@ def test_ci_branch_safety_merge_group_and_required_context_contract() -> None:
         "rust-selection",
         "rust-lint",
         "rust-deny",
+        "rust-full-shards",
         "rust-full",
         "rust-partial",
         "rust-skip",
@@ -457,6 +460,7 @@ def test_main_cache_inventory_and_publication_contract() -> None:
         "successful merge-group producer is missing required Rust jobs"
         in source_resolver
     )
+    assert '"rust-full shard 1"' in source_resolver
     assert "gh auth login --hostname github.com --with-token" in github_auth_config
     assert "gh auth status --hostname github.com >/dev/null" in github_auth_config
     assert 'mktemp -d "$RUNNER_TEMP/larch-gh.XXXXXX"' in github_auth_config
@@ -468,6 +472,7 @@ def test_main_cache_inventory_and_publication_contract() -> None:
         in publication
     )
     assert "ci verify-main-cache-candidate" in publication
+    assert publication.count("--producer-job 'rust-full shard 1'") == 4
     canonical_rust_cache_paths = (
         "path: |\n            ~/.cargo/registry\n            ~/.cargo/git",
         "path: target/debug",
@@ -719,8 +724,13 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         repo_root / "docs" / "security" / "workflow-trust-and-mutations.md"
     ).read_text(encoding="utf-8")
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
-    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-full:", 1)[0]
-    rust_full_job = workflow.split("\n  rust-full:", 1)[1].split(
+    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split(
+        "\n  rust-full-shards:", 1
+    )[0]
+    rust_full_job = workflow.split("\n  rust-full-shards:", 1)[1].split(
+        "\n  rust-full:", 1
+    )[0]
+    rust_full_gate = workflow.split("\n  rust-full:", 1)[1].split(
         "\n  rust-partial:", 1
     )[0]
     policy_candidate_stage = rust_full_job.split(
@@ -1029,8 +1039,14 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         in rust_coverage_benchmark
     )
     assert 'CARGO_PROFILE_TEST_OPT_LEVEL: "0"' in rust_full_job
-    assert 'COVERAGE_LCOV_ARTIFACT_SUFFIX: ""' in rust_full_job
-    assert 'COVERAGE_TIMING_ARTIFACT_SUFFIX: "-opt0-sample1"' in rust_full_job
+    assert (
+        "COVERAGE_LCOV_ARTIFACT_SUFFIX: ${{ format('-shard-{0}', matrix.shard) }}"
+        in rust_full_job
+    )
+    assert (
+        "COVERAGE_TIMING_ARTIFACT_SUFFIX: ${{ format('-opt0-sample1-shard-{0}', matrix.shard) }}"
+        in rust_full_job
+    )
     assert 'COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary"' in rust_full_job
     assert (
         rust_coverage_benchmark.count(
@@ -1060,11 +1076,21 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert 'CARGO_PROFILE_TEST_DEBUG: "0"' in rust_full_job
     assert "timeout-minutes: 15" in rust_full_job
     assert "timeout-minutes: 60" in rust_coverage_benchmark
-    assert "strategy:" not in rust_full_job
+    assert "strategy:" in rust_full_job
+    assert "fail-fast: false" in rust_full_job
+    assert "shard: [1, 2, 3, 4]" in rust_full_job
+    assert 'COVERAGE_SHARD_COUNT: "4"' in rust_full_job
+    assert "name: rust-full shard ${{ matrix.shard }}" in rust_full_job
     assert "needs: [rust-selection]" in rust_full_job
     assert "uses: ./.github/actions/rust-coverage" in rust_full_job
     assert "uses: ./.github/actions/rust-coverage" in rust_coverage_benchmark
     assert "Run plugin validations with coverage executable" in rust_coverage
+    assert '--partition "hash:${COVERAGE_SHARD_INDEX}/${COVERAGE_SHARD_COUNT}"' in rust_coverage
+    assert "COVERAGE_PRIMARY_SHARD" in rust_coverage
+    assert "COVERAGE_APPLY_LINE_GATE" in rust_coverage
+    assert "id: coverage-init" in rust_coverage
+    assert "steps.coverage-init.outputs.primary == 'true'" in rust_coverage
+    assert 'report_arguments+=(--fail-under-lines "${RUST_COVERAGE_MIN_LINES}")' in rust_coverage
     plugin_validation = rust_coverage.split(
         "Run plugin validations with coverage executable", 1
     )[1].split("Upload Rust coverage report", 1)[0]
@@ -1297,6 +1323,8 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         assert candidate_argument in policy_candidate_stage
     assert "ci stage-main-cache-candidate" in policy_candidate_stage
     assert "--cache-class rust-policy" in policy_candidate_stage
+    assert "--producer-job 'rust-full shard 1'" in policy_candidate_stage
+    assert rust_coverage.count("--producer-job 'rust-full shard 1'") == 3
     assert (
         '--source "policy=$RUNNER_TEMP/main-cache-rust-policy/policy"'
         in policy_candidate_stage
@@ -1338,7 +1366,8 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "same exact keys" in supply_chain_text
     assert "successful `CI` merge-group run" in supply_chain_text
     assert "restore-keys" in supply_chain
-    assert "successful `rust-full` merge-group run stages" in supply_chain
+    assert "shard 1 of a successful `rust-full` merge-group" in supply_chain
+    assert "No other shard can stage or upload that candidate" in supply_chain
     assert "same checksum" in supply_chain
     assert "fixed `merge-group` label" in supply_chain
     assert "primary-key miss" in supply_chain
@@ -1373,6 +1402,15 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         "SKIP_RESULT",
     ):
         assert execution_result in rust_coverage_job
+
+    assert "needs: [rust-selection, rust-full-shards]" in rust_full_gate
+    assert "Require every Rust coverage shard to pass" in rust_full_gate
+    assert "pattern: rust-coverage-lcov-shard-*" in rust_full_gate
+    assert "lcov=2.0-4ubuntu2" in rust_full_gate
+    assert "--add-tracefile" in rust_full_gate
+    assert '--fail-under-lines "$RUST_COVERAGE_MIN_LINES"' in rust_full_gate
+    assert "name: rust-coverage-lcov" in rust_full_gate
+    assert "path: ${{ runner.temp }}/rust-coverage-merged/lcov.info" in rust_full_gate
 
     assert "needs: [rust-lint, rust-deny, rust-coverage]" in rust_gate
     for result_name in ("lint_result", "deny_result", "coverage_result"):
@@ -1970,7 +2008,12 @@ def test_rust_ci_documentation_matches_producer_topology() -> None:
     coverage_text = " ".join(coverage_and_ci.split())
     production_evidence_text = " ".join(production_evidence.split())
     rust_testing_text = " ".join(rust_testing.split())
-    rust_full = workflow.split("\n  rust-full:", 1)[1].split("\n  rust-partial:", 1)[0]
+    rust_full = workflow.split("\n  rust-full-shards:", 1)[1].split(
+        "\n  rust-full:", 1
+    )[0]
+    rust_full_gate = workflow.split("\n  rust-full:", 1)[1].split(
+        "\n  rust-partial:", 1
+    )[0]
     rust_partial = workflow.split("\n  rust-partial:", 1)[1].split("\n  rust-skip:", 1)[
         0
     ]
@@ -1987,14 +2030,15 @@ def test_rust_ci_documentation_matches_producer_topology() -> None:
 
     assert shipped_rust_testing == rust_testing
     assert (
-        "`rust-full`, `rust-partial`, and `rust-skip` are mutually exclusive execution producers."
+        "`rust-full`, `rust-partial`, and `rust-skip` remain the mutually exclusive full, partial, and skip mode results."
         in coverage_text
     )
+    assert "`rust-full-shards` matrix" in coverage_text
     assert (
         "`rust-coverage` is not an execution lane: it is the stable required aggregate."
         in coverage_text
     )
-    assert "it validates the selected mode and every producer result" in coverage_text
+    assert "it validates the selected mode and every mode result" in coverage_text
     assert (
         "Manual dispatches and merge-queue runs use `rust-full`; a normal `main` push runs only "
         "trusted cache publication." in coverage_text
@@ -2021,11 +2065,11 @@ def test_rust_ci_documentation_matches_producer_topology() -> None:
         in production_evidence_text
     )
     assert (
-        "`rust-full`, `rust-coverage`, `rust-gate`, and `python-tests-gate`"
+        "every `rust-full shard N` cell, `rust-full`, `rust-coverage`, `rust-gate`, and `python-tests-gate`"
         in production_evidence_text
     )
     assert (
-        "coverage-timing TSV, LCOV artifact, and `larch-linux-test-binary` artifact"
+        "each shard's coverage-timing TSV and LCOV artifact, the merged LCOV artifact, and the `larch-linux-test-binary` artifact"
         in production_evidence_text
     )
     assert (
@@ -2035,6 +2079,9 @@ def test_rust_ci_documentation_matches_producer_topology() -> None:
 
     assert "github.event_name != 'pull_request'" in rust_full
     assert "needs.rust-selection.outputs.mode == 'full'" in rust_full
+    assert "shard: [1, 2, 3, 4]" in rust_full
+    assert "needs: [rust-selection, rust-full-shards]" in rust_full_gate
+    assert "Merge Rust coverage and enforce the line gate" in rust_full_gate
     assert "needs.rust-selection.outputs.mode == 'partial'" in rust_partial
     assert "needs.rust-selection.outputs.mode == 'skip'" in rust_skip
     assert (
@@ -2046,6 +2093,9 @@ def test_rust_ci_documentation_matches_producer_topology() -> None:
     assert "LARCH_TEST_RUST_BINARY" not in python_tests
     assert "larch-linux-test-binary" not in python_tests
     assert "Verify selected Rust integration artifact" in python_rust_integration
+    assert "| 2 | about 10.2 min | about 8.0 min" in rust_testing
+    assert "| 4 | about 9.4 min | about 7.2 min" in rust_testing
+    assert "| 8 | about 9.0 min | about 6.8 min" in rust_testing
 
 
 def test_rust_ci_change_selection_rollout_contract() -> None:
@@ -2070,8 +2120,12 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "\n  rust-lint:", 1
     )[0]
     rust_lint = workflow.split("\n  rust-lint:", 1)[1].split("\n  rust-deny:", 1)[0]
-    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split("\n  rust-full:", 1)[0]
-    rust_full = workflow.split("\n  rust-full:", 1)[1].split("\n  rust-partial:", 1)[0]
+    rust_deny = workflow.split("\n  rust-deny:", 1)[1].split(
+        "\n  rust-full-shards:", 1
+    )[0]
+    rust_full = workflow.split("\n  rust-full-shards:", 1)[1].split(
+        "\n  rust-full:", 1
+    )[0]
     rust_partial = workflow.split("\n  rust-partial:", 1)[1].split("\n  rust-skip:", 1)[
         0
     ]

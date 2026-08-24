@@ -21,7 +21,7 @@ pub enum RebalanceTestsCommand {
     /// Validate post-run timing evidence against a pure rebalance plan context.
     Verify(JsonInputArguments),
     /// Run the checked repository, artifact, pull-request, and verification workflow.
-    Run(RebalanceRunArguments),
+    Run(Box<RebalanceRunArguments>),
 }
 
 #[derive(Args)]

@@ -434,11 +434,20 @@ Report larch repository line counts for tracked Bash, Python, Rust, and Markdown
 
 ### `/rebalance-tests`
 
-**Arguments**: `[--kind {harness,python,all}] [--repo owner/name] [--n-runs N] [--branch-prefix PREFIX] [--n-verify-runs N] [--n-python-shards N] [--balance-threshold SECONDS] [--max-shard-wall-clock SECONDS] [--experimental-wall-clock-override NOTE] [--compile-affinity TARGET=GROUP:SECONDS] [--workflow FILE] [--baseline-branch BRANCH] [--dry-run]`
+**Arguments**: `[--kind {harness,python,rust,all}] [--repo owner/name] [--n-runs N] [--branch-prefix PREFIX] [--n-verify-runs N] [--n-python-shards N] [--n-rust-shards N] [--balance-threshold SECONDS] [--max-shard-wall-clock SECONDS] [--max-rust-shard-wall-clock SECONDS] [--experimental-wall-clock-override NOTE] [--compile-affinity TARGET=GROUP:SECONDS] [--workflow FILE] [--baseline-branch BRANCH] [--dry-run]`
 
 **Source**: [`.claude/skills/rebalance-tests/SKILL.md`](../.claude/skills/rebalance-tests/SKILL.md)
 
-Rebalance CI test harness shards, Python unit-test shards, or both from recent CI timings through `scripts/larch.sh rebalance-tests run`. The command requires an immutable, clean `main`, writes only selected shard artifacts, opens one PR, and verifies exact dispatched CI runs. Harness verification fails closed on incomplete same-run evidence, a measured slowest-shard wall-clock or summed-runner regression. Python verification fails closed on zero parseable rows, incomplete shard coverage, or over-threshold spread. `--dry-run` performs planning without mutation.
+Rebalance CI test harness shards, Python unit-test shards, Rust coverage shards,
+or any combination from recent CI timings through
+`scripts/larch.sh rebalance-tests run`. The command requires an immutable,
+clean `main`, writes only selected shard artifacts, opens one PR, and verifies
+exact dispatched CI runs. Harness verification fails closed on incomplete
+same-run evidence, a measured slowest-shard wall-clock, or summed-runner
+regression. Python verification rejects zero parseable rows, incomplete shard
+coverage, or over-threshold spread. Rust verification requires every expected
+matrix cell and enforces its approved wall-clock cap. `--dry-run` performs
+planning without mutation.
 
 ### `/release`
 

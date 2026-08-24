@@ -15,7 +15,14 @@ use crate::{
 
 /// Version of the `rebalance-tests` JSON contract.
 pub const REBALANCE_TESTS_SCHEMA_VERSION: u8 = 1;
+/// Largest Rust coverage matrix accepted by the rebalance contract.
+pub const MAX_RUST_COVERAGE_SHARDS: u32 = 32;
 const GUARD_TARGET: &str = "test-harness-shards-coverage";
+const DEFAULT_MAX_RUST_SHARD_WALL_CLOCK: f64 = 600.0;
+
+const fn default_max_rust_shard_wall_clock() -> f64 {
+    DEFAULT_MAX_RUST_SHARD_WALL_CLOCK
+}
 
 /// A canonical JSON result and whether it represents an accepted decision.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -28,23 +35,25 @@ pub struct RebalanceJsonResult {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Request<Options, Harness, Python> {
+struct Request<Options, Harness, Python, Rust> {
     schema_version: u8,
     kind: String,
     selection: Selection,
     options: Options,
     harness: Option<Harness>,
     python: Option<Python>,
+    rust: Option<Rust>,
 }
 
-type PlanWire = Request<PlanOptions, HarnessPlanWire, PythonPlanWire>;
-type VerifyWire = Request<VerifyOptions, HarnessVerifyWire, PythonVerifyWire>;
+type PlanWire = Request<PlanOptions, HarnessPlanWire, PythonPlanWire, RustPlanWire>;
+type VerifyWire = Request<VerifyOptions, HarnessVerifyWire, PythonVerifyWire, RustVerifyWire>;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum Selection {
     Harness,
     Python,
+    Rust,
     All,
 }
 
@@ -52,8 +61,12 @@ enum Selection {
 #[serde(deny_unknown_fields)]
 struct PlanOptions {
     max_shard_wall_clock: f64,
+    #[serde(default = "default_max_rust_shard_wall_clock")]
+    max_rust_shard_wall_clock: f64,
     balance_threshold: f64,
     n_python_shards: Option<u32>,
+    #[serde(default)]
+    n_rust_shards: Option<u32>,
     #[serde(rename = "experimental_wall_clock_override")]
     experimental_override: Option<String>,
     compile_affinities: Vec<CompileAffinity>,
@@ -63,6 +76,8 @@ struct PlanOptions {
 #[serde(deny_unknown_fields)]
 struct VerifyOptions {
     max_shard_wall_clock: f64,
+    #[serde(default = "default_max_rust_shard_wall_clock")]
+    max_rust_shard_wall_clock: f64,
     balance_threshold: f64,
     #[serde(rename = "experimental_wall_clock_override")]
     experimental_override: Option<String>,
@@ -95,6 +110,14 @@ struct PythonPlanWire {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct RustPlanWire {
+    expected_run_ids: Vec<u64>,
+    current_shard_count: u32,
+    timing: JobTimingReport,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct HarnessVerifyWire {
     expected_run_ids: Vec<u64>,
     expected_shards: BTreeMap<String, Vec<String>>,
@@ -111,6 +134,17 @@ struct PythonVerifyWire {
     expected_run_ids: Vec<u64>,
     expected_shard_count: u32,
     timing: PytestTimingReport,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RustVerifyWire {
+    expected_run_ids: Vec<u64>,
+    expected_shard_count: u32,
+    baseline_shard_count: u32,
+    baseline_slowest_wall_clock: f64,
+    approved_slowest_wall_clock: f64,
+    timing: JobTimingReport,
 }
 
 #[derive(Clone, Debug)]
@@ -159,6 +193,8 @@ struct PlanResponse {
     experimental_override: Option<String>,
     harness: Option<HarnessPlanResponse>,
     python: Option<PythonPlanResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rust: Option<RustPlanResponse>,
 }
 
 #[derive(Clone, Serialize)]
@@ -181,6 +217,15 @@ struct PythonPlanResponse {
     is_noop: bool,
 }
 
+#[derive(Clone, Serialize)]
+struct RustPlanResponse {
+    current_shard_count: u32,
+    shard_count: u32,
+    baseline_slowest_wall_clock: f64,
+    approved_slowest_wall_clock: f64,
+    is_noop: bool,
+}
+
 #[derive(Serialize)]
 struct VerifyResponse {
     schema_version: u8,
@@ -189,6 +234,8 @@ struct VerifyResponse {
     experimental_override: Option<String>,
     harness: Option<HarnessVerifyResponse>,
     python: Option<PythonVerifyResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rust: Option<RustVerifyResponse>,
 }
 
 #[derive(Serialize)]
@@ -210,6 +257,16 @@ struct PythonVerifyResponse {
     violations: Vec<String>,
 }
 
+#[derive(Serialize)]
+struct RustVerifyResponse {
+    outcome: Outcome,
+    shard_medians: BTreeMap<u32, f64>,
+    baseline_slowest_wall_clock: f64,
+    observed_slowest_wall_clock: f64,
+    approved_slowest_wall_clock: f64,
+    violations: Vec<String>,
+}
+
 /// Validate baseline evidence and render one pure, deterministic plan result.
 ///
 /// # Errors
@@ -224,6 +281,7 @@ pub fn plan_json(source: &str) -> Result<RebalanceJsonResult, String> {
         wire.selection,
         wire.harness.is_some(),
         wire.python.is_some(),
+        wire.rust.is_some(),
     )?;
     let (harness, harness_violations) = wire
         .harness
@@ -236,10 +294,33 @@ pub fn plan_json(source: &str) -> Result<RebalanceJsonResult, String> {
         .python
         .map(|input| build_python_plan(input, &wire.options))
         .transpose()?;
+    let rust = wire
+        .rust
+        .map(|input| build_rust_plan(input, &wire.options))
+        .transpose()?;
     let noop = harness.as_ref().is_none_or(|response| response.is_noop)
-        && python.as_ref().is_none_or(|response| response.is_noop);
+        && python.as_ref().is_none_or(|response| response.is_noop)
+        && rust.as_ref().is_none_or(|response| response.is_noop);
     let mut violations = harness_violations;
-    let mut decision = if violations.is_empty() {
+    if let Some(response) = harness.as_ref()
+        && response.is_noop
+        && response.baseline_slowest_wall_clock > wire.options.max_shard_wall_clock
+    {
+        violations.push(format!(
+            "baseline measured slowest shard {:.1}s exceeds max_shard_wall_clock {:.1}s",
+            response.baseline_slowest_wall_clock, wire.options.max_shard_wall_clock
+        ));
+    }
+    if let Some(response) = rust.as_ref()
+        && response.is_noop
+        && response.baseline_slowest_wall_clock > wire.options.max_rust_shard_wall_clock
+    {
+        violations.push(format!(
+            "baseline measured slowest Rust coverage shard {:.1}s exceeds max_rust_shard_wall_clock {:.1}s",
+            response.baseline_slowest_wall_clock, wire.options.max_rust_shard_wall_clock
+        ));
+    }
+    let decision = if violations.is_empty() {
         if noop {
             PlanDecision::Noop
         } else {
@@ -250,20 +331,6 @@ pub fn plan_json(source: &str) -> Result<RebalanceJsonResult, String> {
     } else {
         PlanDecision::Rejected
     };
-    if let Some(response) = harness.as_ref()
-        && decision == PlanDecision::Noop
-        && response.baseline_slowest_wall_clock > wire.options.max_shard_wall_clock
-    {
-        violations.push(format!(
-            "baseline measured slowest shard {:.1}s exceeds max_shard_wall_clock {:.1}s",
-            response.baseline_slowest_wall_clock, wire.options.max_shard_wall_clock
-        ));
-        decision = if wire.options.experimental_override.is_some() {
-            PlanDecision::Overridden
-        } else {
-            PlanDecision::Rejected
-        };
-    }
     render(
         &PlanResponse {
             schema_version: REBALANCE_TESTS_SCHEMA_VERSION,
@@ -273,6 +340,7 @@ pub fn plan_json(source: &str) -> Result<RebalanceJsonResult, String> {
             experimental_override: wire.options.experimental_override,
             harness,
             python,
+            rust,
         },
         decision != PlanDecision::Rejected,
     )
@@ -292,6 +360,7 @@ pub fn verify_json(source: &str) -> Result<RebalanceJsonResult, String> {
         wire.selection,
         wire.harness.is_some(),
         wire.python.is_some(),
+        wire.rust.is_some(),
     )?;
     let harness = wire
         .harness
@@ -301,10 +370,17 @@ pub fn verify_json(source: &str) -> Result<RebalanceJsonResult, String> {
         .python
         .map(|input| verify_python(input, &wire.options))
         .transpose()?;
+    let rust = wire
+        .rust
+        .map(|input| verify_rust(input, &wire.options))
+        .transpose()?;
     let outcome = if harness
         .as_ref()
         .is_some_and(|value| value.outcome == Outcome::Rejected)
         || python
+            .as_ref()
+            .is_some_and(|value| value.outcome == Outcome::Rejected)
+        || rust
             .as_ref()
             .is_some_and(|value| value.outcome == Outcome::Rejected)
     {
@@ -312,6 +388,9 @@ pub fn verify_json(source: &str) -> Result<RebalanceJsonResult, String> {
     } else if harness
         .as_ref()
         .is_some_and(|value| value.outcome == Outcome::Overridden)
+        || rust
+            .as_ref()
+            .is_some_and(|value| value.outcome == Outcome::Overridden)
     {
         Outcome::Overridden
     } else {
@@ -325,6 +404,7 @@ pub fn verify_json(source: &str) -> Result<RebalanceJsonResult, String> {
             experimental_override: wire.options.experimental_override,
             harness,
             python,
+            rust,
         },
         outcome != Outcome::Rejected,
     )
@@ -357,22 +437,42 @@ fn validate_header(version: u8, kind: &str, expected: &str) -> Result<(), String
     Ok(())
 }
 
-fn validate_legs(selection: Selection, harness: bool, python: bool) -> Result<(), String> {
-    let expected = match selection {
-        Selection::Harness => (true, false),
-        Selection::Python => (false, true),
-        Selection::All => (true, true),
+fn validate_legs(
+    selection: Selection,
+    harness: bool,
+    python: bool,
+    rust: bool,
+) -> Result<(), String> {
+    let matches = match selection {
+        Selection::Harness => (harness, python, rust) == (true, false, false),
+        Selection::Python => (harness, python, rust) == (false, true, false),
+        Selection::Rust => (harness, python, rust) == (false, false, true),
+        // Schema v1 originally defined `all` as the harness and Python legs.
+        // Keep accepting that wire shape while new callers add the Rust leg.
+        Selection::All => harness && python,
     };
-    ((harness, python) == expected)
+    matches
         .then_some(())
         .ok_or_else(|| "rebalance-tests selection does not match supplied legs".to_owned())
 }
 
 fn validate_plan_options(options: &PlanOptions) -> Result<(), String> {
     positive(options.max_shard_wall_clock, "max_shard_wall_clock")?;
+    positive(
+        options.max_rust_shard_wall_clock,
+        "max_rust_shard_wall_clock",
+    )?;
     positive(options.balance_threshold, "balance_threshold")?;
     if options.n_python_shards == Some(0) {
         return Err("rebalance-tests n_python_shards must be positive".to_owned());
+    }
+    if options
+        .n_rust_shards
+        .is_some_and(|count| count == 0 || count > MAX_RUST_COVERAGE_SHARDS)
+    {
+        return Err(format!(
+            "rebalance-tests n_rust_shards must be from 1 through {MAX_RUST_COVERAGE_SHARDS}"
+        ));
     }
     validate_experiment(options.experimental_override.as_deref())?;
     for affinity in &options.compile_affinities {
@@ -393,6 +493,10 @@ fn validate_plan_options(options: &PlanOptions) -> Result<(), String> {
 
 fn validate_verify_options(options: &VerifyOptions) -> Result<(), String> {
     positive(options.max_shard_wall_clock, "max_shard_wall_clock")?;
+    positive(
+        options.max_rust_shard_wall_clock,
+        "max_rust_shard_wall_clock",
+    )?;
     positive(options.balance_threshold, "balance_threshold")?;
     validate_experiment(options.experimental_override.as_deref())
 }
@@ -477,6 +581,16 @@ fn jobs_report(report: JobTimingReport) -> Result<JobTimingReport, String> {
     Ok(report)
 }
 
+fn rust_jobs_report(report: JobTimingReport) -> Result<JobTimingReport, String> {
+    report_header(report.schema_version, &report.kind, "rust-jobs")?;
+    report_ids(
+        &report.sampled_run_ids,
+        &report.skipped_run_ids,
+        "rust-jobs",
+    )?;
+    Ok(report)
+}
+
 fn report_header(version: u8, kind: &str, expected: &str) -> Result<(), String> {
     (version == 2 && kind == expected)
         .then_some(())
@@ -538,7 +652,7 @@ fn build_harness_plan(
     validate_harness_cohort(&timing, &shards, &expected_run_ids)?;
     let count = u32::try_from(shards.len())
         .map_err(|_| "rebalance-tests harness shard count is too large".to_owned())?;
-    validate_jobs_cohort(&jobs, &expected_run_ids, count)?;
+    validate_jobs_cohort(&jobs, &expected_run_ids, count, "harness")?;
     let targets = shards.values().flatten().cloned().collect::<Vec<_>>();
     let model = model(
         &timing,
@@ -622,6 +736,47 @@ fn build_python_plan(
         is_noop: assignments == current_assignments,
         assignments,
         shard_count: count,
+    })
+}
+
+fn build_rust_plan(wire: RustPlanWire, options: &PlanOptions) -> Result<RustPlanResponse, String> {
+    let expected_run_ids = run_ids(wire.expected_run_ids, "rust.expected_run_ids")?;
+    let current_shard_count = nonzero(wire.current_shard_count, "rust.current_shard_count")?;
+    if current_shard_count > MAX_RUST_COVERAGE_SHARDS {
+        return Err(format!(
+            "rebalance-tests rust.current_shard_count exceeds {MAX_RUST_COVERAGE_SHARDS}"
+        ));
+    }
+    let timing = rust_jobs_report(wire.timing)?;
+    validate_jobs_cohort(
+        &timing,
+        &expected_run_ids,
+        current_shard_count,
+        "Rust coverage",
+    )?;
+    let baseline = shard_map(
+        &timing.shard_medians,
+        "Rust coverage jobs timing shard_medians",
+    )?;
+    validate_shard_map(
+        &baseline,
+        current_shard_count,
+        "Rust coverage jobs timing shard_medians",
+    )?;
+    let baseline_slowest_wall_clock = maximum(&baseline)
+        .ok_or_else(|| "rebalance-tests Rust coverage timing has no shard medians".to_owned())?;
+    let shard_count = options.n_rust_shards.unwrap_or(current_shard_count);
+    let approved_slowest_wall_clock = if shard_count >= current_shard_count {
+        baseline_slowest_wall_clock.min(options.max_rust_shard_wall_clock)
+    } else {
+        options.max_rust_shard_wall_clock
+    };
+    Ok(RustPlanResponse {
+        current_shard_count,
+        shard_count,
+        baseline_slowest_wall_clock,
+        approved_slowest_wall_clock,
+        is_noop: shard_count == current_shard_count,
     })
 }
 
@@ -781,6 +936,7 @@ fn validate_jobs_cohort(
     report: &JobTimingReport,
     expected_runs: &[u64],
     shard_count: u32,
+    label: &str,
 ) -> Result<(), String> {
     if report.sampled_run_ids != expected_runs || !report.skipped_run_ids.is_empty() {
         return Err(
@@ -804,9 +960,9 @@ fn validate_jobs_cohort(
             .iter()
             .any(|row| !row.seconds.is_finite() || row.seconds < 0.0)
     {
-        return Err(
-            "rebalance-tests jobs timing has missing or duplicate harness shard rows".to_owned(),
-        );
+        return Err(format!(
+            "rebalance-tests jobs timing has missing or duplicate {label} shard rows"
+        ));
     }
     Ok(())
 }
@@ -1280,7 +1436,7 @@ fn verify_harness(
     validate_harness_cohort(&timing, &shards, &expected_run_ids)?;
     let count = u32::try_from(shards.len())
         .map_err(|_| "rebalance-tests shard count is too large".to_owned())?;
-    validate_jobs_cohort(&jobs, &expected_run_ids, count)?;
+    validate_jobs_cohort(&jobs, &expected_run_ids, count, "harness")?;
     let wall_clock = shard_map(&jobs.shard_medians, "jobs timing shard_medians")?;
     validate_shard_map(&wall_clock, count, "jobs timing shard_medians")?;
     let slowest = maximum(&wall_clock)
@@ -1356,6 +1512,78 @@ fn verify_python(
         shard_medians,
         spread,
         balance_threshold: options.balance_threshold,
+        violations,
+    })
+}
+
+fn verify_rust(
+    wire: RustVerifyWire,
+    options: &VerifyOptions,
+) -> Result<RustVerifyResponse, String> {
+    let expected_run_ids = run_ids(wire.expected_run_ids, "rust.expected_run_ids")?;
+    let shard_count = nonzero(wire.expected_shard_count, "rust.expected_shard_count")?;
+    let baseline_shard_count = nonzero(wire.baseline_shard_count, "rust.baseline_shard_count")?;
+    if shard_count > MAX_RUST_COVERAGE_SHARDS || baseline_shard_count > MAX_RUST_COVERAGE_SHARDS {
+        return Err(format!(
+            "rebalance-tests Rust coverage shard count exceeds {MAX_RUST_COVERAGE_SHARDS}"
+        ));
+    }
+    let baseline_slowest_wall_clock = nonnegative(
+        wire.baseline_slowest_wall_clock,
+        "rust.baseline_slowest_wall_clock",
+    )?;
+    let approved_slowest_wall_clock = nonnegative(
+        wire.approved_slowest_wall_clock,
+        "rust.approved_slowest_wall_clock",
+    )?;
+    let approved_cap = if shard_count >= baseline_shard_count {
+        baseline_slowest_wall_clock.min(options.max_rust_shard_wall_clock)
+    } else {
+        options.max_rust_shard_wall_clock
+    };
+    if approved_slowest_wall_clock > approved_cap {
+        return Err(
+            "rebalance-tests Rust approved_slowest_wall_clock exceeds its baseline cap".to_owned(),
+        );
+    }
+    let timing = rust_jobs_report(wire.timing)?;
+    validate_jobs_cohort(&timing, &expected_run_ids, shard_count, "Rust coverage")?;
+    let shard_medians = shard_map(
+        &timing.shard_medians,
+        "Rust coverage jobs timing shard_medians",
+    )?;
+    validate_shard_map(
+        &shard_medians,
+        shard_count,
+        "Rust coverage jobs timing shard_medians",
+    )?;
+    let slowest = maximum(&shard_medians)
+        .ok_or_else(|| "rebalance-tests Rust coverage timing has no shard medians".to_owned())?;
+    let mut violations = Vec::new();
+    if slowest > options.max_rust_shard_wall_clock {
+        violations.push(format!(
+            "measured slowest Rust coverage shard {slowest:.1}s exceeds max_rust_shard_wall_clock {:.1}s",
+            options.max_rust_shard_wall_clock
+        ));
+    }
+    if slowest > approved_slowest_wall_clock {
+        violations.push(format!(
+            "measured slowest Rust coverage shard {slowest:.1}s regresses approved threshold {approved_slowest_wall_clock:.1}s"
+        ));
+    }
+    let outcome = if violations.is_empty() {
+        Outcome::Passed
+    } else if options.experimental_override.is_some() {
+        Outcome::Overridden
+    } else {
+        Outcome::Rejected
+    };
+    Ok(RustVerifyResponse {
+        outcome,
+        shard_medians,
+        baseline_slowest_wall_clock,
+        observed_slowest_wall_clock: slowest,
+        approved_slowest_wall_clock,
         violations,
     })
 }

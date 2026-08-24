@@ -4,7 +4,8 @@ use clap::{Args, Subcommand};
 use larch_core::{
     CiTimingRunSelection, GitHubRepositoryRef, MAX_CI_TIMING_REQUIRED_TARGETS, MAX_CI_TIMING_RUNS,
     collect_harness_timing, collect_job_timing, collect_pytest_timing,
-    resolve_main_cache_merge_group_source, validate_main_cache_source_sha,
+    collect_rust_coverage_job_timing, resolve_main_cache_merge_group_source,
+    validate_main_cache_source_sha,
 };
 use serde::Serialize;
 use std::{collections::HashSet, io::Write as _, path::Path, process::ExitCode};
@@ -15,6 +16,8 @@ pub enum CiTimingCommand {
     Harness(HarnessArguments),
     /// Collect real harness-job wall-clock durations from the jobs API.
     Jobs(JobArguments),
+    /// Collect Rust coverage shard wall-clock durations from the jobs API.
+    RustJobs(LogSourceArguments),
     /// Resolve the exact successful merge-group run that produced a main SHA.
     MergeGroupSource(MergeGroupSourceArguments),
     /// Collect pytest --durations=0 call rows and their medians.
@@ -37,7 +40,7 @@ pub struct PytestArguments {
 }
 
 #[derive(Args)]
-struct LogSourceArguments {
+pub struct LogSourceArguments {
     /// GitHub repository in OWNER/REPO form.
     #[arg(long = "repo", value_parser = crate::parse_repository)]
     repository: GitHubRepositoryRef,
@@ -113,6 +116,7 @@ impl CiTimingCommand {
                 Ok(())
             }
             Self::Jobs(arguments) => validate_run_ids(&arguments.run_ids),
+            Self::RustJobs(arguments) => validate_run_ids(&arguments.run_ids),
             Self::MergeGroupSource(arguments) => {
                 validate_main_cache_source_sha(&arguments.source_sha)
                     .map_err(|error| error.to_string())
@@ -157,6 +161,19 @@ async fn run_async(command: CiTimingCommand, working_directory: &Path) -> Result
             .await
             .map_err(|error| error.to_string())?;
             warn_skipped("jobs", &report.skipped_run_ids);
+            serialize_report(&report)
+        }
+        CiTimingCommand::RustJobs(arguments) => {
+            let selection = arguments.selection();
+            let report = collect_rust_coverage_job_timing(
+                &service,
+                &arguments.repository,
+                &selection,
+                &cancellation,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            warn_skipped("rust-jobs", &report.skipped_run_ids);
             serialize_report(&report)
         }
         CiTimingCommand::MergeGroupSource(arguments) => {
