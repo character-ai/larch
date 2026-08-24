@@ -309,8 +309,9 @@ follows:
   alternatives. `rust-coverage` is the stable required aggregate and
   full-mode LCOV gate. Under `if: always()`, it validates the selected mode and
   every mode result, then passes only when the selected mode succeeds and the
-  alternatives are skipped. In full mode it also performs the merge and line
-  gate described below. `rust-gate` independently validates `rust-lint`,
+  alternatives are skipped. Full mode also requires successful
+  `rust-full-lcov-tool` preparation before it performs the merge and line gate
+  described below. `rust-gate` independently validates `rust-lint`,
   `rust-deny`, and the raw producer-result shape without waiting for
   `rust-coverage`; both stable checks are required, so a red producer or LCOV
   threshold failure blocks the merge queue. `python-rust-integration` uses the
@@ -322,13 +323,17 @@ follows:
   candidates, and uploads the Linux executable artifact. `rust-full-policy`
   runs beside the four cells. It builds only the instrumented `larch` binary,
   runs the single `larch lint all` scan, and uploads its LCOV and per-rule
-  timing artifacts. `rust-coverage` requires and downloads exactly five
-  same-run LCOV reports in one artifact operation, then verifies their exact
-  paths.
-  The pinned LCOV 2.0 merger combines the reports with five-way parallelism,
-  then the job applies the unchanged 88% line threshold to the canonical
-  `LF`/`LH` totals in that merged report without parsing the input set a second
-  time.
+  timing artifacts. `rust-full-lcov-tool` starts beside those producers. It
+  installs the exact pinned Ubuntu LCOV package, archives only the package-owned
+  runtime files and dependencies installed or updated by that transaction,
+  verifies the extracted LCOV 2.0 runtime, and uploads a checksum-bound
+  same-run tool artifact.
+  `rust-coverage` downloads that artifact and exactly five same-run LCOV reports
+  in one artifact operation. It verifies the tool checksum, archive paths,
+  runtime version, exact report paths, and report count. The prepared LCOV 2.0
+  merger combines the reports with five-way parallelism, then the job applies
+  the unchanged 88% line threshold to the canonical `LF`/`LH` totals in that
+  merged report without parsing the input set a second time.
   After coverage-target pruning, an exact cache miss in a successful
   `merge_group` full lane stages and verifies a policy-cache candidate from
   that preserved artifact. The trusted main publisher may promote it only after
@@ -443,14 +448,14 @@ also runs a separate `cargo test --doc --workspace --all-features --locked
 artifact set between normal test phases; the stable toolchain runs doctests
 without cargo-llvm-cov's nightly-only doctest instrumentation. Each shard
 report retains the existing filename exclusions. The stable `rust-coverage`
-job merges the four test reports and the policy report through LCOV's parallel
-add-tracefile path, then applies the line threshold to the merged report's
-generated line totals. After shard 1 produces its report, it uses the
-executable for both plugin-runtime commands and the generated-projection
-clean-diff check before uploading it for bootstrap integration tests. The separate
-doctest command stays required even when the workspace currently has no
-doctests. Nextest's slow-test status and final status output remain visible in
-the job log.
+job verifies and extracts the LCOV runtime prepared in parallel, merges the four
+test reports and the policy report through LCOV's parallel add-tracefile path,
+then applies the line threshold to the merged report's generated line totals.
+After shard 1 produces its report, it uses the executable for both
+plugin-runtime commands and the generated-projection clean-diff check before
+uploading it for bootstrap integration tests. The separate doctest command stays
+required even when the workspace currently has no doctests. Nextest's
+slow-test status and final status output remain visible in the job log.
 
 `rust-full-policy` exports the same coverage environment, then runs
 `cargo build --locked --package larch-cli --bin larch --all-features --profile test`.
@@ -563,8 +568,9 @@ scripts, Makefiles, `deny.toml`, Rust CI/profile files, and selector machinery
 are global inputs and always select `full`. `rust-coverage` remains the stable
 required status: it accepts either both successful full-mode producers or one
 successful alternative (`rust-partial` or `rust-skip`), with every unselected
-producer skipped. An unavailable selector defaults to `full`, and the aggregate
-passes only when that full path succeeds. The
+producer skipped. Full mode additionally requires the parallel LCOV runtime
+preparation to succeed. An unavailable selector defaults to `full`, and the
+aggregate passes only when that full path succeeds. The
 merge group is the per-merge full-run backstop; manual dispatch provides a
 full rerun. To force the full
 path while debugging a pull request, apply the `full-rust-ci` label; label and
@@ -768,7 +774,8 @@ making that final claim.
 A final production claim needs three comparable warm full-path successful
 `push` runs on `refs/heads/main` after the relevant repair. Record each run's
 direct URL and the results for every `rust-full shard N` cell, `rust-full
-policy`, `rust-coverage`, `rust-gate`, and `python-tests-gate`.
+policy`, `rust-full LCOV tool`, `rust-coverage`, `rust-gate`, and
+`python-tests-gate`.
 For every sample, link each producer's coverage-timing TSV and LCOV artifact,
 the merged LCOV artifact, and the `larch-linux-test-binary` artifact. Record
 each job duration, cache hit

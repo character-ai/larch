@@ -687,8 +687,10 @@ authorization token. The stable required `rust-coverage` status accepts only
 both successful full-mode producers or one successful alternative
 (`rust-partial` or `rust-skip`), with every unselected producer skipped. In
 full mode it requires every `rust-full-shards` matrix cell, the parallel
-`rust-full-policy` producer, an exact-count LCOV merge that includes its
-profile, and the combined line gate. The separately required `rust-gate`
+`rust-full-policy` producer, and the same-run pinned LCOV runtime preparation.
+The aggregate verifies that runtime's checksum, metadata, archive paths,
+extraction boundary, and reported version before an exact-count LCOV merge that
+includes the policy profile and the combined line gate. The separately required `rust-gate`
 validates lint, dependency policy, and the raw producer-result shape without
 waiting for `rust-coverage`; either required status fails closed. An
 unavailable selector requires the full path, which must succeed before the

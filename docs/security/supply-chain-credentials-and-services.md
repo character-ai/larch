@@ -201,16 +201,27 @@ candidate-built artifact must name the current
 checkout; a trusted-main artifact is accepted only for an enforced `skip` run.
 The stub-safe `python-tests` matrix has no Rust artifact dependency. The
 producer's `if-no-files-found: error` prevents an absent producer artifact from
-being treated as a successful handoff. The stable `rust-coverage` job first
-requires the complete matrix and the policy job to pass. In full mode it
-downloads all same-run coverage artifacts with one fixed prefix, requires the
-exact policy and numbered shard paths, and rejects any report count other than
-one more than the configured test-shard count. Every report must be regular
-and non-symlink. The exact pinned Ubuntu LCOV package merges those inputs
-through its parallel add-tracefile path. The unchanged 88% line threshold is
-then calculated from LCOV's generated `LF` and `LH` totals in the merged report,
-and malformed totals fail closed. The job uploads only that merged report under
-the legacy stable artifact and member names.
+being treated as a successful handoff. In full mode, the parallel
+`rust-full-lcov-tool` job installs the exact pinned Ubuntu LCOV package. It
+archives only files owned by that package and the dependencies installed or
+updated by the same transaction. It rejects unsafe package paths, verifies the
+extracted LCOV 2.0 runtime, and uploads its archive, package inventory,
+exact-version metadata, and SHA-256 manifest under the fixed coverage prefix.
+
+The stable `rust-coverage` job first requires the complete matrix, policy job,
+and runtime preparation to pass. It downloads all same-run coverage inputs with
+one fixed prefix. Before extraction it requires the exact four regular,
+non-symlink tool files, verifies every checksum and the pinned version metadata,
+caps the archive at 64 MiB and 16,384 entries, and rejects absolute or
+parent-traversing archive paths. The resolved executable must remain inside the
+extraction root and report the expected LCOV 2.0 package version. The job also
+requires the exact policy and numbered shard paths and rejects any report count
+other than one more than the configured test-shard count. Every report must be
+regular and non-symlink. The prepared LCOV runtime merges those inputs through
+its parallel add-tracefile path. The unchanged 88% line threshold is then
+calculated from LCOV's generated `LF` and `LH` totals in the merged report, and
+malformed totals fail closed. The job uploads only that merged report under the
+legacy stable artifact and member names.
 
 On an exact Rust-policy miss, shard 1 of a successful full-mode merge-group
 run stages and verifies a policy-cache candidate after the coverage target has
