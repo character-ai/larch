@@ -78,6 +78,19 @@ historical PR exceeded the limit. `historical_recorded_rust_line_budget_deviatio
 counts only explicit durable records. The audit never writes retrospective plans,
 approvals, or deviations.
 
+An open executable leaf is also report-only when its sole plan defect is
+`missing-plan-block`, its title has neither `[DESIGNED]` nor `[IMPLEMENTING]`,
+and its body has no unfenced plan marker, receipt marker, or valid
+implementation lease. This is the sanctioned scope-only state before
+`/design` publishes a plan. `[DESIGNING]` alone does not end that state. The
+leaf still counts under `executable_leaves`, has `plan_valid=false`, and lists
+`missing-plan-block` in its per-issue `finding_reasons`, but it does not add a
+gate finding. A post-design lifecycle title, malformed plan marker, receipt
+marker, or valid implementation lease keeps the missing-plan defect gated.
+The implementation flow writes its lease before it creates a pull request.
+The open-PR snapshot checks lease staleness; the audit does not infer issue
+ownership from branch text.
+
 Reasons come from the existing migration owners. They include plan defects,
 blocker and receipt tokens, owner-admission tokens, stale-lease tokens, and
 canonical `larch lint` diagnostics. The Rust command runs these canonical lint
@@ -119,11 +132,14 @@ Blocker and receipt findings use `missing-native-blocker-edge issue=#N`,
 `stale-owner-snapshot`, plus `plan-base-scope-unavailable` when live scope
 evidence cannot be read.
 
-A valid plan without `larch:plan-receipt` is not an audit defect. Receipt
-scope drift remains visible to audit; `/implement` may refresh it only at
-Preflight after an independent bounded semantic-materiality check. Malformed
-receipts, stale plan bodies, snapshots, and unavailable base-scope evidence
-remain fail-closed.
+A body without a `larch:plan-receipt` marker has no receipt-freshness defect.
+The plan classifier owns `missing-plan-block`, so an absent plan and absent
+receipt do not also produce `stale-plan-body`. A valid plan without a receipt
+marker is likewise not an audit defect. If a receipt marker exists, a missing
+or malformed plan remains `stale-plan-body`. Receipt scope drift remains
+visible to audit; `/implement` may refresh it only at Preflight after an
+independent bounded semantic-materiality check. Malformed receipts, stale plan
+bodies, snapshots, and unavailable base-scope evidence remain fail-closed.
 
 `scripts/larch.sh plan-receipt refresh` accepts only the exact Preflight plan,
 prior receipt base, and current target SHA. It rejects a moving base or any
