@@ -34,11 +34,11 @@ const PYTHON_SHARD_MATRIX_PREFIX: &str = "        shard: [";
 const PYTHON_TEST_NAME_PREFIX: &str =
     r"      - name: Run Python tests (shard ${{ matrix.shard }} of ";
 const PYTHON_SHARD_COUNT_PREFIX: &str = "          PYTEST_SHARD_COUNT: \"";
-const RUST_FULL_HEADER: &str = "\n  rust-full-shards:\n";
-const RUST_FULL_FOOTER: &str = "\n  # The partial path";
+const RUST_PRODUCTION_HEADER: &str = "\n  rust-full-shards:\n";
+const RUST_PRODUCTION_FOOTER: &str = "\n  # Manual profile sweeps";
 const RUST_SHARD_MATRIX_PREFIX: &str = "        shard: [";
 const RUST_PRODUCER_SHARD_COUNT_PREFIX: &str = "      COVERAGE_SHARD_COUNT: \"";
-const RUST_GATE_SHARD_COUNT_PREFIX: &str = "      RUST_COVERAGE_SHARD_COUNT: \"";
+const RUST_AGGREGATE_SHARD_COUNT_PREFIX: &str = "      RUST_COVERAGE_SHARD_COUNT: \"";
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum RebalanceKind {
     Harness,
@@ -1390,7 +1390,7 @@ fn render_shard_list(count: u32) -> String {
 }
 
 fn rust_workflow_shard_count(source: &str) -> Result<u32, String> {
-    let (_, body, _) = split_rust_full_block(source)?;
+    let (_, body, _) = split_rust_production_block(source)?;
     let matrix_line = unique_rust_line(body, RUST_SHARD_MATRIX_PREFIX, "matrix")?;
     let matrix = matrix_shard_count(matrix_line, RUST_SHARD_MATRIX_PREFIX, "Rust coverage")?;
     let producer = rust_configured_shard_count(
@@ -1398,10 +1398,14 @@ fn rust_workflow_shard_count(source: &str) -> Result<u32, String> {
         RUST_PRODUCER_SHARD_COUNT_PREFIX,
         "producer environment",
     )?;
-    let gate = rust_configured_shard_count(body, RUST_GATE_SHARD_COUNT_PREFIX, "gate environment")?;
-    if matrix != producer || matrix != gate {
+    let aggregate = rust_configured_shard_count(
+        body,
+        RUST_AGGREGATE_SHARD_COUNT_PREFIX,
+        "aggregate environment",
+    )?;
+    if matrix != producer || matrix != aggregate {
         return Err(format!(
-            "rebalance-tests Rust coverage shard count is inconsistent: matrix={matrix}, producer={producer}, gate={gate}"
+            "rebalance-tests Rust coverage shard count is inconsistent: matrix={matrix}, producer={producer}, aggregate={aggregate}"
         ));
     }
     Ok(matrix)
@@ -1413,7 +1417,7 @@ fn rewrite_rust_workflow_shard_count(source: &str, count: u32) -> Result<String,
             "rebalance-tests Rust coverage shard count must be from 1 through {MAX_RUST_COVERAGE_SHARDS}"
         ));
     }
-    let (before, body, after) = split_rust_full_block(source)?;
+    let (before, body, after) = split_rust_production_block(source)?;
     let previous = rust_workflow_shard_count(source)?;
     if previous == count {
         return Ok(source.to_owned());
@@ -1424,7 +1428,11 @@ fn rewrite_rust_workflow_shard_count(source: &str, count: u32) -> Result<String,
         RUST_PRODUCER_SHARD_COUNT_PREFIX,
         "producer environment",
     )?;
-    let gate = unique_rust_line(body, RUST_GATE_SHARD_COUNT_PREFIX, "gate environment")?;
+    let aggregate = unique_rust_line(
+        body,
+        RUST_AGGREGATE_SHARD_COUNT_PREFIX,
+        "aggregate environment",
+    )?;
     let rendered_body = body
         .replacen(
             matrix,
@@ -1436,26 +1444,32 @@ fn rewrite_rust_workflow_shard_count(source: &str, count: u32) -> Result<String,
             &format!("{RUST_PRODUCER_SHARD_COUNT_PREFIX}{count}\""),
             1,
         )
-        .replacen(gate, &format!("{RUST_GATE_SHARD_COUNT_PREFIX}{count}\""), 1);
+        .replacen(
+            aggregate,
+            &format!("{RUST_AGGREGATE_SHARD_COUNT_PREFIX}{count}\""),
+            1,
+        );
     Ok(format!(
-        "{before}{RUST_FULL_HEADER}{rendered_body}{RUST_FULL_FOOTER}{after}"
+        "{before}{RUST_PRODUCTION_HEADER}{rendered_body}{RUST_PRODUCTION_FOOTER}{after}"
     ))
 }
 
-fn split_rust_full_block(source: &str) -> Result<(&str, &str, &str), String> {
-    if source.matches(RUST_FULL_HEADER).count() != 1
-        || source.matches(RUST_FULL_FOOTER).count() != 1
+fn split_rust_production_block(source: &str) -> Result<(&str, &str, &str), String> {
+    if source.matches(RUST_PRODUCTION_HEADER).count() != 1
+        || source.matches(RUST_PRODUCTION_FOOTER).count() != 1
     {
         return Err(format!(
             "rebalance-tests requires one unambiguous Rust coverage job boundary in {CI_WORKFLOW}"
         ));
     }
-    let (before, remainder) = source.split_once(RUST_FULL_HEADER).ok_or_else(|| {
+    let (before, remainder) = source.split_once(RUST_PRODUCTION_HEADER).ok_or_else(|| {
         format!("rebalance-tests cannot find the Rust coverage shard job in {CI_WORKFLOW}")
     })?;
-    let (body, after) = remainder.split_once(RUST_FULL_FOOTER).ok_or_else(|| {
-        format!("rebalance-tests cannot find the Rust coverage job boundary in {CI_WORKFLOW}")
-    })?;
+    let (body, after) = remainder
+        .split_once(RUST_PRODUCTION_FOOTER)
+        .ok_or_else(|| {
+            format!("rebalance-tests cannot find the Rust coverage job boundary in {CI_WORKFLOW}")
+        })?;
     Ok((before, body, after))
 }
 

@@ -569,8 +569,8 @@ run_self_case() {
       mv "$fixture.tmp" "$fixture"
       ;;
     cargo-recipe-in-shard)
-      # Cargo-backed targets are owned by rust-full and must not recompile in
-      # the direct-Bash harness matrix.
+      # Cargo-backed targets are owned by rust-full-shards and must not
+      # recompile in the direct-Bash harness matrix.
       {
         printf 'test-only-cargo:\n'
         printf '\t@cargo test --locked --package larch-cli\n'

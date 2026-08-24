@@ -593,7 +593,7 @@ final-SHA, event, workflow, producer, or ambiguity verification.
 
 For an expensive Rust cache miss, the publisher treats a merge-group artifact
 as untrusted input. It requires exactly one successful `CI` merge-group run for
-the final `main` SHA, the `rust-full` aggregate, and the named
+the final `main` SHA, the `rust-coverage` aggregate, and the named
 `rust-full shard 1` and `rust-lint` producers, then verifies the
 candidate manifest, source SHA, canonical key and key-input digest, byte bound,
 regular-file tree, checksums, modes, bounded nanosecond modification times,
@@ -624,10 +624,10 @@ The manual target-cache benchmark is isolated from that production cache
 contract. Its fixed workflow condition requires a direct `workflow_dispatch`
 of `refs/heads/main`, its benchmark-only key cannot be restored by the normal
 coverage lane, and its decimal size input is capped before the shared action
-can save. During that exact dispatch, `rust-full` stays cache-off as the paired
-control. The benchmark exists only to collect the independent warm-cache
-comparison; it does not authorize a pull request or normal manual run to
-publish compiler output.
+can save. During that exact dispatch, the full shard and policy path stays
+cache-off as the paired control. The benchmark exists only to collect the
+independent warm-cache comparison; it does not authorize a pull request or
+normal manual run to publish compiler output.
 
 ### CI Rust selection trust
 
@@ -684,11 +684,15 @@ fields. The structured result preserves the classifier proposal and adds the
 effective execution mode, reason, rollout state, and observation flag after
 cache validation and any safe override; it is an artifact for audit, not an
 authorization token. The stable required `rust-coverage` status accepts only
-one successful mode result (`rust-full`, `rust-partial`, or `rust-skip`). The
-full result requires every `rust-full-shards` matrix cell, the parallel
+both successful full-mode producers or one successful alternative
+(`rust-partial` or `rust-skip`), with every unselected producer skipped. In
+full mode it requires every `rust-full-shards` matrix cell, the parallel
 `rust-full-policy` producer, an exact-count LCOV merge that includes its
-profile, and the combined line gate. An unavailable selector requires that
-full result, which must succeed before the stable status can pass. Main, manual,
+profile, and the combined line gate. The separately required `rust-gate`
+validates lint, dependency policy, and the raw producer-result shape without
+waiting for `rust-coverage`; either required status fails closed. An
+unavailable selector requires the full path, which must succeed before the
+stable status can pass. Main, manual,
 scheduled, merge-queue, and unknown events continue to run the full lane. The
 `full-rust-ci` label is a
 safe pull-request override because it can only force that same full path.

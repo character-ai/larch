@@ -861,8 +861,9 @@ jobs:
       # Three comparable warm-cache main samples beat the cache-off control
       # end to end. The expanded dependency-only inventory is 1,369,854,810
       # bytes, so this reviewed decimal bound leaves 30,145,190 bytes of
-      # headroom. The target-cache benchmark dispatch keeps rust-full cache-off
-      # as its paired control; every other full lane restores this exact cache.
+      # headroom. The target-cache benchmark dispatch keeps this full shard
+      # path cache-off as its paired control; every other full lane restores
+      # this exact cache.
       COVERAGE_TARGET_CACHE_ENABLED: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_target_cache_benchmark && 'false' || 'true' }}
       COVERAGE_TARGET_CACHE_SCHEMA: "v2"
       COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"
@@ -1005,80 +1006,6 @@ jobs:
           CARGO_NEXTEST_CACHE_KEY: ${{ steps.main-cache-keys.outputs.cargo-nextest }}
           COVERAGE_TARGET_CACHE_KEY: ${{ steps.main-cache-keys.outputs.coverage-target }}
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
-
-  # Keep the protected producer name stable. This job fails if any matrix leg
-  # or the policy producer fails, merges every same-run LCOV trace, and applies
-  # the 88% line gate once to the complete workspace result.
-  rust-full:
-    name: rust-full
-    needs: [rust-selection, rust-full-shards, rust-full-policy]
-    if: always() && (github.event_name != 'pull_request' || needs.rust-selection.result != 'success' || needs.rust-selection.outputs.mode == 'full')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    env:
-      RUST_COVERAGE_MIN_LINES: "88.000"
-      RUST_COVERAGE_SHARD_COUNT: "4"
-    steps:
-      - name: Require every full Rust coverage producer to pass
-        run: |
-          set -euo pipefail
-          shard_result="${{ needs.rust-full-shards.result }}"
-          policy_result="${{ needs.rust-full-policy.result }}"
-          [ "$shard_result" = success ] || {
-            printf '::error::rust-full-shards result=%s\n' "$shard_result"
-            exit 1
-          }
-          [ "$policy_result" = success ] || {
-            printf '::error::rust-full-policy result=%s\n' "$policy_result"
-            exit 1
-          }
-      - name: Download Rust coverage shard reports
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: rust-coverage-lcov-shard-*
-          path: ${{ runner.temp }}/rust-coverage-shards
-      - name: Download Rust policy coverage report
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: rust-coverage-lcov-policy
-          path: ${{ runner.temp }}/rust-coverage-shards/rust-coverage-lcov-policy
-      - name: Install pinned LCOV merger
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends lcov=2.0-4ubuntu2
-          test "$(dpkg-query --show --showformat='${Version}' lcov)" = 2.0-4ubuntu2
-      - name: Merge Rust coverage and enforce the line gate
-        run: |
-          set -euo pipefail
-          shard_root="$RUNNER_TEMP/rust-coverage-shards"
-          merged_root="$RUNNER_TEMP/rust-coverage-merged"
-          merged_report="$merged_root/lcov.info"
-          expected_report_count="$((RUST_COVERAGE_SHARD_COUNT + 1))"
-          mkdir -p "$merged_root"
-          mapfile -d '' shard_reports < <(
-            find "$shard_root" -type f -name lcov.info -print0 | sort -z
-          )
-          test "${#shard_reports[@]}" -eq "$expected_report_count" || {
-            printf '::error::expected %s Rust coverage reports, found %s\n' \
-              "$expected_report_count" "${#shard_reports[@]}"
-            exit 1
-          }
-          merge_arguments=()
-          for shard_report in "${shard_reports[@]}"; do
-            test -f "$shard_report"
-            test ! -L "$shard_report"
-            merge_arguments+=(--add-tracefile "$shard_report")
-          done
-          lcov "${merge_arguments[@]}" --output-file "$merged_report"
-          lcov --summary "$merged_report" --fail-under-lines "$RUST_COVERAGE_MIN_LINES"
-      - name: Upload merged Rust coverage report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: rust-coverage-lcov
-          path: ${{ runner.temp }}/rust-coverage-merged/lcov.info
-          if-no-files-found: error
-          overwrite: false
 
   # The partial path has a strict package closure but still builds the CLI from
   # the candidate, validates repository policy and plugin projection, and
@@ -1271,13 +1198,18 @@ jobs:
           printf '## Rust compilation skipped\n\nTrusted-main repository policy, plugin projection validation, and the bootstrap integration artifact completed against a matching Rust-input identity.\n' \
             >> "$GITHUB_STEP_SUMMARY"
 
-  # Preserve the protected rust-coverage status while making exactly one
-  # producer path accountable for the binary and required policy work.
+  # Publish the protected rust-coverage status directly from the selected
+  # producer path. Full mode also merges every same-run LCOV trace and applies
+  # the 88% line gate once to the complete workspace result.
   rust-coverage:
     name: rust-coverage
-    needs: [rust-selection, rust-full, rust-partial, rust-skip]
+    needs: [rust-selection, rust-full-shards, rust-full-policy, rust-partial, rust-skip]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      RUST_COVERAGE_MIN_LINES: "88.000"
+      RUST_COVERAGE_SHARD_COUNT: "4"
     outputs:
       mode: ${{ steps.verify-mode.outputs.mode }}
     steps:
@@ -1285,7 +1217,8 @@ jobs:
         id: verify-mode
         env:
           EVENT_NAME: ${{ github.event_name }}
-          FULL_RESULT: ${{ needs.rust-full.result }}
+          FULL_POLICY_RESULT: ${{ needs.rust-full-policy.result }}
+          FULL_SHARDS_RESULT: ${{ needs.rust-full-shards.result }}
           PARTIAL_RESULT: ${{ needs.rust-partial.result }}
           SELECTION_MODE: ${{ needs.rust-selection.outputs.mode }}
           SELECTION_RESULT: ${{ needs.rust-selection.result }}
@@ -1300,23 +1233,78 @@ jobs:
           fi
           case "$mode" in
             full)
-              test "$FULL_RESULT" = success || { printf '::error::rust-full result=%s\n' "$FULL_RESULT"; exit 1; }
+              test "$FULL_SHARDS_RESULT" = success || { printf '::error::rust-full-shards result=%s\n' "$FULL_SHARDS_RESULT"; exit 1; }
+              test "$FULL_POLICY_RESULT" = success || { printf '::error::rust-full-policy result=%s\n' "$FULL_POLICY_RESULT"; exit 1; }
               test "$PARTIAL_RESULT" = skipped || { printf '::error::rust-partial result=%s\n' "$PARTIAL_RESULT"; exit 1; }
               test "$SKIP_RESULT" = skipped || { printf '::error::rust-skip result=%s\n' "$SKIP_RESULT"; exit 1; }
               ;;
             partial)
               test "$PARTIAL_RESULT" = success || { printf '::error::rust-partial result=%s\n' "$PARTIAL_RESULT"; exit 1; }
-              test "$FULL_RESULT" = skipped || { printf '::error::rust-full result=%s\n' "$FULL_RESULT"; exit 1; }
+              test "$FULL_SHARDS_RESULT" = skipped || { printf '::error::rust-full-shards result=%s\n' "$FULL_SHARDS_RESULT"; exit 1; }
+              test "$FULL_POLICY_RESULT" = skipped || { printf '::error::rust-full-policy result=%s\n' "$FULL_POLICY_RESULT"; exit 1; }
               test "$SKIP_RESULT" = skipped || { printf '::error::rust-skip result=%s\n' "$SKIP_RESULT"; exit 1; }
               ;;
             skip)
               test "$SKIP_RESULT" = success || { printf '::error::rust-skip result=%s\n' "$SKIP_RESULT"; exit 1; }
-              test "$FULL_RESULT" = skipped || { printf '::error::rust-full result=%s\n' "$FULL_RESULT"; exit 1; }
+              test "$FULL_SHARDS_RESULT" = skipped || { printf '::error::rust-full-shards result=%s\n' "$FULL_SHARDS_RESULT"; exit 1; }
+              test "$FULL_POLICY_RESULT" = skipped || { printf '::error::rust-full-policy result=%s\n' "$FULL_POLICY_RESULT"; exit 1; }
               test "$PARTIAL_RESULT" = skipped || { printf '::error::rust-partial result=%s\n' "$PARTIAL_RESULT"; exit 1; }
               ;;
             *) printf '::error::invalid Rust CI mode=%s\n' "$mode"; exit 1 ;;
           esac
           printf 'mode=%s\n' "$mode" >> "$GITHUB_OUTPUT"
+      - name: Download Rust coverage shard reports
+        if: steps.verify-mode.outputs.mode == 'full'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: rust-coverage-lcov-shard-*
+          path: ${{ runner.temp }}/rust-coverage-shards
+      - name: Download Rust policy coverage report
+        if: steps.verify-mode.outputs.mode == 'full'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: rust-coverage-lcov-policy
+          path: ${{ runner.temp }}/rust-coverage-shards/rust-coverage-lcov-policy
+      - name: Install pinned LCOV merger
+        if: steps.verify-mode.outputs.mode == 'full'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends lcov=2.0-4ubuntu2
+          test "$(dpkg-query --show --showformat='${Version}' lcov)" = 2.0-4ubuntu2
+      - name: Merge Rust coverage and enforce the line gate
+        if: steps.verify-mode.outputs.mode == 'full'
+        run: |
+          set -euo pipefail
+          shard_root="$RUNNER_TEMP/rust-coverage-shards"
+          merged_root="$RUNNER_TEMP/rust-coverage-merged"
+          merged_report="$merged_root/lcov.info"
+          expected_report_count="$((RUST_COVERAGE_SHARD_COUNT + 1))"
+          mkdir -p "$merged_root"
+          mapfile -d '' shard_reports < <(
+            find "$shard_root" -type f -name lcov.info -print0 | sort -z
+          )
+          test "${#shard_reports[@]}" -eq "$expected_report_count" || {
+            printf '::error::expected %s Rust coverage reports, found %s\n' \
+              "$expected_report_count" "${#shard_reports[@]}"
+            exit 1
+          }
+          merge_arguments=()
+          for shard_report in "${shard_reports[@]}"; do
+            test -f "$shard_report"
+            test ! -L "$shard_report"
+            merge_arguments+=(--add-tracefile "$shard_report")
+          done
+          lcov "${merge_arguments[@]}" --output-file "$merged_report"
+          lcov --summary "$merged_report" --fail-under-lines "$RUST_COVERAGE_MIN_LINES"
+      - name: Upload merged Rust coverage report
+        if: steps.verify-mode.outputs.mode == 'full'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-coverage-lcov
+          path: ${{ runner.temp }}/rust-coverage-merged/lcov.info
+          if-no-files-found: error
+          overwrite: false
 
   # Manual profile sweeps remain isolated from the protected production job.
   # They share every validation and timing step, but never publish the Python
@@ -1458,8 +1446,8 @@ jobs:
           COVERAGE_TARGET_CACHE_KEY: ${{ steps.main-cache-keys.outputs.coverage-target }}
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
 
-  # This manual job supplies matched cache-on measurements while rust-full in
-  # the same dispatch remains the cache-off control. Its cache key is isolated
+  # This manual job supplies matched cache-on measurements while the full shard
+  # and policy path remains the cache-off control. Its cache key is isolated
   # from production and may only be published by this explicitly requested
   # main-ref benchmark, never by a pull request or normal dispatch.
   rust-coverage-target-cache-benchmark:
@@ -1538,22 +1526,35 @@ jobs:
           COVERAGE_TARGET_CACHE_KEY: ${{ steps.main-cache-keys.outputs.coverage-target }}
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
 
-  # Aggregate gate keeps one branch-protection name if the internal Rust job
-  # shape changes. `if: always()` prevents a skipped dependency from passing.
+  # Keep the aggregate branch-protection name while starting it beside
+  # rust-coverage. It independently rejects failed lint, dependency policy, or
+  # execution producers. `if: always()` prevents skipped dependencies from
+  # passing accidentally.
   rust-gate:
     name: rust-gate
-    needs: [rust-lint, rust-deny, rust-coverage]
+    needs: [rust-lint, rust-deny, rust-full-shards, rust-full-policy, rust-partial, rust-skip]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Require every Rust lane to pass
         run: |
+          set -euo pipefail
           lint_result="${{ needs.rust-lint.result }}"
           deny_result="${{ needs.rust-deny.result }}"
-          coverage_result="${{ needs.rust-coverage.result }}"
+          full_shards_result="${{ needs.rust-full-shards.result }}"
+          full_policy_result="${{ needs.rust-full-policy.result }}"
+          partial_result="${{ needs.rust-partial.result }}"
+          skip_result="${{ needs.rust-skip.result }}"
           [ "$lint_result" = success ] || { echo "::error::rust-lint result=$lint_result"; exit 1; }
           [ "$deny_result" = success ] || { echo "::error::rust-deny result=$deny_result"; exit 1; }
-          [ "$coverage_result" = success ] || { echo "::error::rust-coverage result=$coverage_result"; exit 1; }
+          case "$full_shards_result:$full_policy_result:$partial_result:$skip_result" in
+            success:success:skipped:skipped|skipped:skipped:success:skipped|skipped:skipped:skipped:success) ;;
+            *)
+              printf '::error::invalid Rust producer results: shards=%s policy=%s partial=%s skip=%s\n' \
+                "$full_shards_result" "$full_policy_result" "$partial_result" "$skip_result"
+              exit 1
+              ;;
+          esac
 
   contains-pins:
     runs-on: ubuntu-latest
