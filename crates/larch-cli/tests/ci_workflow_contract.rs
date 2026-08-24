@@ -30,6 +30,9 @@ fn assert_tree_lacks(path: &Path, needle: &str) {
         let entry = entry.expect("read test-tree entry");
         let file_type = entry.file_type().expect("read test-tree entry type");
         if file_type.is_dir() {
+            if entry.file_name() == "__pycache__" {
+                continue;
+            }
             assert_tree_lacks(&entry.path(), needle);
         } else if file_type.is_file() {
             let source = fs::read(entry.path()).expect("read test source");
