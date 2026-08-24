@@ -1024,11 +1024,14 @@ mod tests {
             self.calls.borrow_mut().push(name.to_owned());
             let index = self.index.get();
             self.index.set(index + 1);
-            self.responses.get(index).cloned().unwrap_or(StageOutput {
-                status: 1,
-                stdout: String::new(),
-                stderr: "no scripted response\n".to_owned(),
-            })
+            self.responses
+                .get(index)
+                .cloned()
+                .unwrap_or_else(|| StageOutput {
+                    status: 1,
+                    stdout: String::new(),
+                    stderr: "no scripted response\n".to_owned(),
+                })
         }
     }
 
@@ -1332,11 +1335,12 @@ mod tests {
 
     #[test]
     fn oversized_owner_pid_fails_at_its_validation_stage() {
-        let fixture = fixture();
-        let mut environ = fixture.environ.clone();
-        environ.insert("LARCH_CLAUDE_PID".to_owned(), "9".repeat(5_000));
+        let mut fixture = fixture();
+        fixture
+            .environ
+            .insert("LARCH_CLAUDE_PID".to_owned(), "9".repeat(5_000));
         let stages = ScriptedStages::new(Vec::new());
-        let result = bootstrap(&stages, 8651, true, "", &environ, 999);
+        let result = bootstrap(&stages, 8651, true, "", &fixture.environ, 999);
         assert_eq!(result.exit_code, 1);
         assert!(result.stdout.contains("BOOTSTRAP_STAGE=owner-pid\n"));
         assert!(
@@ -1383,13 +1387,12 @@ mod tests {
 
     #[test]
     fn write_hook_failure_is_named_and_keeps_the_session() {
-        let fixture = fixture();
-        let mut environ = fixture.environ.clone();
-        environ.remove("HOME");
+        let mut fixture = fixture();
+        fixture.environ.remove("HOME");
         let mut responses = fresh_responses(&fixture.session, &fixture.pointer);
         responses.pop();
         let stages = ScriptedStages::new(responses);
-        let result = bootstrap(&stages, 8651, true, "", &environ, 999);
+        let result = bootstrap(&stages, 8651, true, "", &fixture.environ, 999);
         assert_eq!(result.exit_code, 1);
         assert!(result.stdout.contains("BOOTSTRAP_STAGE=write-hook\n"));
         assert!(fixture.session.is_dir());
