@@ -193,7 +193,10 @@ reported version, Rust-input digest, and producer reference. The required
 `python-rust-integration` job publishes the stable `python-tests-gate` check.
 It verifies both prerequisite results, regular-file shape, checksum, Rust-input
 identity, producer-specific source identity, and version before it runs the
-Rust-backed Python tests. A candidate-built artifact must name the current
+shipped bootstrap integration harness. That harness rechecks the executable
+checksum, runs lifecycle start/finalize through `scripts/larch.sh`, and proves
+coverage profiles cannot escape into the temporary client repository. A
+candidate-built artifact must name the current
 checkout; a trusted-main artifact is accepted only for an enforced `skip` run.
 The stub-safe `python-tests` matrix has no Rust artifact dependency. The
 producer's `if-no-files-found: error` prevents an absent producer artifact from

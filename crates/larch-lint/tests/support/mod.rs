@@ -151,6 +151,10 @@ fn seed_tracked_tree(repository: &TempRepo) {
         b"# no retained exceptions\n",
     );
     repository.write(
+        "crates/larch-lint/config/skill-structure-pins.jsonl",
+        b"# fixture manifest\n",
+    );
+    repository.write(
         "ARCHITECTURAL_GUIDELINES.md",
         b"### G-Fixture-1: Fixture guidance\n- Why: fixture body.\n- Deviate when: when a fixture needs an exception.\n",
     );
@@ -266,6 +270,9 @@ fn copy_tree(repository: &TempRepo, source_dir: &Path, destination_prefix: &str)
         }
         let name = entry.file_name();
         let name = name.to_string_lossy();
+        if name == "skill-structure-pins.jsonl" {
+            continue;
+        }
         let contents = fs::read(entry.path()).expect("read seeded file");
         repository.write(&format!("{destination_prefix}/{name}"), &contents);
     }
