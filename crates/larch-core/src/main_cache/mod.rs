@@ -19,7 +19,7 @@ const COMPLETED: &str = "completed";
 const MERGE_GROUP: &str = "merge_group";
 const SUCCESS: &str = "success";
 const MAX_SOURCE_RUNS: usize = 100;
-const REQUIRED_JOBS: [&str; 3] = ["rust-full", "rust-full shard 1", "rust-lint"];
+const REQUIRED_JOBS: [&str; 3] = ["rust-coverage", "rust-full shard 1", "rust-lint"];
 
 /// Resolve the one successful merge-group CI run eligible to publish main caches.
 ///

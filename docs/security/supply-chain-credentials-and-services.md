@@ -85,7 +85,7 @@ that checkout.
 On a successful merge-group run, an exact miss may stage a candidate artifact.
 The publisher uses `larch ci-timing merge-group-source`, a typed Actions
 operation, to prove that the newly landed `main` SHA has exactly one successful
-`CI` merge-group run for that SHA and that its `rust-full` aggregate,
+`CI` merge-group run for that SHA and that its `rust-coverage` aggregate,
 `rust-full shard 1` cache producer, and `rust-lint` cache producer succeeded.
 The resolver accepts only a lowercase 40-character
 commit SHA, queries at most 100 completed `ci.yaml` merge-group runs filtered
@@ -121,8 +121,9 @@ main-ref coverage-target benchmark. Its job is gated to `workflow_dispatch` on
 accepts a decimal size bound no greater than 2 GiB. It cannot run from a pull
 request, shares no key with the production cache, and cannot make the
 production path restore or publish a target cache. During that benchmark
-dispatch, `rust-full` remains the cache-off control. The first zero-bound run
-measures and inventories dependencies without saving; later benchmark runs use
+dispatch, the full shard and policy path remains the cache-off control. The
+first zero-bound run measures and inventories dependencies without saving;
+later benchmark runs use
 that measured bound to compare warm candidates against the concurrent normal
 coverage control. This scoped measurement exception does not change the
 trusted-main production-publication rule.
@@ -200,15 +201,29 @@ candidate-built artifact must name the current
 checkout; a trusted-main artifact is accepted only for an enforced `skip` run.
 The stub-safe `python-tests` matrix has no Rust artifact dependency. The
 producer's `if-no-files-found: error` prevents an absent producer artifact from
-being treated as a successful handoff. The stable `rust-full` gate first
-requires the complete matrix and the policy job to pass. It downloads the
-same-run test artifacts by the fixed shard prefix and the policy artifact by
-its exact name, requires exactly one more regular, non-symlink `lcov.info` file
-than the configured test-shard count, and merges them with the exact pinned
-Ubuntu LCOV package before applying the 88% line threshold. It uploads only the
-merged report under the legacy stable artifact and member names.
+being treated as a successful handoff. In full mode, the parallel
+`rust-full-lcov-tool` job installs the exact pinned Ubuntu LCOV package. It
+archives only files owned by that package and the dependencies installed or
+updated by the same transaction. It rejects unsafe package paths, verifies the
+extracted LCOV 2.0 runtime, and uploads its archive, package inventory,
+exact-version metadata, and SHA-256 manifest under the fixed coverage prefix.
 
-On an exact Rust-policy miss, shard 1 of a successful `rust-full` merge-group
+The stable `rust-coverage` job first requires the complete matrix, policy job,
+and runtime preparation to pass. It downloads all same-run coverage inputs with
+one fixed prefix. Before extraction it requires the exact four regular,
+non-symlink tool files, verifies every checksum and the pinned version metadata,
+caps the archive at 64 MiB and 16,384 entries, and rejects absolute or
+parent-traversing archive paths. The resolved executable must remain inside the
+extraction root and report the expected LCOV 2.0 package version. The job also
+requires the exact policy and numbered shard paths and rejects any report count
+other than one more than the configured test-shard count. Every report must be
+regular and non-symlink. The prepared LCOV runtime merges those inputs through
+its parallel add-tracefile path. The unchanged 88% line threshold is then
+calculated from LCOV's generated `LF` and `LH` totals in the merged report, and
+malformed totals fail closed. The job uploads only that merged report under the
+legacy stable artifact and member names.
+
+On an exact Rust-policy miss, shard 1 of a successful full-mode merge-group
 run stages and verifies a policy-cache candidate after the coverage target has
 been pruned. No other shard can stage or upload that candidate. Shard 1 verifies
 the preserved integration artifact's regular-file shape,

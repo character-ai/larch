@@ -67,7 +67,7 @@ include:
 - a distinct pull-request number and tested merge candidate;
 - the uploaded `rust-ci-selection` artifact's proposed mode and
   observation-window effective full reason;
-- successful `rust-full`, `rust-coverage`, and `rust-gate` job links;
+- successful full-mode producer, `rust-coverage`, and `rust-gate` job links;
 - an explicit false-safe or false-full comparison result; and
 - the full-backstop duration plus, when the class is later enabled, the
   selected-path duration with its runner and cache conditions.
@@ -193,8 +193,9 @@ observation window.
 Treat each row as evidence from the exact pull-request workflow run, not as a
 claim made by its branch. Download that run's `rust-ci-selection` artifact and
 record its proposed mode, effective mode, effective-mode reason, and
-`observation_only` value. Then record the linked `rust-full`, `rust-coverage`,
-and `rust-gate` job results and durations from the same run. Record a rerun or
+`observation_only` value. Then record the linked full-mode producer jobs,
+the parallel `rust-full LCOV tool` result, and the `rust-coverage` and
+`rust-gate` job results and durations from the same run. Record a rerun or
 a job from a different merge candidate separately, but do not let it replace
 the original row or satisfy the distinct-pull-request requirement. A
 label-forced run is not eligible evidence.
@@ -210,7 +211,7 @@ duration or turn the row into false-full evidence.
 
 ### Timing comparability
 
-Record the runner image, tool and cache class, and the full `rust-full` job
+Record the runner image, tool and cache class, and the full-mode critical-path
 duration for every live row. After a class is enabled, compare its selected-path
 duration only with full rows on the same runner image and with the same
 Rust-input identity. Distinguish cold from warm runs and explicitly name when

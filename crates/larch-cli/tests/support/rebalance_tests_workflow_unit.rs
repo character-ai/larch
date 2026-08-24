@@ -151,10 +151,13 @@ impl GitFixture {
         shard: [1]
     env:
       COVERAGE_SHARD_COUNT: "1"
-  rust-full:
+  rust-full-policy:
+  rust-partial:
+  rust-skip:
+  rust-coverage:
     env:
       RUST_COVERAGE_SHARD_COUNT: "1"
-  # The partial path
+  # Manual profile sweeps
 "#,
         )
         .expect("write fixture CI workflow");

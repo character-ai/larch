@@ -304,25 +304,36 @@ follows:
 - `rust-lint` runs format and Clippy with incremental compilation and dev/test
   debug output disabled.
 - `rust-deny` runs the locked all-feature dependency policy in parallel.
-- `rust-full`, `rust-partial`, and `rust-skip` remain the mutually exclusive
-  full, partial, and skip mode results. The full result is composed from the
-  `rust-full-shards` matrix, the parallel `rust-full-policy` job, and the
-  stable `rust-full` merge-and-gate job.
-  `rust-coverage` is not an execution lane: it is the stable required
-  aggregate. Under `if: always()`, it validates the selected mode and every
-  mode result, then passes only when the selected mode succeeds and the other
-  two are skipped. `rust-gate` and `python-rust-integration` use that stable
-  aggregate status.
-- `rust-full-shards` owns the full locked-workspace test coverage. Four
-  cells run `cargo llvm-cov nextest` with disjoint
+- Together, `rust-full-shards` and `rust-full-policy` are the full-mode
+  producers; `rust-partial` and `rust-skip` are the mutually exclusive
+  alternatives. `rust-coverage` is the stable required aggregate and
+  full-mode LCOV gate. Under `if: always()`, it validates the selected mode and
+  every mode result, then passes only when the selected mode succeeds and the
+  alternatives are skipped. Full mode also requires successful
+  `rust-full-lcov-tool` preparation before it performs the merge and line gate
+  described below. `rust-gate` independently validates `rust-lint`,
+  `rust-deny`, and the raw producer-result shape without waiting for
+  `rust-coverage`; both stable checks are required, so a red producer or LCOV
+  threshold failure blocks the merge queue. `python-rust-integration` uses the
+  stable `rust-coverage` status and selected-mode output.
+- The `rust-full-shards` matrix owns the full locked-workspace test coverage.
+  Four cells run `cargo llvm-cov nextest` with disjoint
   `--partition hash:N/4` partitions and upload distinct LCOV reports. Shard 1
   alone runs workspace doctests and plugin projection validation, stages cache
   candidates, and uploads the Linux executable artifact. `rust-full-policy`
   runs beside the four cells. It builds only the instrumented `larch` binary,
   runs the single `larch lint all` scan, and uploads its LCOV and per-rule
-  timing artifacts. `rust-full` requires all five producers to pass, merges
-  exactly five same-run LCOV reports, and applies the unchanged 88% line
-  threshold once to the combined workspace coverage.
+  timing artifacts. `rust-full-lcov-tool` starts beside those producers. It
+  installs the exact pinned Ubuntu LCOV package, archives only the package-owned
+  runtime files and dependencies installed or updated by that transaction,
+  verifies the extracted LCOV 2.0 runtime, and uploads a checksum-bound
+  same-run tool artifact.
+  `rust-coverage` downloads that artifact and exactly five same-run LCOV reports
+  in one artifact operation. It verifies the tool checksum, archive paths,
+  runtime version, exact report paths, and report count. The prepared LCOV 2.0
+  merger combines the reports with five-way parallelism, then the job applies
+  the unchanged 88% line threshold to the canonical `LF`/`LH` totals in that
+  merged report without parsing the input set a second time.
   After coverage-target pruning, an exact cache miss in a successful
   `merge_group` full lane stages and verifies a policy-cache candidate from
   that preserved artifact. The trusted main publisher may promote it only after
@@ -332,10 +343,10 @@ follows:
   The composed full mode is the only path that enforces full-workspace
   coverage. The
   `merge_group` `checks_requested` trigger runs the same full, read-only path
-  for a merge-queue candidate. Manual dispatches and merge-queue runs use
-  `rust-full`; a normal `main` push runs only trusted cache publication. Pull
-  requests use `rust-full` when selection is `full` or selection cannot prove
-  a narrower path.
+  for a merge-queue candidate. Manual dispatches and merge-queue runs use the
+  full shard and policy path; a normal `main` push runs only trusted cache
+  publication. Pull requests use that full path when selection is `full` or
+  selection cannot prove a narrower path.
 - `rust-partial` and `rust-skip` may be the selected producer only for pull
   requests. `rust-partial` runs the selector-proven package closure without a
   misleading full-workspace coverage threshold. `rust-skip` runs no
@@ -361,9 +372,9 @@ follows:
   the protected production path and does not upload a competing integration artifact.
 - `rust-coverage-target-cache-benchmark` runs only when a manual dispatch on
   `main` sets `coverage_target_cache_benchmark=true`. It runs beside the normal
-  cache-off `rust-full` control, uses the same coverage action and profile, and
-  uploads a uniquely named verification artifact rather than competing with the
-  Python handoff.
+  cache-off full shard and policy path as the control, uses the same coverage
+  action and profile, and uploads a uniquely named verification artifact rather
+  than competing with the Python handoff.
 
 ### Rust coverage shard count
 
@@ -385,14 +396,14 @@ post-change shard cohorts before it accepts the result.
 ### Bash-shard Cargo target ownership
 
 The Bash-harness matrix deliberately excludes Cargo-backed Make targets. The
-following focused local targets are covered by the stronger `rust-full` action's
+following focused local targets are covered by the stronger full-workspace
 `cargo llvm-cov nextest --no-report --workspace --all-features --locked`
-execution surface:
+execution in `rust-full-shards`:
 
 Each listed Make recipe is the shared `$(HARNESS_MARK) --label $@ --` prefix
 followed by its table command; it has no other recipe lines.
 
-| Focused local Make target | Complete Cargo recipe | `rust-full` nextest surface |
+| Focused local Make target | Complete Cargo recipe | `rust-full-shards` nextest surface |
 | --- | --- | --- |
 | `test-collect-agent-results` | `cargo test --locked --package larch-cli --test integration collector_commands::` | `collector_commands` |
 | `test-analyze` | `cargo test --locked --package larch-cli --bin larch analyze_issues_commands` | `analyze_issues_commands` |
@@ -436,13 +447,15 @@ also runs a separate `cargo test --doc --workspace --all-features --locked
 `cargo llvm-cov show-env` environment. `--no-report` preserves the coverage
 artifact set between normal test phases; the stable toolchain runs doctests
 without cargo-llvm-cov's nightly-only doctest instrumentation. Each shard
-report retains the existing filename exclusions. The stable `rust-full` job
-applies the line threshold after it merges the four test reports and the policy
-report. After its report, shard 1 uses the executable for both plugin-runtime
-commands and the generated-projection clean-diff check before uploading it for
-bootstrap integration tests. The separate doctest command stays required even
-when the workspace currently has no doctests. Nextest's slow-test status and
-final status output remain visible in the job log.
+report retains the existing filename exclusions. The stable `rust-coverage`
+job verifies and extracts the LCOV runtime prepared in parallel, merges the four
+test reports and the policy report through LCOV's parallel add-tracefile path,
+then applies the line threshold to the merged report's generated line totals.
+After shard 1 produces its report, it uses the executable for both
+plugin-runtime commands and the generated-projection clean-diff check before
+uploading it for bootstrap integration tests. The separate doctest command stays
+required even when the workspace currently has no doctests. Nextest's
+slow-test status and final status output remain visible in the job log.
 
 `rust-full-policy` exports the same coverage environment, then runs
 `cargo build --locked --package larch-cli --bin larch --all-features --profile test`.
@@ -450,7 +463,7 @@ It does not install nextest or build the workspace test executables. It fails
 closed unless the coverage-target executable is runnable and reports its
 version, then uses it for exactly one `larch lint all` invocation. That scan
 writes a sorted per-rule timing TSV. Its LCOV report contributes to the merged
-line gate before the stable `rust-full` job applies the threshold.
+line gate before the stable `rust-coverage` job applies the threshold.
 
 Repository-policy execution has a fixed four-worker bound. Measured
 whole-repository scans may start before ordinary rules to avoid a worker-tail,
@@ -536,7 +549,7 @@ The workflow enforces these modes after both live observation windows completed:
 
 For `skip`, the trusted main publisher promotes an immutable
 `trusted-main-rust-policy` cache entry only from a successful merge-group
-`rust-full` artifact whose SHA exactly became `main`. Its key and metadata bind
+full-mode artifact whose SHA exactly became `main`. Its key and metadata bind
 the Linux binary to tracked crate Rust sources (never generated target output),
 root and crate manifests, root or crate build scripts, lockfile, toolchain,
 and `.cargo/` inputs. The cache has no broad fallback. For pull requests, both
@@ -553,9 +566,11 @@ or any validation failure selects `full` before another lane can rely on it.
 `Cargo.lock`, any Cargo manifest, `rust-toolchain.toml`, `.cargo/`, build
 scripts, Makefiles, `deny.toml`, Rust CI/profile files, and selector machinery
 are global inputs and always select `full`. `rust-coverage` remains the stable
-required status: it aggregates exactly one successful execution producer
-(`rust-full`, `rust-partial`, or `rust-skip`). An unavailable selector defaults
-to `full`, and the aggregate passes only when that full path succeeds. The
+required status: it accepts either both successful full-mode producers or one
+successful alternative (`rust-partial` or `rust-skip`), with every unselected
+producer skipped. Full mode additionally requires the parallel LCOV runtime
+preparation to succeed. An unavailable selector defaults to `full`, and the
+aggregate passes only when that full path succeeds. The
 merge group is the per-merge full-run backstop; manual dispatch provides a
 full rerun. To force the full
 path while debugging a pull request, apply the `full-rust-ci` label; label and
@@ -603,7 +618,7 @@ A manual dispatch with `rust_phase_overlap_benchmark=true` runs the
 three `parallel` candidate samples at one commit on `ubuntu-24.04`. Every cell
 uses the same pinned coverage tools, dependency-cache policy, test profile,
 `NEXTEST_TEST_THREADS=16`, and 88.000% line threshold. The matrix is
-observational and cannot mutate the protected `rust-full` producer. A reviewed
+observational and cannot mutate the protected full-mode producers. A reviewed
 workflow change is required to promote a proven phase mode.
 
 After compilation and the required doctests, the candidate starts nextest and
@@ -705,8 +720,8 @@ Parallel tied the 620-second median coverage-phase total. It reduced the
 median action total by 2 seconds and runner wall time by 4 seconds, or 0.6%.
 That is not the policy-duration reduction required for promotion. Contention
 instead raised median nextest time by 81 seconds, or 44.3%, and policy time by
-172 seconds, or 133.3%. The protected `rust-full` producer therefore remains
-sequential.
+172 seconds, or 133.3%. The then-current protected `rust-full` producer
+therefore remained sequential.
 
 Every sample passed 5,479 tests and reported the same two skips. The parallel
 samples classified two or three tests as slow, while the sequential samples
@@ -759,7 +774,8 @@ making that final claim.
 A final production claim needs three comparable warm full-path successful
 `push` runs on `refs/heads/main` after the relevant repair. Record each run's
 direct URL and the results for every `rust-full shard N` cell, `rust-full
-policy`, `rust-full`, `rust-coverage`, `rust-gate`, and `python-tests-gate`.
+policy`, `rust-full LCOV tool`, `rust-coverage`, `rust-gate`, and
+`python-tests-gate`.
 For every sample, link each producer's coverage-timing TSV and LCOV artifact,
 the merged LCOV artifact, and the `larch-linux-test-binary` artifact. Record
 each job duration, cache hit
@@ -857,12 +873,12 @@ from an explicitly selected `workflow_dispatch` on `refs/heads/main`; pull
 requests and ordinary manual runs cannot restore or save it. Its first dispatch
 uses a zero bound to publish the dependency-only inventory without saving. A
 later dispatch must pass that measured byte bound, capped at 2 GiB, to seed the
-benchmark cache. During that dispatch, `rust-full` stays cache-off as the
-matched control and the benchmark lane is the warm candidate. The benchmark
-key cannot activate or supply the production cache. Its timing and inventory
-artifacts use the `-target-cache-benchmark` suffix, and its verification
-executable uses a distinct artifact name, so they remain distinguishable from
-the control artifacts while retaining upload cost.
+benchmark cache. During that dispatch, the full shard and policy path stays
+cache-off as the matched control and the benchmark lane is the warm candidate.
+The benchmark key cannot activate or supply the production cache. Its timing
+and inventory artifacts use the `-target-cache-benchmark` suffix, and its
+verification executable uses a distinct artifact name, so they remain
+distinguishable from the control artifacts while retaining upload cost.
 
 This workflow does not garbage-collect GitHub Actions caches. Add that behavior
 only after a repository cache inventory demonstrates quota pressure or useful

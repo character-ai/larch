@@ -100,7 +100,7 @@ pub fn prepare_rust_integration_artifact(args: &PrepareRustIntegrationArtifactAr
     report(outcome, "Rust integration artifact preparation failed")
 }
 
-/// CLI entrypoint for rust-full's post-prune candidate stage.
+/// CLI entrypoint for the full-mode primary shard's post-prune candidate stage.
 pub fn stage_rust_policy_candidate(args: &StageRustPolicyCandidateArgs) -> u8 {
     let outcome = stage_policy_candidate(args, &read_binary_version);
     report(outcome, "Rust policy candidate staging failed")

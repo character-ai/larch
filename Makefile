@@ -109,7 +109,7 @@ lint-only:
 # drift-detection script `scripts/test-harness-shards-coverage.sh` parses these lines literally.
 # Shard members must be direct Bash leaves (recipe-bearing test-* or *-bash-harness
 # with no pytest or Cargo invocation). Cargo-focused targets remain available for
-# local debugging; rust-full owns their required CI coverage.
+# local debugging; rust-full-shards jobs own their required CI coverage.
 # Public aggregates and language-specific leaves stay out of shard lists; run
 # them through their focused local targets.
 # New bash harnesses get appended to one shard line.
@@ -553,8 +553,8 @@ test-implement-anti-halt:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-anti-halt.sh
 
 
-# Focused Rust aliases for the retired Python dispatch harness. The rust-full
-# job owns their complete CI coverage.
+# Focused Rust aliases for the retired Python dispatch harness. The
+# rust-full-shards jobs own their complete CI coverage.
 test-run-step2-dispatch:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch implement_step2_commands::commands_tests::run_dispatch
 
@@ -739,7 +739,7 @@ test-dispatch-panel-limits:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration review_dispatch_panel::
 
 # Manual direct wrapper for the Rust integration harness. It keeps the shell
-# contract independently runnable while rust-full owns its CI execution.
+# contract independently runnable while rust-full-shards jobs own its CI execution.
 test-review-dispatch-panel:
 	cargo build --locked --package larch-cli
 	$(HARNESS_MARK) --label $@ -- env LARCH_BINARY=target/debug/larch bash scripts/test-review-dispatch-panel.sh
