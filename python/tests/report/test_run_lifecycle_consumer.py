@@ -23,6 +23,10 @@ def test_consumer_reaches_rust_through_its_bootstrap(
         pytest.skip("CI Rust test binary is unavailable")
     expected_sha256 = os.environ.get("LARCH_TEST_RUST_BINARY_SHA256", "")
     assert expected_sha256, "integration job must provide the verified Rust binary checksum"
+    rust_ci_mode = os.environ.get("RUST_CI_MODE", "")
+    assert rust_ci_mode in {"full", "partial", "skip"}, (
+        "integration job must provide a valid Rust CI mode"
+    )
     binary_path = Path(binary)
     assert binary_path.is_file()
     assert os.access(binary_path, os.X_OK)
@@ -56,7 +60,8 @@ def test_consumer_reaches_rust_through_its_bootstrap(
         text=True,
     )
     # Deliberately omit LLVM_PROFILE_FILE: the lifecycle bootstrap must retain
-    # the ambient redirect for the coverage-built executable.
+    # the ambient redirect. Full and skip use a coverage-built executable and
+    # prove the redirect by writing a profile; partial is not instrumented.
     environment = {
         "HOME": str(tmp_path / "home"),
         "LARCH_BINARY": str(binary_path),
@@ -85,7 +90,8 @@ def test_consumer_reaches_rust_through_its_bootstrap(
     assert terminal.outcome == "success"
     assert terminal.publication is None
     assert terminal.storage_mode == "disabled"
-    assert list(profile_directory.glob("larch-python-*.profraw"))
+    if rust_ci_mode != "partial":
+        assert list(profile_directory.glob("larch-python-*.profraw"))
     assert not list(repo.rglob("default_*.profraw"))
 
 

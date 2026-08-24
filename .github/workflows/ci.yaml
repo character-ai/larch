@@ -1753,8 +1753,8 @@ jobs:
           PYTEST_SHARD_COUNT: "4"
         run: make py-test
 
-  # These are the only Python tests that execute the coverage-built Rust
-  # binary. Preserve python-tests-gate as the stable required check while
+  # These are the only Python tests that execute the selected Rust binary.
+  # Preserve python-tests-gate as the stable required check while
   # combining the focused consumer with the gate to avoid another runner tail.
   # The same-run artifact is validated before either consumer executes, so a
   # missing, stale, or altered binary is a hard failure rather than a skip.
@@ -1854,8 +1854,9 @@ jobs:
         run: pip install -r python/requirements-test.txt
       - name: Run Rust-backed Python integration tests
         env:
-          # The coverage-instrumented executable must not leave profraw files
-          # in the temporary repositories owned by these integration tests.
+          # Coverage-instrumented full and skip executables must not leave
+          # profraw files in the temporary repositories owned by these tests.
+          # The uninstrumented partial executable uses the same clean redirect.
           LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-python-%p.profraw
         run: |
           cd python
