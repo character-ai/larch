@@ -690,18 +690,25 @@ fn read_python_registry(
 }
 
 fn parse_python_registry(source: &str) -> Result<BTreeMap<CommandKey, PythonCommand>, LintError> {
+    // An empty `{ }` / `{}` dict is valid: it is the terminal Python CLI state
+    // after the last `_REGISTRY` command is retired.
     let start = source.find("_REGISTRY:").ok_or_else(|| {
         LintError::new(format!(
             "{PYTHON_REGISTRY_PATH}: missing _REGISTRY declaration"
         ))
     })?;
     let tail = &source[start..];
-    let end = tail.find("\n}\n").ok_or_else(|| {
+    let open = tail.find('{').ok_or_else(|| {
         LintError::new(format!(
             "{PYTHON_REGISTRY_PATH}: unterminated _REGISTRY declaration"
         ))
     })?;
-    let registry = &tail[..end + 2];
+    let close = tail[open + 1..].find('}').ok_or_else(|| {
+        LintError::new(format!(
+            "{PYTHON_REGISTRY_PATH}: unterminated _REGISTRY declaration"
+        ))
+    })?;
+    let registry = &tail[..=open + 1 + close];
     let syntactic_rows = PYTHON_KEY.find_iter(registry).count();
     let mut commands = BTreeMap::new();
     for captures in PYTHON_ROW.captures_iter(registry) {
@@ -722,11 +729,6 @@ fn parse_python_registry(source: &str) -> Result<BTreeMap<CommandKey, PythonComm
         return Err(LintError::new(format!(
             "{PYTHON_REGISTRY_PATH}: parsed {} of {syntactic_rows} command rows; update the Rust importer for the new source shape",
             commands.len()
-        )));
-    }
-    if commands.is_empty() {
-        return Err(LintError::new(format!(
-            "{PYTHON_REGISTRY_PATH}: command registry is empty"
         )));
     }
     Ok(commands)

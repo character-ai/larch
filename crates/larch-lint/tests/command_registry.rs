@@ -980,8 +980,10 @@ fn command_registry_rejects_incomplete_imported_registry_and_caller_shapes() {
     TempRepo::command_from(empty_python.path())
         .args(["rule", "command-registry"])
         .assert()
-        .code(2)
-        .stderr(predicate::str::contains("command registry is empty"));
+        .code(1)
+        .stdout(predicate::str::contains(
+            "fixture run is absent from Python but its ownership or removal state is pending",
+        ));
 
     let missing_metadata = TempRepo::new();
     prepare(
