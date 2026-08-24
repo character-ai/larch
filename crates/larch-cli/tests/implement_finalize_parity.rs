@@ -8,7 +8,7 @@ mod parity_support;
 
 use std::{env, path::PathBuf, process::Command, sync::OnceLock};
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 
 const COMMON: &str = concat!(
     "BRANCH_NAME=feature\n",
@@ -309,7 +309,7 @@ fn finalize_git_cases() -> Vec<ParityCase> {
 fn assert_cases(cases: impl IntoIterator<Item = ParityCase>) {
     let goldens = repository_root().join("fixtures/rust-parity/goldens");
     for case in cases {
-        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
+        assert_rust_golden_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
 }

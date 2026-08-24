@@ -1,9 +1,10 @@
 //! Golden-driven black-box parity for `/implement` Steps 16 and 17 (#8791).
 //!
-//! Every case runs the frozen pre-cutover Python owner and the Rust command in
-//! separate sandboxes. A deterministic verified-bootstrap stub records child
-//! argv, supplies Step 16/17 outcomes, and persists failure-log requests, so
-//! stdout, stderr, exit status, and every wire file are compared together.
+//! The recorded goldens came from the frozen pre-cutover Python owner. After
+//! #8901 retired its shared Python dependencies, every case runs the Rust
+//! command in an isolated sandbox. A deterministic verified-bootstrap stub
+//! records child argv, supplies Step 16/17 outcomes, and persists failure-log
+//! requests so stdout, stderr, exit status, and every wire file remain pinned.
 
 #![cfg(unix)]
 
@@ -13,7 +14,7 @@ mod parity_support;
 
 use std::{env, fs, os::unix::fs::PermissionsExt as _, path::PathBuf, process::Command};
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 
 const STUB: &str = include_str!("../../../fixtures/rust-parity/implement_closeout_stub.sh");
 
@@ -313,7 +314,7 @@ fn closeout_forwards_the_webhook_only_to_the_slack_child() {
 fn implement_closeout_matches_the_frozen_python_owner() {
     let goldens = repository_root().join("fixtures/rust-parity/goldens");
     for case in cases() {
-        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
+        assert_rust_golden_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
 }

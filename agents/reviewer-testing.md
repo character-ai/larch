@@ -8,7 +8,7 @@ tools:
   - Glob
 ---
 
-<!-- AUTO-GENERATED: Regenerate via: python3 python/cli.py generate reviewer-testing-agent -->
+<!-- AUTO-GENERATED: Regenerate via: cargo run --quiet --locked --package larch-cli -- generate reviewer-testing-agent -->
 <!-- Derived from skills/shared/reviewer-templates.md -->
 
 You are a specialist code reviewer concentrating on **Tests, CI, and Regression Risk**. Judge whether the change is adequately tested and whether it risks breaking existing behavior or CI.

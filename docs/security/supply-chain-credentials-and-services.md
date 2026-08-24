@@ -971,15 +971,15 @@ accept raw URLs, or expose log text in their output.
 
 ## Implementation and Verification Owners
 
-The implementation remains mixed-runtime. These owners and checks keep the
-boundaries above discoverable without duplicating their operation ledgers:
+These owners and checks keep the boundaries above discoverable without
+duplicating their operation ledgers:
 
 | Boundary | Implementation and verification pointers |
 | --- | --- |
-| Release, attestations, bootstrap, upgrade | `.github/workflows/rust-release-assets.yaml`, `scripts/larch.sh`, `crates/larch-cli/src/release_plugin_runtime.rs`, `crates/larch-adapters/src/github/attestation.rs`, `python/tests/release/test_assets.py`, `python/tests/release/test_rust_bootstrap.py`, and the clean-install cases in `crates/larch-cli/tests/parity.rs` |
+| Release, attestations, bootstrap, upgrade | `.github/workflows/rust-release-assets.yaml`, `scripts/larch.sh`, `crates/larch-cli/src/release_plugin_runtime.rs`, `crates/larch-adapters/src/github/attestation.rs`, `crates/larch-cli/tests/release_assets.rs`, and the clean-install cases in `crates/larch-cli/tests/parity.rs` |
 | GitHub credentials and operations | `crates/larch-adapters/src/github/`, `crates/larch-adapters/src/github_actions.rs`, the [GitHub service inventory](../github-service-inventory.md), and the `service-ownership` rule and tests in `crates/larch-lint/` |
 | Connectivity availability | `crates/larch-core/src/connectivity.rs`, `crates/larch-adapters/src/http_client.rs`, `crates/larch-cli/src/net_commands.rs`, and their focused Rust tests |
 | Google ADC | `crates/larch-adapters/src/google_auth.rs`, the [Google service inventory](../google-service-inventory.md), and the `service-ownership` rule and tests in `crates/larch-lint/` |
 | Vendor processes, credentials, descendants, and diagnostics | `crates/larch-core/src/process.rs`, `crates/larch-core/src/vendor/`, `crates/larch-core/src/vendor_diagnostics.rs`, `crates/larch-adapters/src/process.rs`, `crates/larch-adapters/src/vendor_diagnostics.rs`, `crates/larch-cli/src/launcher_support.rs`, and the `agent-python-free`, `codex-exec-auth`, and `subprocess-via-runner` rules and tests in `crates/larch-lint/` |
-| Object storage | `crates/larch-core/src/object_store.rs`, `crates/larch-adapters/src/google_storage.rs`, `crates/larch-adapters/src/s3_storage.rs`, `crates/larch-adapters/src/run_lifecycle.rs`, `python/larch/report/object_store.py`, the [Google service inventory](../google-service-inventory.md), and their focused Rust and Python tests |
+| Object storage | `crates/larch-core/src/object_store.rs`, `crates/larch-adapters/src/google_storage.rs`, `crates/larch-adapters/src/s3_storage.rs`, `crates/larch-adapters/src/run_lifecycle.rs`, the [Google service inventory](../google-service-inventory.md), and their focused Rust tests |
 | Repository reads and Git compatibility | `docs/git-operation-inventory.md`, `crates/larch-adapters/src/git/`, `crates/larch-adapters/tests/git_repository.rs`, `crates/larch-lint/src/rules/git_ownership.rs`, and the command registry clean-install cases |

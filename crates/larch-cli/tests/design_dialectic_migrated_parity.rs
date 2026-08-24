@@ -10,7 +10,7 @@ use std::{
 };
 
 use larch_core::design::dialectic_plan_fingerprint;
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 use serde_json::json;
 
 const DESIGN: &str = "design";
@@ -461,7 +461,7 @@ fn design_dialectic_migrated_commands_match_frozen_python_reference() {
         .chain(closure_cases())
         .chain(argument_cases())
     {
-        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
+        assert_rust_golden_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
 }

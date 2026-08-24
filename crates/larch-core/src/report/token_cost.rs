@@ -1,15 +1,14 @@
 //! Token cost model, pricing tables, and per-run cost aggregation.
 //!
-//! Library parity for Python `larch.report.report_tokens_cost` and the pricing
-//! re-exports of `larch.report.tokens`. The Rust CLI owns `token cost` and
-//! `token render-cost-line` after #8507; `report-tokens analyze` remains on its
-//! separate cutover path.
+//! Shared implementation for token pricing and per-run cost aggregation. The
+//! Rust CLI owns `token cost`, `token render-cost-line`, and
+//! `report-tokens analyze`.
 //!
 //! # Pricing data
 //!
 //! [`RATE_TABLE`] is the single reviewed source of per-1M-token rates. To
 //! update it: change the row, cite the vendor price page beside it, regenerate
-//! the recorded Python fixtures under
+//! the recorded fixtures under
 //! `crates/larch-core/tests/fixtures/token_cost/`, and review the changed
 //! numbers as a pricing change rather than a code detail.
 //!

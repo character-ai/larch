@@ -28,12 +28,12 @@ use std::{
     sync::LazyLock,
 };
 
-const FIXTURE_ROOT: &str = "python/test_fixtures/plan-fidelity-calibration";
-const DEFAULT_MANIFEST: &str = "python/test_fixtures/plan-fidelity-calibration/manifest.tsv";
-const DEFAULT_COHORT: &str = "python/test_fixtures/plan-fidelity-calibration/cohort.tsv";
-const DEFAULT_BALLOTS: &str = "python/test_fixtures/plan-fidelity-calibration/ballots";
-const DEFAULT_PLANS: &str = "python/test_fixtures/plan-fidelity-calibration/plans";
-const DEFAULT_DIFFS: &str = "python/test_fixtures/plan-fidelity-calibration/diffs";
+const FIXTURE_ROOT: &str = "fixtures/plan-fidelity-calibration";
+const DEFAULT_MANIFEST: &str = "fixtures/plan-fidelity-calibration/manifest.tsv";
+const DEFAULT_COHORT: &str = "fixtures/plan-fidelity-calibration/cohort.tsv";
+const DEFAULT_BALLOTS: &str = "fixtures/plan-fidelity-calibration/ballots";
+const DEFAULT_PLANS: &str = "fixtures/plan-fidelity-calibration/plans";
+const DEFAULT_DIFFS: &str = "fixtures/plan-fidelity-calibration/diffs";
 const SNAPSHOT_HEADER: &str = "tool\tyes_votes\tvalid_yes_severity_count\tmajor\tminor\tnit\tmissing_severity\thigh_rate\tcalibration_score\tuncalibrated\n";
 const SNAPSHOT_USAGE: &str = "usage: cli.py voter-calibration snapshot [-h] [--log-root LOG_ROOT] --out OUT\n                                         [--window WINDOW]";
 const REBUILD_USAGE: &str = "usage: calibration-replay rebuild-ballot [-h] --finding-id FINDING_ID\n                                         --run-root RUN_ROOT --round-num\n                                         ROUND_NUM\n                                         [--fixture-ballot FIXTURE_BALLOT]\n                                         [--repo-root REPO_ROOT]\n                                         [--output OUTPUT]";

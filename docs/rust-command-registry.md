@@ -147,10 +147,10 @@ two modules the audit found orphaned,
 `python/larch/report/run_log_commit.py` and
 `python/larch/report/run_log_legacy_archive.py`.
 
-This rule proves the closed #7683 command and mutation boundary. It does not
-prove that all Python reporting, rendering, analytics, or compatibility code
-has disappeared. The bounded surfaces below have other named owners and cannot
-be treated as a fallback implementation for any closed command.
+This rule proves the closed #7683 command and mutation boundary. The final
+runtime sweep later removed the remaining Python reporting, rendering,
+analytics, and compatibility code. Frozen parity sources remain test evidence,
+not fallback implementations.
 
 Direct `bin/larch` execution stays outside this umbrella's surfaces. The
 `larch-runtime-entrypoint` rule already rejects it in `python/larch/**`,
@@ -161,7 +161,7 @@ tracked file in those roots references the binary.
 
 `larch lint rule analytics-7684-closure` closes the evidence loop for #7684.
 It reuses the command-registry closure projection for every #7684 row, the
-retained issue-module ownership table, and the canonical GitHub-service and
+empty issue-module ownership projection, and the canonical GitHub-service and
 Git inventory parsers. It fails closed on incomplete phases, missing or
 umbrella migration leaves, restored Python registration, entrypoint, caller,
 or retained-module ownership, and incomplete inventory evidence. Its
@@ -194,18 +194,15 @@ the next cutover and does not create a second implementation.
 | --- | --- |
 | #7678 | No `python/larch/issue/` command survives here. Vendor launch and lane-rendering surfaces remain in the vendor-orchestration umbrella. |
 | #7679 | No pending issue command remains after the #8452 review-boundary audit. |
-| #7680 | `render run-summary` and the retained issue wire, OOS, title, and mutation payload libraries serve the design workflow. The `clarify` verbs and `design clarify` are Rust-owned as of #8587, and `design publish` as of #8591. `oos serialize` and `oos normalize-header` are Rust-owned as of #8838. |
+| #7680 | `render run-summary`, issue wire, OOS, title, and mutation payload behavior are Rust-owned. The `clarify` verbs and `design clarify` are Rust-owned as of #8587, and `design publish` as of #8591. `oos serialize` and `oos normalize-header` are Rust-owned as of #8838. |
 | #7681 | `pr compose-summary` and `tracking post-issue` are Rust-owned after #8789; the token-budget and PR line-count commands after #8797; and `issue governance-gate` and `plan-receipt refresh` after #8799. The former `larch.issue.execution_issues` hand-off ended in #8347. |
 | #7683 | `analyze-issues render-chart` is Rust-owned but remains planned by its reporting leaf #8092; report, diagram, and chart rendering do not return to #7682. |
 | #7684 | Rejected-finding and merged-change analysis commands, the remaining `measure-*` token analytics, and their analytical issue helpers remain research-owned. |
 | #7685 | `issue migration-audit` is Rust-owned by #8392. #8799 removed the adjacent Python governance-gate boundary and its `issue_block` and `open_rows` support; #7685 retains no Python issue-module ownership. |
 | #7686 | The final runtime and package retirement sweep owns deletion once no retained consumer remains; it is not an issue-command fallback. |
 
-The rule's retained-module list permits the package initializer and the named
-`python/larch/issue/**/*.py` libraries only. Every listed module carries a
-non-empty reason and a receiving umbrella. Discovery is recursive, so a new
-module or nested package initializer fails until the rule records its distinct
-purpose and receiving owner; stale inventory rows fail as the boundary shrinks.
+The rule's retained-module list is empty. Discovery is recursive, so any new
+`python/larch/issue/**/*.py` module or package initializer fails.
 
 ### #7682 terminal completion record
 

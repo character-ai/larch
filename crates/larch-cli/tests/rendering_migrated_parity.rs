@@ -8,7 +8,7 @@ use std::{
     process::{Command, Output},
 };
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 use tempfile::TempDir;
 
 const FINDINGS_JSONL: &str = concat!(
@@ -440,7 +440,7 @@ fn migrated_cases() -> Vec<ParityCase> {
 fn render_migrated_verbs_have_frozen_black_box_parity() {
     let goldens = fixture_directory().join("goldens");
     for case in migrated_cases() {
-        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
+        assert_rust_golden_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
 }

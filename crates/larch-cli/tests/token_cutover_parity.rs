@@ -1,7 +1,9 @@
 //! Golden-driven black-box parity for the token command cutover in #8797.
 //!
-//! Each case runs the frozen Python owner and the Rust binary in separate
-//! sandboxes, comparing stdout, stderr, exit status, and filesystem effects.
+//! The recorded goldens came from the frozen pre-cutover Python owner. After
+//! #8901 retired its shared Python dependencies, each case runs the Rust binary
+//! in an isolated sandbox and checks stdout, stderr, exit status, and filesystem
+//! effects against that recorded contract.
 
 #![cfg(unix)]
 
@@ -11,7 +13,7 @@ mod parity_support;
 
 use std::{env, path::PathBuf, process::Command};
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 
 const LEDGER: &str = concat!(
     "{\"type\":\"vendor\",\"total\":100}\n",
@@ -105,7 +107,7 @@ fn cases() -> Vec<ParityCase> {
 fn token_cutover_matches_the_frozen_python_owner() {
     let goldens = repository_root().join("fixtures/rust-parity/goldens");
     for case in cases() {
-        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
+        assert_rust_golden_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
 }

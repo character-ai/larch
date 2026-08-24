@@ -156,6 +156,20 @@ fn python_corpus_walkers_keep_alias_and_manifest_protection() {
 }
 
 #[test]
+fn retired_python_owner_is_not_exempt() {
+    let repository = TempRepo::new();
+    repository.write(
+        "python/larch/report/run_log_corpus.py",
+        b"def scan(log_root):\n    list(log_root.glob(\"*\"))\n",
+    );
+    repository.commit_all();
+
+    run(&repository).code(1).stdout(predicate::str::contains(
+        "python/larch/report/run_log_corpus.py:2: raw corpus glob",
+    ));
+}
+
+#[test]
 fn python_safe_run_aliases_and_unrelated_manifest_mentions_are_not_reported() {
     let repository = TempRepo::new();
     repository.write(

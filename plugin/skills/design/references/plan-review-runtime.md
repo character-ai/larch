@@ -29,7 +29,7 @@ Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`.
 
 This file defines static archetype identity, matching `skills/shared/topology.tsv` rows `design.plan_review.cursor_archetypes` and `design.plan_review.codex_archetypes`.
 
-Static slugs and labels align with `python/larch/core/config.py` `design.plan_review_panel` and `crates/larch-cli/src/plan_prompt_commands.rs`:
+Static slugs and labels align with `crates/larch-cli/src/review_dispatch_panel.rs` and `crates/larch-cli/src/plan_prompt_commands.rs`:
 
 - `arch`: **Architecture/Standards**
 - `innovation`: **Innovation/Exploration**

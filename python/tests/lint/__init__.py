@@ -1,1 +1,0 @@
-"""Lint-rule test package."""

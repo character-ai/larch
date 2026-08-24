@@ -8,7 +8,6 @@ from typing import Final
 
 
 RUNTIME_ROOT: Final = Path(__file__).resolve().parents[2] / "larch"
-GRAMMAR_OWNER: Final = Path("issue/issue_wire.py")
 PLAN_MARKERS: Final = (
     "larch:plan:start",
     "larch:plan:end",
@@ -28,7 +27,7 @@ def _runtime_sources(root: Path) -> list[Path]:
     paths: list[Path] = []
     for path in root.rglob("*.py"):
         relative: Path = path.relative_to(root)
-        if relative == GRAMMAR_OWNER or any(part in EXCLUDED_PARTS for part in relative.parts):
+        if any(part in EXCLUDED_PARTS for part in relative.parts):
             continue
         paths.append(path)
     return sorted(paths)
@@ -81,7 +80,7 @@ def _write_required_consumers(root: Path) -> None:
         _write(root / relative_path, f"issue_wire.{helper}()\n")
 
 
-def test_runtime_plan_markers_use_the_shared_grammar_owner() -> None:
+def test_python_runtime_does_not_hardcode_plan_markers() -> None:
     violations: list[str] = _ownership_violations(RUNTIME_ROOT)
     assert not violations, "plan marker ownership violations:\n" + "\n".join(violations)
 

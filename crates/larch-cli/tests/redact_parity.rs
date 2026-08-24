@@ -2,7 +2,7 @@
 #[allow(dead_code)]
 mod parity_support;
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 use std::{
     env,
     path::{Path, PathBuf},
@@ -266,6 +266,6 @@ fn migrated_redact_commands_match_frozen_python() {
     let goldens = fixture_directory().join("goldens");
     for case in cases() {
         let golden = goldens.join(format!("{}.golden.json", case.name));
-        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+        assert_rust_golden_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
     }
 }

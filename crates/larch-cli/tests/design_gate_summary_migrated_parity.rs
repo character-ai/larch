@@ -1,11 +1,10 @@
 //! Golden-driven black-box parity for the migrated `/design` render verbs (#8581).
 //!
-//! The frozen Python reference at
-//! `fixtures/rust-parity/design_gate_summary_migrated_reference.py` executes the
-//! byte-frozen pre-cutover `design_gate_render` / `design_summary` modules; each
-//! case runs both it and the Rust owner in isolated sandboxes and asserts
-//! stdout/stderr/exit/wire-file parity plus a recorded golden, mirroring
-//! `design_terminal_migrated_parity.rs`.
+//! The recorded goldens came from the frozen pre-cutover Python owner at
+//! `fixtures/rust-parity/design_gate_summary_migrated_reference.py`. After
+//! #8901 retired its shared Python dependencies, each case runs the Rust owner
+//! in an isolated sandbox and checks stdout, stderr, exit status, and wire files
+//! against that recorded contract.
 //!
 //! Scope note: the `render-final-summary` cases seed a `manifest.json` so the
 //! `render run-summary` identity line is deterministic (its live fallback reads
@@ -24,7 +23,7 @@ use std::{
     process::Command,
 };
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -355,7 +354,7 @@ fn design_gate_summary_migrated_parity() {
     let goldens = fixture_directory().join("goldens");
     for case in all_cases() {
         let golden = goldens.join(format!("{}.golden.json", case.name));
-        if let Err(error) = assert_case(&case, &golden) {
+        if let Err(error) = assert_rust_golden_case(&case, &golden) {
             panic!("{error}");
         }
     }

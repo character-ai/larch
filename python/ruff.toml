@@ -33,9 +33,9 @@ ignore = [
     "D203",
     "D205",
     "D213",
+    "D400",
     "D401",
     "D407",
-    "D400",
     "D415",
     "E501",
     "E741",
@@ -52,6 +52,7 @@ ignore = [
     "N803",
     "N806",
     "N812",
+    "N818",
     "N999",
     "PERF203",
     "PT001",
@@ -61,302 +62,48 @@ ignore = [
     "PT027",
     "RUF010",
     "S101",
+    "S105",
     "S301",
     "S311",
+    "S603",
     "SIM117",
     "T201",
+    "TC001",
+    "TC003",
     "TD002",
     "TD003",
     "TRY003",
     "TRY300",
     "TRY301",
     "TRY400",
+    "UP046",
+    "UP047",
     "W291",
     "W605",
-    "TC001",
-    "TC003",
-    "S105",
-    "N818",
-    "S603",
-    "UP047",
-    "UP046",
 ]
 
 [lint.per-file-ignores]
-"conftest.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"review_test_support.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "test_*.py" = [
+    "ANN001",
+    "ANN201",
+    "ARG002",
     "C901",
+    "FBT001",
+    "FBT002",
+    "PERF401",
     "PLR0911",
     "PLR0912",
     "PLR0913",
     "PLR0915",
     "PLR2004",
     "S101",
-    "SLF001",
-    "TID252",
+    "S108",
     "S603",
     "S607",
-    "S108",
-    "ARG002",
-    "FBT001",
-    "FBT002",
-    "ANN001",
-    "ANN201",
-    "PERF401",
-]
-"test_support.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"admission.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-]
-"_launch_failure.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0913",
-]
-"_run_external.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"_auth.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-]
-"_drafter.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"_ci_launcher.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-]
-"_claude_runner.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"**/larch/state/_report.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"bootstrap.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"ci.py" = [
-    "C901",
-    "PLR0912",
-    "PLR0915",
+    "SLF001",
+    "TID252",
 ]
 "larch/cli.py" = [
     "C901",
     "PLR0911",
-]
-"collect_results.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-]
-"execution_issues.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0913",
-]
-"final_report.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"gh.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-]
-"issue_wire.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-]
-"phantom.py" = [
-    "PLR0911",
-]
-"pr.py" = [
-    "PLR0911",
-    "PLR0913",
-]
-"pr_body.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"preflight.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"proc.py" = [
-    "PLR0913",
-]
-"push.py" = [
-    "C901",
-    "PLR0911",
-]
-"rendering.py" = [
-    "C901",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"report_tokens_cost.py" = [
-    "PLR0913",
-]
-"research.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"retry.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-]
-"run_log_batch.py" = [
-    "C901",
-    "PLR0913",
-]
-"run_log_manifest.py" = [
-    "C901",
-    "PLR0911",
-]
-"run_logs.py" = [
-    "C901",
-    "F401",
-    "F811",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"session_env.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-]
-"_classify.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-]
-"_corpus.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-]
-"_escalation.py" = [
-    "C901",
-    "PLR0911",
-]
-"_normalize.py" = [
-    "C901",
-    "PLR0911",
-]
-"_validate.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-]
-"step_7a.py" = [
-    "C901",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-# The ledger row writers keep the retired command's keyword-only signatures so
-# the in-process Python callers stay unchanged after the Rust cutover.
-"timing.py" = [
-    "PLR0913",
-]
-# Consolidated marker-delimited block recovery state machine extracted from
-# tokens.py::_replace_block; complexity is
-# inherent to the paired / lone-begin / lone-end / absent-marker handling.
-"markdown_block.py" = [
-    "C901",
-    "PLR0912",
-]
-"tokens.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"tracking_issue.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0913",
-]
-"voter_calibration.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"voting.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0913",
 ]

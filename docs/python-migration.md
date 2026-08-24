@@ -725,7 +725,7 @@ in `docs/configuration-and-permissions.md`.
 
 - Issues #8836 and #8837 moved `render scope-anchor`, the five scope-anchor verbs, `render plan-review`, `mermaid sanitize`, and `diagrams upsert` to `crates/larch-cli/src/rendering_commands.rs`, `plan_prompt_commands.rs`, and `diagram_commands.rs`. Callers use `scripts/larch.sh`; the Python registrations and production implementations were removed atomically. Issue #8896 moved `render voter` to `crates/larch-cli/src/rendering_commands.rs`; callers use `scripts/larch.sh` and the Python registration/module were removed atomically.
 - The Rust owners preserve prompt, `KEY=value`, diagnostic, refusal, and exit-status bytes against frozen retired-Python references. `render plan-review` preserves its best-effort payload-byte sidecar, `render specialist` preserves the sidecar for command and in-process callers, and `render scope-anchor` preserves the literal redacted evidence envelope. `diagrams upsert` uses the typed in-process GitHub service, including authorization and exact post-mutation read-back, with no `gh api` fallback.
-- Other Rust rendering and generation owners remain in `crates/larch-cli/src/rendering_commands.rs`: `render findings-view`, `render lane-status`, and `render reviewer` (#8556), `render specialist` (#8800), and `generate ...`. Generated artifact headers deliberately retain the historical Python CLI regeneration text for byte stability. `scripts/generators.tsv` registers `generate <verb>` rows and `cargo run --quiet --locked --package larch-cli -- generate check` runs the Rust drift walker in-process.
+- Other Rust rendering and generation owners remain in `crates/larch-cli/src/rendering_commands.rs`: `render findings-view`, `render lane-status`, and `render reviewer` (#8556), `render specialist` (#8800), and `generate ...`. Generated artifact headers name the Rust CLI regeneration command. `scripts/generators.tsv` registers `generate <verb>` rows and `cargo run --quiet --locked --package larch-cli -- generate check` runs the Rust drift walker in-process.
 - The leaf dispatch slice now lives in `crates/larch-core/src/review_dispatch.rs`, `crates/larch-adapters/src/vendor_diagnostics.rs`, and `crates/larch-cli/src/agent_commands.rs` with CLI verbs `agent wait-reviewers`, `agent classify-diff`, `agent gather-branch-context`, and `agent compose-collector-failure-log`. Callers use `scripts/larch.sh`; `agent classify-diff` emits `DIFF_MODE=` and fails closed when its plugin-root `scripts/generators.tsv` manifest is missing or malformed.
 
 ### Vendor-agent package closeout
@@ -921,6 +921,14 @@ Issue #8836 completes the later scope-anchor cutover. `crates/larch-cli/src/rend
 - The implement and review launchers plus final-report composition call these Rust owners in process. Skill-facing calls use `scripts/larch.sh token ...`; no production caller selects or falls back to the removed Python implementation.
 - Golden black-box cases preserve stdout, stderr, exit status, and filesystem parity before removal. The command registry records implementation parity, consumer cutover, Python removal, and unique clean-install coverage as complete.
 - `python/larch/report/tokens.py` remains the owner of surviving Python token analysis and rendering helpers. Only the three flipped command implementations, their registrations, and superseded direct tests are removed.
+
+### Final Python runtime package retirement
+
+- #8901 recomputes reachability from `python/cli.py` after all blocker leaves. The registry is empty, and `python/larch/cli.py` is the only Python file reachable below `python/larch/`.
+- Every unreachable runtime module and each test dedicated to deleted code is removed. The remaining Python tests cover the empty dispatcher, temporary development tooling, and live repository contracts without importing deleted runtime packages.
+- Shared Python test helpers, analysis scripts, and Python-owned fixture directories are removed. The live Rust calibration corpus moves to `fixtures/plan-fidelity-calibration/`.
+- Rust parity suites whose frozen references imported retired shared packages now execute the Rust owner against their recorded pre-cutover goldens. Self-contained frozen references continue to provide live differential coverage.
+- Production commands remain Rust-owned through `scripts/larch.sh`. Issues #8902 and #8903 own the later development-tooling and release-artifact cleanup.
 
 ## E3 terminal Bash sweep
 

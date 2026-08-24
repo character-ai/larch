@@ -13,7 +13,6 @@ ALLOW=(
   agents/_implementer-base.md
   skills/implement/prompts/codex-implementer.md
   skills/implement/prompts/cursor-implementer.md
-  python/test_deps_audit.py
   SECURITY.md
   docs/linting.md
   docs/skills.md
@@ -24,12 +23,7 @@ ALLOW=(
   crates/larch-cli/src/admission_commands.rs
   crates/larch-cli/src/combine_issues_commands.rs
   fixtures/rust-parity/issue_support_frozen/title_match.py
-  python/preflight.py
-  python/issue_wire.py
-  python/larch/issue/tracking_issue.py
   scripts/test-legacy-title-prefix-literals-scope.sh
-  python/test_issue_wire.py
-  python/tests/issue/test_tracking_issue.py
   skills/combine-issues/SKILL.md
   skills/deps/SKILL.md
 )

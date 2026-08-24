@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -132,7 +132,7 @@ fn review_loop_identity_migrated_parity() {
     let goldens = fixture_directory().join("goldens");
     for case in all_cases() {
         let golden = goldens.join(format!("{}.golden.json", case.name));
-        if let Err(error) = assert_case(&case, &golden) {
+        if let Err(error) = assert_rust_golden_case(&case, &golden) {
             panic!("{error}");
         }
     }

@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -254,7 +254,7 @@ fn behavior_cases() -> Vec<ParityCase> {
 fn plan_quality_migrated_verbs_match_frozen_python_reference() {
     let goldens = fixture_directory().join("goldens");
     for case in help_and_usage_cases().into_iter().chain(behavior_cases()) {
-        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
+        assert_rust_golden_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
 }

@@ -53,7 +53,7 @@ Keep this rubric in sync with:
 
 - `scripts/larch.sh render voter`
 - `skills/shared/reviewer-templates.md`
-- `python/larch/rendering/findings_ledger.py`
+- `crates/larch-core/src/review/findings_ledger.rs`
 - `skills/implement/SKILL.md`
 - `skills/implement/references/step5-review-branches.md`
 - `skills/design/SKILL.md`

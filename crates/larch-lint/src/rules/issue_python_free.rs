@@ -2,8 +2,7 @@
 //!
 //! Umbrella #7682 migrated its issue, triage, umbrella, tracking, OOS,
 //! dependency, combination, and issue-analysis command leaves. This rule pins
-//! those completed command rows and keeps the deliberately retained Python
-//! libraries assigned to their receiving umbrellas.
+//! those completed command rows and rejects any restored Python issue package.
 
 use std::{collections::BTreeSet, path::Path};
 
@@ -15,7 +14,7 @@ use crate::{
 };
 
 use super::python_boundary::{
-    RegistryCommand, check_python_registry, check_retired_entrypoints,
+    RegistryCommand, check_python_registry, check_retired_entrypoints, is_python_runtime_path,
 };
 
 const NAME: &str = "issue-python-free";
@@ -25,29 +24,9 @@ const COMMAND_REGISTRY_PATH: &str = "crates/larch-lint/data/command-registry.tom
 const ISSUE_AUTHORITY_PATH: &str = "crates/larch-cli/src/issue_commands.rs";
 const UMBRELLA_ISSUE: i64 = 7682;
 const PYTHON_ISSUE_ROOT: &str = "python/larch/issue/";
-const PYTHON_ISSUE_INIT: &str = "python/larch/issue/__init__.py";
 const EXECUTION_PYTHON_MODULE: &str = "python/larch/issue/execution_issues.py";
 const EXECUTION_REFRESH_WRAPPER: &str =
     "skills/implement/scripts/refresh-execution-issues.sh";
-const TRACKING_PYTHON_MODULE: &str = "python/larch/issue/tracking_issue.py";
-const RUST_RUNTIME_FACADE: &str = "python/larch/core/rust_runtime.py";
-const EXECUTION_RUNTIME_WRAPPERS: [&str; 4] = [
-    "def execution_issues_append(",
-    "def execution_issues_flush(",
-    "def execution_issues_flush_safety_net(",
-    "def execution_issues_refresh(",
-];
-const TRACKING_RUNTIME_WRAPPERS: [&str; 9] = [
-    "def tracking_issue_append_comment(",
-    "def tracking_issue_create(",
-    "def tracking_issue_mark_false_positive(",
-    "def tracking_issue_read(",
-    "def tracking_issue_read_body(",
-    "def tracking_issue_read_marker(",
-    "def tracking_issue_read_sentinel(",
-    "def tracking_issue_rename(",
-    "def tracking_issue_upsert_summary(",
-];
 
 struct ExpectedCommand {
     domain: &'static str,
@@ -117,16 +96,6 @@ struct RetainedModule {
     path: &'static str,
     planning_issue: i64,
     reason: &'static str,
-}
-
-impl RetainedModule {
-    const fn new(path: &'static str, planning_issue: i64, reason: &'static str) -> Self {
-        Self {
-            path,
-            planning_issue,
-            reason,
-        }
-    }
 }
 
 /// Every command cut over by a #7682 executable leaf. Some rows intentionally
@@ -243,17 +212,7 @@ const HANDOFF_COMMANDS: [HandoffCommand; 7] = [
     HandoffCommand::new("tracking", "post-issue", 7681),
 ];
 
-const VOTER_LIBRARY: &str =
-    "untrusted-content library retained for rust-parity fixtures after render voter cutover";
-const IMPLEMENT_LIBRARY: &str =
-    "pure pull-request footer library retained for the implementation workflow umbrella";
-/// The package initializer is structural. Every other issue module at any
-/// depth must name both its receiving umbrella and its behaviorally distinct
-/// reason for remaining in Python.
-const RETAINED_MODULES: [RetainedModule; 2] = [
-    RetainedModule::new("python/larch/issue/issue_wire.py", 7686, VOTER_LIBRARY),
-    RetainedModule::new("python/larch/issue/tracking_issue.py", 7681, IMPLEMENT_LIBRARY),
-];
+const RETAINED_MODULES: [RetainedModule; 0] = [];
 
 pub static METADATA: RuleMetadata = RuleMetadata::new(
     NAME,
@@ -309,7 +268,7 @@ impl Rule for IssuePythonFreeRule {
         check_python_entrypoints(repository, &mut findings)?;
         findings.extend(issue_in_process_python_findings(repository)?);
         check_execution_python_boundary(repository, &mut findings)?;
-        check_tracking_python_boundary(repository, &mut findings)?;
+        check_tracking_python_callers(repository, &mut findings)?;
         check_retained_modules(repository, &mut findings);
         findings.sort();
         findings.dedup();
@@ -327,34 +286,6 @@ fn check_execution_python_boundary(
             EXECUTION_PYTHON_MODULE,
             1,
             "superseded Python execution-issues behavior returned",
-        ));
-    }
-    let facade_path = RepoPath::from_trusted(RUST_RUNTIME_FACADE);
-    if repository.paths().binary_search(&facade_path).is_ok() {
-        let source = repository.read_utf8(&facade_path)?;
-        for wrapper in EXECUTION_RUNTIME_WRAPPERS {
-            if !source.contains(wrapper) {
-                findings.push(Finding::new(
-                    RUST_RUNTIME_FACADE,
-                    1,
-                    format!("missing typed execution-issues runtime wrapper: {wrapper}"),
-                ));
-            }
-        }
-        for owner_token in ["larch_entrypoint(", "\"execution-issues\""] {
-            if !source.contains(owner_token) {
-                findings.push(Finding::new(
-                    RUST_RUNTIME_FACADE,
-                    1,
-                    format!("execution-issues runtime facade lost its verified owner: {owner_token}"),
-                ));
-            }
-        }
-    } else {
-        findings.push(Finding::new(
-            RUST_RUNTIME_FACADE,
-            1,
-            "missing typed execution-issues runtime facade",
         ));
     }
     let refresh_path = RepoPath::from_trusted(EXECUTION_REFRESH_WRAPPER);
@@ -386,26 +317,13 @@ fn check_execution_python_boundary(
     Ok(())
 }
 
-fn check_tracking_python_boundary(
+fn check_tracking_python_callers(
     repository: &Repository,
     findings: &mut Vec<Finding>,
 ) -> Result<(), LintError> {
-    let tracking_path = RepoPath::from_trusted(TRACKING_PYTHON_MODULE);
-    if repository.paths().binary_search(&tracking_path).is_err() {
-        findings.push(Finding::new(
-            TRACKING_PYTHON_MODULE,
-            1,
-            "missing pure tracking-issue compatibility module",
-        ));
-    }
     for path in repository.paths() {
         let relative = path.as_str();
-        if !relative.starts_with("python/larch/")
-            || !Path::new(relative)
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
-            || relative == TRACKING_PYTHON_MODULE
-        {
+        if !is_python_runtime_path(relative) {
             continue;
         }
         let source = repository.read_utf8(path)?;
@@ -426,34 +344,6 @@ fn check_tracking_python_boundary(
                 ));
             }
         }
-    }
-    let facade_path = RepoPath::from_trusted(RUST_RUNTIME_FACADE);
-    if repository.paths().binary_search(&facade_path).is_ok() {
-        let source = repository.read_utf8(&facade_path)?;
-        for wrapper in TRACKING_RUNTIME_WRAPPERS {
-            if !source.contains(wrapper) {
-                findings.push(Finding::new(
-                    RUST_RUNTIME_FACADE,
-                    1,
-                    format!("missing typed tracking-issue runtime wrapper: {wrapper}"),
-                ));
-            }
-        }
-        for owner_token in ["larch_entrypoint(", "\"tracking-issue\""] {
-            if !source.contains(owner_token) {
-                findings.push(Finding::new(
-                    RUST_RUNTIME_FACADE,
-                    1,
-                    format!("tracking-issue runtime facade lost its verified owner: {owner_token}"),
-                ));
-            }
-        }
-    } else {
-        findings.push(Finding::new(
-            RUST_RUNTIME_FACADE,
-            1,
-            "missing typed tracking-issue runtime facade",
-        ));
     }
     Ok(())
 }
@@ -606,14 +496,14 @@ fn check_python_entrypoints(
 fn check_retained_modules(repository: &Repository, findings: &mut Vec<Finding>) {
     for path in repository.paths() {
         let relative = path.as_str();
-        if !is_issue_module(relative) || relative == PYTHON_ISSUE_INIT {
+        if !is_issue_module(relative) {
             continue;
         }
         if retained_module(relative).is_none() {
             findings.push(Finding::new(
                 relative,
                 1,
-                "unowned retained issue-domain Python module; name its receiving umbrella and reason",
+                "retired issue-domain Python module returned",
             ));
         }
     }
@@ -653,10 +543,7 @@ pub(super) fn retained_module_owner(path: &str) -> Option<i64> {
     retained_module(path).map(|module| module.planning_issue)
 }
 
-/// Return all retained issue-module paths assigned to one planning umbrella.
-///
-/// Closure guards use this canonical ownership table instead of inferring a
-/// module's umbrella from its name or imports.
+/// Return issue-module paths assigned to one planning umbrella.
 pub(super) fn retained_module_paths_for_issue(planning_issue: i64) -> Vec<&'static str> {
     RETAINED_MODULES
         .iter()
@@ -695,13 +582,8 @@ mod tests {
         handoffs.sort();
         handoffs.dedup();
         assert_eq!(handoffs.len(), handoff_total);
-        assert!(RETAINED_MODULES.iter().all(|module| {
-            matches!(module.planning_issue, 7681 | 7686) && !module.reason.trim().is_empty()
-        }));
-        assert_eq!(
-            retained_module_owner("python/larch/issue/issue_wire.py"),
-            Some(7686)
-        );
+        assert!(RETAINED_MODULES.is_empty());
+        assert_eq!(retained_module_owner("python/larch/issue/issue_wire.py"), None);
         assert!(retained_module_paths_for_issue(7680).is_empty());
     }
 

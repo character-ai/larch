@@ -9438,48 +9438,6 @@ python = []
 rust = ["review-and-fix write-pre-self-review-snapshot"]
 
 [[callers]]
-path = "python/larch/core/rust_runtime.py"
-kind = "python-runtime"
-python = []
-rust = ["architectural-guidelines read", "architectural-invariants read", "block-issue *", "ci distill-log", "ci main-health", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "ship write-result-env", "stall-recovery normalize-outcome", "timing *", "token append-record", "token dump", "token lane-report", "token lane-write", "token mark", "token record-vendor", "token record-vendor-sidecar", "tracking-issue *"]
-
-[[callers]]
-path = "python/larch/report/exec_issue_detail.py"
-kind = "python-runtime"
-python = []
-rust = ["agent launch-claude-subprocess"]
-
-[[callers]]
-path = "python/larch/report/object_store.py"
-kind = "python-runtime"
-python = []
-rust = ["object-store gcs"]
-
-[[callers]]
-path = "python/larch/report/run_log_archive.py"
-kind = "python-runtime"
-python = []
-rust = ["run-log archive", "run-log materialize"]
-
-[[callers]]
-path = "python/larch/report/run_log_corpus.py"
-kind = "python-runtime"
-python = []
-rust = ["run-log sync"]
-
-[[callers]]
-path = "python/larch/report/run_logs.py"
-kind = "python-runtime"
-python = []
-rust = ["run-log write-round"]
-
-[[callers]]
-path = "python/larch/state/session_env.py"
-kind = "python-runtime"
-python = []
-rust = ["session write-env"]
-
-[[callers]]
 path = "scripts/external-tool-registry.sh"
 kind = "script"
 python = []

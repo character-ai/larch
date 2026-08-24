@@ -1,10 +1,10 @@
 //! Golden-driven black-box parity for the migrated `/design` step1 verbs (#8579).
 //!
-//! The frozen Python reference at
-//! `fixtures/rust-parity/design_step1_migrated_reference.py` executes the
-//! byte-frozen pre-cutover modules; each case runs both it and the Rust owner in
-//! isolated sandboxes and asserts stdout/stderr/exit/wire-file parity plus a
-//! recorded golden, mirroring `design_step0_migrated_parity.rs`.
+//! The recorded goldens came from the frozen pre-cutover Python owner at
+//! `fixtures/rust-parity/design_step1_migrated_reference.py`. After #8901
+//! retired its shared Python dependencies, each case runs the Rust owner in an
+//! isolated sandbox and checks stdout, stderr, exit status, and wire files
+//! against that recorded contract.
 //!
 //! Scope note: the heavy `step1d5 --mode collect` / dirty-tree-checkpoint
 //! branches are covered by injected-seam unit tests in
@@ -22,7 +22,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_rust_golden_case};
 
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -423,7 +423,7 @@ fn design_step1_migrated_verbs_match_frozen_python_reference() {
         .chain(step1e_reentry_cases())
         .chain(step1_log_cases())
     {
-        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
+        assert_rust_golden_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
 }

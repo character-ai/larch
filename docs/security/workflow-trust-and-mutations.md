@@ -56,9 +56,8 @@ redaction, and explicit postconditions where the operation requires them.
 `ARCHITECTURAL_INVARIANTS.md` and `ARCHITECTURAL_GUIDELINES.md` are
 operator-curated but repo-local prompt evidence. Their `I-*` and `G-*` entries
 cannot override `AGENTS.md`, loaded skills, hard guards, or an approved plan.
-The Rust architectural-knowledge reader and retained Python read commands reject
-unsafe files, parse only the supported entries, and wrap their content as
-untrusted data.
+The Rust architectural-knowledge reader rejects unsafe files, parses only the
+supported entries, and wraps their content as untrusted data.
 
 ### Permissions, tools, and delegated processes
 
@@ -137,8 +136,8 @@ selection. The child inherits only the non-secret `ChildEnvironment::production`
 allowlist plus the bounded Cargo build selectors, the pre-commit hook-skip
 token, and the XDG cache/config roots; no credential variable is forwarded. The
 captured log is redacted before it reaches any private artifact, and the
-bounded Rust Clippy fallback still routes through the still-Python
-`checks rust-clippy` verb (#8617). The contains-pin probe never executes an
+bounded Clippy fallback routes through the Rust-owned `checks rust-clippy`
+verb. The contains-pin probe never executes an
 external program: it reads the repository's `scripts/test-*.sh` harnesses and
 their pinned target files directly.
 
@@ -181,9 +180,8 @@ the same user. `/tmp` is shared scratch and provides no cross-skill secrecy.
 Rust filesystem adapters require explicit absolute roots, reject escapes,
 symlinks, special files, and multiply linked write targets, and revalidate near
 mutation. Shared Rust session-state foundations own KV parsing, session-root
-derivation, path-confinement checks, and private atomic publication. Python
-session writers apply equivalent operation-level checks while their commands
-remain Python-owned. These are confinement controls for larch mistakes and
+derivation, path-confinement checks, and private atomic publication. These are
+confinement controls for larch mistakes and
 untrusted paths, not a sandbox against hostile same-UID parent replacement.
 The Rust-owned review-phase detail commands use the same confined atomic writer
 for per-round metadata and caller-selected rendered-report output; unsafe
@@ -247,11 +245,8 @@ session route, and `session check-live-mutation-auth` is the Rust command shell
 callers use to reach it. The canonical roots it accepts are the shared session
 allowlist: `/tmp`, `/private/tmp`, `/var/folders`, `/private/var/folders`, and
 the `XDG_CACHE_HOME` or `HOME` cache root. A caller-supplied `TMPDIR` does not
-widen that set. `python/larch/state/session_env.py` keeps an in-process copy of
-the same rule for the Python-owned commands that still call it directly.
-`crates/larch-adapters/src/github/issue_mutation.rs` owns every live issue
-mutation; retained Python issue modules contain no mutation owner. Unauthorized
-calls fail before any GitHub request,
+widen that set. `crates/larch-adapters/src/github/issue_mutation.rs` owns every
+live issue mutation. Unauthorized calls fail before any GitHub request,
 emit the documented refusal result, and do not retry through another route.
 `issue create-one` applies the check in the Rust owner before the create request
 is built. `/issue`, including every `/learn-from-bugs` filing route, requests
@@ -271,10 +266,9 @@ typed issue-graph adapter operations re-apply it before their own first read.
 `issue cleanup-failed` deliberately carries no gate: it closes an issue the same
 caller has just created, and its predecessor took no authorization either.
 
-`python/conftest.py` sets `LARCH_ISSUE_MUTATION_DENY=true` and removes inherited
-live authorization for tests. Denial overrides a valid parent session. Tests
-exercise mutation logic only through injected runners, stub processes, or the
-narrow simulated operation under test.
+Rust mutation tests exercise the boundary through injected services and scoped
+environment fixtures. Denial overrides a valid parent session. The remaining
+Python tooling tests do not exercise GitHub mutation.
 
 The gate does not cover every process or every GitHub surface. It cannot stop a
 process that can rewrite code, credentials, or validated session state. Treat
@@ -326,10 +320,9 @@ label hashes, timestamp lower bound, and current base-target SHA. Metadata-only
 timestamp advancement is accepted only while those admission-relevant issue
 fields remain exact; pre- and post-mutation governance checks consume a fresh
 Rust-materialized post-mutation body and retain blocker and owner race
-detection. Python tracking workflows reach those
-operations through `scripts/larch.sh`; former in-process Python consumers use
-typed `rust_runtime` calls, and external command consumers keep the same
-verified entrypoint. `final-report write` calls the same Rust tracking owner in
+detection. Workflow callers reach those operations through `scripts/larch.sh`,
+and Rust callers use the owner in process. `final-report write` calls the same
+Rust tracking owner in
 process to preserve its own output envelope. Later Rust callers use
 `larch_adapters::github::IssueMutationOwner`, which applies the shared
 live-mutation gate before its first read, serializes through the shared GitHub
@@ -344,9 +337,8 @@ source's active blockers; missing or unverifiable inherited edges leave that
 source open. If a source-close batch becomes partial after the combined issue
 is durable, it also reports that URL and its exact closure tally. A close
 comment is published before the close while holding the same mutation lock;
-comment, close, or closed-state failure is never reported
-as a successful close. Python remains responsible only for issue callers that
-have not reached an explicit atomic cutover.
+comment, close, or closed-state failure is never reported as a successful
+close.
 
 `audit-runs close-priors` first performs a bounded labeled issue read and
 refuses without commenting or closing when more than one matching prior report
@@ -368,10 +360,10 @@ newest matching issues.
 Wire files use closed key sets, single-line values, explicit size limits,
 non-symlink regular files, and atomic publication. The Rust CLI owns `kv get`,
 `session read-key`, and `session read-keys`; their parsing and filesystem
-primitives live in `larch-core` and `larch-adapters`. Session writer commands in
-`python/larch/state/session_env.py` still own approved destinations and key
-allowlists. Prompt-side orchestration must not write or repair trusted result or
-session files directly.
+primitives live in `larch-core` and `larch-adapters`.
+`crates/larch-cli/src/session_env_commands.rs` owns approved session-writer
+destinations and key allowlists. Prompt-side orchestration must not write or
+repair trusted result or session files directly.
 
 Destructive cleanup or synchronization validates the exact root and target,
 rechecks mutable identity immediately before acting, and limits deletion to an
@@ -388,10 +380,8 @@ The Rust `review-and-fix` and `plan-review` `write-loop-identity`,
 owner through `crates/larch-cli/src/review_loop_identity_commands.rs`.
 Teardown records signal intent, revalidates the PID, PGID, start time, command,
 and kernel birth identity immediately before group signaling, and retains the
-identity sidecar until the process-group absence probe succeeds. The retained
-Python process-identity library serves only the remaining #7681 in-process
-state and background-job readers. It defines no loop-identity command and does
-not create an alternate kill-log implementation.
+identity sidecar until the process-group absence probe succeeds. No Python
+process-identity or alternate kill-log implementation remains.
 Before a stall clear removes or rewrites anything, it preflights every fixed
 state layer and derived classification or issue artifact below the validated
 temporary root, and it completes the required abandoned-bgjob recovery proof.
@@ -708,17 +698,16 @@ validated paths and never relay file bytes through `KEY=value` output. Rust
 `render specialist` and `render plan-review` composition lives in
 `crates/larch-cli/src/rendering_commands.rs` and
 `crates/larch-cli/src/plan_prompt_commands.rs`. Both reuse the canonical
-`larch-core` untrusted-content wrapper. `crates/larch-cli/src/rendering_commands.rs`
-also owns `render voter` after #8896. `python/larch/issue/issue_wire.py` retains
-untrusted-content helpers for rust-parity fixtures under #7686.
+`larch-core` untrusted-content wrapper.
+`crates/larch-cli/src/rendering_commands.rs` also owns `render voter`.
 
 The Step 1d.7 outline is binding only after operator approval. `--skip-approve`
 removes that human review for the outline and final plan. Use it only when issue
 and refinement input are trusted or generated by a controlled pipeline. It does
 not disable size, validation, finding-apply, or persistence gates.
 
-`validate_design_tmpdir` in `python/larch/state/session_env.py` confines design
-state before any quiet-log, result, pause, or publish write. Pause markers bind
+`larch_adapters::validate_design_tmpdir` confines design state before any
+quiet-log, result, pause, or publish write. Pause markers bind
 the issue, repository, run, snapshot, and allowed recovery branch. Restore uses
 a staged tree, validates every path and required artifact, and installs only
 after the complete snapshot verifies. GitHub issue markers remain editable by

@@ -51,9 +51,8 @@ The four public redaction commands are Rust-owned and enter through
 live in `crates/larch-core/src/redaction.rs`. The submodule command uses only the
 closed typed `GitCli::submodule(SubmoduleRequest::Foreach)` adapter, rejects a
 symlinked `.gitmodules`, and ignores entries that are not safe non-empty Git
-paths. `review-and-fix` reuses the same pure finding filter. Python compatibility
-callers may still use `python/larch/core/redact.py` in process, but that module
-has no command registration or production command fallback.
+paths. `review-and-fix` reuses the same pure finding filter. No Python
+redaction implementation or fallback remains.
 
 Redaction state, scrubbed finding output, and audit-log writes reject symlinked
 or multiply linked targets and publish by confined atomic replacement. New
@@ -143,12 +142,11 @@ the cache before each scan and allows cache publication only after a successful
 trusted-main run.
 
 The `.gitleaks.toml` path allowlist still creates pattern-scan blind spots. It
-covers the config itself, named residual-script and skill fixtures, the broad
-`python/tests/` tree, named legacy Python fixtures, one Rust parity golden that
-preserves a synthetic PEM marker to verify fail-closed log rescanning, and
-session-local Python virtual-environment and cache directories that legitimately
-contain synthetic token shapes. It does not allowlist the current
-`python/larch/core/redact.py` implementation. Keep test values obviously fake.
+covers the config itself, named residual-script and skill fixtures, one Rust
+parity golden that preserves a synthetic PEM marker to verify fail-closed log
+rescanning, build output, and session-local Python virtual-environment and cache
+directories that legitimately contain synthetic token shapes. Keep test values
+obviously fake.
 The independent verified scan remains necessary, but it does not fill every
 allowlist or pattern gap.
 
@@ -351,9 +349,8 @@ report renderer applies the public field contract described below.
 Clone-local statusline breadcrumbs are operator diagnostics stored under
 `~/.cache/larch/progress/`. Their one-line events avoid URLs and use GitHub
 numbers. They are not the published breadcrumb stream and are not public
-reports. Rust exclusively owns their pointer, breadcrumb, and stale-state
-mutations; Python may only resolve persisted session identity and cannot write
-or delete progress state. See [Progress reporting](../progress-reporting.md).
+reports. Rust exclusively owns their pointer, breadcrumb, stale-state, and
+persisted-identity behavior. See [Progress reporting](../progress-reporting.md).
 
 ## Run Logs and Breadcrumbs
 
@@ -677,30 +674,28 @@ confidentiality boundary.
 
 ## Implementation and Verification Owners
 
-Larch remains a mixed-runtime system. The current owner of a publication path
-defines its implementation checks; a Rust caller does not imply that a Python
-fallback exists, and a Python compatibility consumer does not weaken the same
-egress contract.
+Publication paths are Rust-owned. The current owner of a publication path
+defines its implementation checks, and no Python fallback weakens the egress
+contract.
 
 | Concern | Current owners |
 |---------|----------------|
 | Redaction commands | `crates/larch-cli/src/redact_commands.rs` and `crates/larch-core/src/redaction.rs`; typed Git and confined atomic filesystem effects come from `larch-adapters` |
-| Python in-process compatibility redaction | `python/larch/core/redact.py`; no command registration or fallback |
 | Checksum-pinned scanner | Local Rust command: `crates/larch-cli/src/gitleaks.rs` and `crates/larch-adapters/src/github/release.rs`; CI verifier: `.github/workflows/ci.yaml` |
 | Rust human, machine, breadcrumb, and journal redaction | `crates/larch-core/src/redaction.rs`, `crates/larch-core/src/telemetry.rs`, and `larch_core::SafeText` consumers |
-| Clone-local statusline progress state | Rust owns pointer activation, compare-and-clear, breadcrumb append, and stale cleanup in `crates/larch-adapters/src/progress_state.rs` and `crates/larch-cli/src/progress_commands.rs`; Python retains only persisted run-identity parsing in `python/larch/report/progress_file.py`. |
-| Mutable run-log flush and transcript staging | Rust owns execution-issue append, checkpoint, refresh, terminal snapshot, transcript capture, flush ordering, manifest reconciliation, and sorted vendor-diagnostic aggregation in `crates/larch-cli/src/execution_issue_commands.rs` and `run_log_flush_commands.rs`. Category-keyed chunk deduplication, the directory lock, atomic live-ledger replacement, lock-protected compare-and-clear after flush, and atomic batch replacement and append use `crates/larch-cli/src/run_log_entry_commands.rs`. Python callers use typed `scripts/larch.sh` wrappers and cannot mutate the ledger in process. The flush boundary has no remaining Python payload producer (`token mark`, `token report`, `token claude-source`, and `difficulty write-record` are Rust-owned in-process; #8506, #8507, #8557, #8501). `final-report write` additionally reads assessment payloads plus #7681 plan and PR payloads. Those Python payload commands cannot write a run-log batch, manifest, timing ledger, transcript, archive, or tracking comment. |
-| Timing ledger mutation and reports | Rust exclusively owns timing marks, vendor and round records, locking, validation, and report rendering in `crates/larch-cli/src/timing_commands.rs` (#8291); Python retains only the bounded read-only resolver in `python/larch/report/timing.py`. |
-| Run-log selection, trim, scrub, and publication | Rust owns standalone and lifecycle publication, tree redaction, durable retry, create-only remote verification, cache promotion, and breadcrumb publication through `crates/larch-adapters/src/run_lifecycle.rs` and `crates/larch-cli/src/run_log_publication_commands.rs`. Design session archives use the same lifecycle through `scripts/larch.sh design log-publish` (`crates/larch-cli/src/design_log_publish_commands.rs`, selection filter `larch_core::design::log_publish::publish_excluded`). Python retains only bounded local-state compatibility consumers; neither can publish archives or call a provider. |
-| Design dialectic candidate artifacts | Rust owns candidate validation, promotion, direct write, and stale cleanup in `crates/larch-core/src/design/dialectic.rs` and `crates/larch-cli/src/design_dialectic_commands.rs` (#8584). Persisted plan, promoted-candidate, status, and generation reads are confined below a canonical non-symlink design root and opened without following symlinks; candidate publication uses private mode-0600 atomic replacement. Drafter content is an explicit untrusted input path, not a publication target. The still-Python Gate C/manual debate module may consume fingerprint-valid candidates but has no migrated candidate-command fallback and reaches stale cleanup through the verified `scripts/larch.sh` entrypoint. All candidate, status, digest, and request files remain private session state. |
+| Clone-local statusline progress state | Rust owns pointer activation, compare-and-clear, breadcrumb append, stale cleanup, and persisted run-identity parsing in `crates/larch-adapters/src/progress_state.rs` and `crates/larch-cli/src/progress_commands.rs`. |
+| Mutable run-log flush and transcript staging | Rust owns execution-issue append, checkpoint, refresh, terminal snapshot, transcript capture, flush ordering, manifest reconciliation, and sorted vendor-diagnostic aggregation in `crates/larch-cli/src/execution_issue_commands.rs` and `run_log_flush_commands.rs`. Category-keyed chunk deduplication, the directory lock, atomic live-ledger replacement, lock-protected compare-and-clear after flush, and atomic batch replacement and append use `crates/larch-cli/src/run_log_entry_commands.rs`. The flush boundary has no Python payload producer: `token mark`, `token report`, `token claude-source`, and `difficulty write-record` are Rust-owned in process. `final-report write` additionally reads assessment, plan, and PR payloads. |
+| Timing ledger mutation and reports | Rust exclusively owns timing marks, vendor and round records, locking, validation, and report rendering in `crates/larch-cli/src/timing_commands.rs` (#8291). |
+| Run-log selection, trim, scrub, and publication | Rust owns standalone and lifecycle publication, tree redaction, durable retry, create-only remote verification, cache promotion, and breadcrumb publication through `crates/larch-adapters/src/run_lifecycle.rs` and `crates/larch-cli/src/run_log_publication_commands.rs`. Design session archives use the same lifecycle through `scripts/larch.sh design log-publish` (`crates/larch-cli/src/design_log_publish_commands.rs`, selection filter `larch_core::design::log_publish::publish_excluded`). |
+| Design dialectic candidate artifacts | Rust owns candidate validation, promotion, direct write, and stale cleanup in `crates/larch-core/src/design/dialectic.rs` and `crates/larch-cli/src/design_dialectic_commands.rs` (#8584). Persisted plan, promoted-candidate, status, and generation reads are confined below a canonical non-symlink design root and opened without following symlinks; candidate publication uses private mode-0600 atomic replacement. Drafter content is an explicit untrusted input path, not a publication target. All candidate, status, digest, and request files remain private session state. |
 | Design pause and resume | Rust owns marker parsing, issue identity checks, verified cache lookup, confined restore staging, and marker cleanup in `crates/larch-core/src/design/pause.rs` and `crates/larch-cli/src/design_pause_commands.rs` (#8589). Python has no pause command or fallback. |
-| Run-log archive, sync, and object publication | Rust owns archive creation, materialization, standalone sync, shared lifecycle publication, cache promotion, and `run-log storage-preflight` through `crates/larch-adapters/src/run_lifecycle.rs`, `google_storage.rs`, and `s3_storage.rs`. The same provider-neutral object-store port validates pagination, names, sizes, archive materialization, and repair rollback. The legacy Python object-store adapter remains for compatibility/test callers only and is not a production command owner. |
+| Run-log archive, sync, and object publication | Rust owns archive creation, materialization, standalone sync, shared lifecycle publication, cache promotion, and `run-log storage-preflight` through `crates/larch-adapters/src/run_lifecycle.rs`, `google_storage.rs`, and `s3_storage.rs`. The same provider-neutral object-store port validates pagination, names, sizes, archive materialization, and repair rollback. |
 | Agent diagnostic bounds and carriers | `crates/larch-core/src/vendor_diagnostics.rs`, `crates/larch-adapters/src/vendor_diagnostics.rs`, and `crates/larch-cli/src/launcher_support.rs` |
 | Bgjob DEAD diagnostics | `crates/larch-core/src/bgjob_daemon.rs` owns the status and bounded-tail codec; `crates/larch-cli/src/bgjob_commands.rs` owns supervised capture and rendering |
 | Residual Bash egress call sites | Thin scripts call the Rust redaction or run-log owner through `scripts/larch.sh` before forwarding untrusted content; plain shell error helpers are not independent redactors |
 | Tier B public-file validation | `crates/larch-core/src/stall_recovery.rs`, `crates/larch-adapters/src/stall_recovery.rs`, and `crates/larch-cli/src/stall_recovery_commands.rs` |
 | Stall classification, normalization, attempts, and escalation ledgers | `crates/larch-core/src/stall_recovery.rs`, `crates/larch-adapters/src/stall_recovery.rs`, and `crates/larch-cli/src/stall_recovery_commands.rs` |
-| Tracking, plan, PR, diagram, and public-report publication | Rust `tracking-issue upsert-summary` (#8346) owns marker-keyed comment mutation through the shared issue-mutation owner. Rust `diagrams upsert` (#8837) composes, redacts, authorizes, mutates, and exactly verifies the shared `larch:diagrams` comment through that typed owner. Rust `tracking post-issue` (#8789) composes its confined private metadata file and calls that owner in process. Rust `pr create` and `pr body-update` (#8790) use `larch_core::redact_pr_body` before the typed GitHub mutation boundary; the latter verifies the returned body. Rust `final-report write` (#8090) owns `/implement` final-summary publication. On the supported Unix runtime, marker-comment and post-admission issue-body materialization write only below a canonical non-symlink process temporary root or larch session-cache root and use no-follow reads plus private atomic writes. `render run-summary` remains a #7680 `/design` payload renderer, and `diagram code-flow` retains its #7681 owner. Former in-process Python tracking and PR callers use the verified `scripts/larch.sh` entrypoint and contain no GitHub fallback; `final-report write` calls the same Rust owner in process to preserve its output envelope. |
+| Tracking, plan, PR, diagram, and public-report publication | Rust `tracking-issue upsert-summary` (#8346) owns marker-keyed comment mutation through the shared issue-mutation owner. Rust `diagrams upsert` (#8837) composes, redacts, authorizes, mutates, and exactly verifies the shared `larch:diagrams` comment through that typed owner. Rust `tracking post-issue` (#8789) composes its confined private metadata file and calls that owner in process. Rust `pr create` and `pr body-update` (#8790) use `larch_core::redact_pr_body` before the typed GitHub mutation boundary; the latter verifies the returned body. Rust `final-report write` (#8090) owns `/implement` final-summary publication. On the supported Unix runtime, marker-comment and post-admission issue-body materialization write only below a canonical non-symlink process temporary root or larch session-cache root and use no-follow reads plus private atomic writes. `render run-summary` remains a #7680 `/design` payload renderer, and `diagram code-flow` retains its #7681 owner. `final-report write` calls the same Rust owner in process to preserve its output envelope. |
 | Runtime projection | `crates/larch-cli/src/release_plugin_runtime.rs` |
 
 Verification includes frozen Python-to-Rust process parity for all four
