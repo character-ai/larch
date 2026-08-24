@@ -645,7 +645,7 @@ runs:
         if-no-files-found: error
     - name: Prepare coverage-built Rust integration artifact
       # The direct production lane supplies the sole artifact consumed by the
-      # focused Python integration job. A benchmark uses a distinct artifact
+      # focused bootstrap integration job. A benchmark uses a distinct artifact
       # name so its upload cost remains measurable without racing that handoff.
       # Keep the source SHA, checksum, and version beside the executable so the
       # consumer can reject a missing, stale, or altered handoff.
@@ -660,7 +660,7 @@ runs:
           --artifact-dir "$RUNNER_TEMP/larch-linux-test-binary" \
           --source-sha "$GITHUB_SHA" \
           --rust-inputs-sha256 "$RUST_POLICY_INPUTS_SHA256"
-    - name: Upload coverage-built Rust executable for cross-language integration tests
+    - name: Upload coverage-built Rust executable for bootstrap integration tests
       if: success() && steps.coverage-init.outputs.primary == 'true' && env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:

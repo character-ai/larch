@@ -55,6 +55,7 @@ scripts/test-references-headers.sh
 scripts/test-render-cost-line-callsites.sh
 scripts/test-review-dispatch-panel.sh
 scripts/test-resolve-upstream-larch-repo.sh
+scripts/test-rust-integration-consumer.sh
 scripts/test-sessionstart-health.sh
 scripts/test-subskill-anchors.sh
 scripts/test-token-vendor-scrapers.sh

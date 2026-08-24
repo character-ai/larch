@@ -110,8 +110,8 @@ lint-only:
 # Shard members must be direct Bash leaves (recipe-bearing test-* or *-bash-harness
 # with no pytest or Cargo invocation). Cargo-focused targets remain available for
 # local debugging; rust-full owns their required CI coverage.
-# Public aggregates (pytest + smoke) and pytest-only leaves stay out of shard lists; run via
-# make py-test or the local developer aggregate targets.
+# Public aggregates and language-specific leaves stay out of shard lists; run
+# them through their focused local targets.
 # New bash harnesses get appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2
 
@@ -123,13 +123,13 @@ test-pipe-sigpipe-safety:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
 
 test-redact:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/core/test_redact.py -k 'not (scrub_log_secrets or tmpdir or operator)'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration redact_parity::
 
 test-scrub-log-secrets:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/core/test_redact.py -k scrub_log_secrets
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration redact_parity::
 
 test-redact-tmpdir-paths:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/core/test_redact.py -k 'tmpdir or operator'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration redact_parity::
 
 test-reviewer-prune:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration review_commands::reviewer_prune
@@ -139,7 +139,7 @@ test-lib-prune-decision:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration review_core_contract::
 
 test-append-tool-failure:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k execution_issues
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration execution_issues_contract::
 
 test-append-execution-issue:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration execution_issues_contract::append_
@@ -191,7 +191,7 @@ test-check-clean-tree:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration cli::clean_tree_reports_clean_and_tracked_or_untracked_dirty_state
 
 test-check-main-sync:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_check_main_sync.py python/tests/git/test_git.py -q -k 'check_main_sync'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration git_commands::check_main_sync
 
 
 
@@ -238,22 +238,22 @@ test-deny-edit-write:
 
 
 test-token-tally:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k tally
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration token_commands::
 
 test-token-ledger:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k ledger
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration token_commands::
 
 test-token-report:
 	$(HARNESS_MARK) --label $@ -- cargo nextest run --locked --package larch-cli --test integration -E 'test(/^token_commands::.*report_/)'
 
 test-token-report-dedup:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k dedupe
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-core --test integration token_scan::historical_transcript_shapes_still_parse_and_deduplicate
 
 test-token-cost-per-bucket:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k bucket
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-core --test integration token_cost::
 
 test-render-cost-line-realism:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k 'not (render_cost_line or token_cost or bucket)'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-core --test integration token_cost::
 
 test-render-cost-line-callsites:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-render-cost-line-callsites.sh
@@ -262,7 +262,7 @@ test-token-report-summary-format:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration token_commands::report_renders_recorded_json_markdown_and_compact_modes
 
 test-timing-ledger:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_timing.py -q
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration timing::
 
 test-review-and-fix-record-timing:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration review_and_fix_commands::
@@ -279,7 +279,7 @@ test-token-vendor-scrapers:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-token-vendor-scrapers.sh
 
 test-token-claude-source:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k claude_source
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration token_commands::claude_source_
 
 test-verify-skill-called:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration -- developer_tooling_commands::verify_skill_called
@@ -320,7 +320,6 @@ test-release-set-version:
 
 test-release-finish:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch release_publish::tests
-	$(HARNESS_MARK) --label $@-verify-main -- python3 -m pytest python/tests/release/test_release.py -q
 
 # This Rust-only entry point is a standalone alias, not a test-harnesses
 # prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
@@ -329,7 +328,7 @@ test-promote-release:
 
 
 test-git-push:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_push.py -q -k 'branch_push or branch_main or propagates_final_exit'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration git_commands::push_
 
 
 test-anti-halt:
@@ -340,16 +339,16 @@ test-orchestrator-scope-sync:
 
 
 test-alias-structure:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'alias_structure' -q
+	$(HARNESS_MARK) --label $@ -- cargo run --quiet --locked --package larch-cli -- lint rule skill-structure
 
 test-file-bug-structure:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'file_bug_structure' -q
+	$(HARNESS_MARK) --label $@ -- cargo run --quiet --locked --package larch-cli -- lint rule skill-structure
 
 test-learn-from-bugs-structure:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'learn_from_bugs_structure' -q
+	$(HARNESS_MARK) --label $@ -- cargo run --quiet --locked --package larch-cli -- lint rule skill-structure
 
 test-design-structure:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'design_structure_pin or design_structure_specialized' -q
+	$(HARNESS_MARK) --label $@ -- cargo run --quiet --locked --package larch-cli -- lint rule skill-structure
 
 test-design-pause-resume:
 	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-core --lib design::pause::
@@ -359,13 +358,13 @@ test-pause-skill:
 	$(HARNESS_MARK) --label $@ -- bash skills/pause/scripts/test-pause-skill.sh
 
 test-decompose-panel-dispatch:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_decompose.py -q -k '(panel or degraded) and not aggregate'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration decompose_parity::panel_
 
 test-decompose-aggregator:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_decompose.py -q -k aggregate
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration decompose_parity::aggregate_
 
 test-decompose-file-issues:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_decompose.py -q -k 'prepare or annotate or close_original'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration decompose_parity::
 
 test-design-step2b-drafter:
 	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --bin larch design_step2b_commands::
@@ -508,7 +507,7 @@ test-implement-step2-routing:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-step2-routing.sh
 
 test-implement-structure:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'implement_structure' -q
+	$(HARNESS_MARK) --label $@ -- cargo run --quiet --locked --package larch-cli -- lint rule skill-structure
 
 
 test-implement-step8-exit3-first-fixer:
@@ -711,14 +710,14 @@ test-references-headers:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-references-headers.sh
 
 test-research-structure:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'research_structure' -q
+	$(HARNESS_MARK) --label $@ -- cargo run --quiet --locked --package larch-cli -- lint rule skill-structure
 
 .PHONY: test-triage-structure
 test-triage-structure:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-triage-structure.sh
 
 test-review-structure:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'review_structure' -q
+	$(HARNESS_MARK) --label $@ -- cargo run --quiet --locked --package larch-cli -- lint rule skill-structure
 
 test-gather-context:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration review_commands::gather_context
@@ -816,10 +815,10 @@ test-subskill-anchors:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-subskill-anchors.sh
 
 test-larch-log:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k larch_log_commit
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration run_log_entry::
 
 test-larch-log-write-round:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k 'not (execution_issues or refresh_run_logs or larch_log_commit or capture_transcript or verify_completeness or manifest or batch or batches)'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration run_log_entry::write_round
 
 # `run-log capture-transcript` is Rust-owned (#8078), so this is a
 # standalone Rust integration-test alias, not a test-harnesses prerequisite;
@@ -834,10 +833,10 @@ test-verify-run-log-completeness:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration run_log_entry::verify_completeness
 
 test-larch-logs-manifest:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k manifest
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration run_log_manifest::
 
 test-larch-logs-batches:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k '(batch or batches) and not execution_issues'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration run_log_entry::
 
 test-compose-plan-goals-test:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_quality_migrated_parity::

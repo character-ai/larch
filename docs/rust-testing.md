@@ -341,15 +341,15 @@ follows:
   misleading full-workspace coverage threshold. `rust-skip` runs no
   pull-request Rust binary; it validates and uses the exact trusted-main policy
   executable instead. Both producers retain repository policy, plugin
-  projection validation, and the Linux artifact handoff required for Python
+  projection validation, and the Linux artifact handoff required for bootstrap
   integration.
 - The 4-shard `python-tests` matrix is artifact-independent and runs its
   stub-safe tests without waiting for Rust coverage. The required
   `python-rust-integration` job waits for `python-tests` and the stable
   `rust-coverage` aggregate, then consumes the selected producer's verified
   `larch-linux-test-binary`. It verifies the artifact checksum, source SHA, and
-  version before running the marker-selected Rust-backed tests and publishing
-  the stable `python-tests-gate` check. The integration test requires an
+  version before running `scripts/test-rust-integration-consumer.sh` and
+  publishing the stable `python-tests-gate` check. The harness requires an
   explicit `full`, `partial`, or `skip` mode. Coverage-built `full` and `skip`
   executables must emit their redirected LLVM profile; the uninstrumented
   `partial` executable still exercises the same verified bootstrap without a
@@ -358,7 +358,7 @@ follows:
   tail.
 - `rust-coverage-benchmark` runs only when a manual dispatch sets
   `coverage_profile_benchmark=true`. Its matrix keeps the profile sweep out of
-  the protected production path and does not upload a competing Python artifact.
+  the protected production path and does not upload a competing integration artifact.
 - `rust-coverage-target-cache-benchmark` runs only when a manual dispatch on
   `main` sets `coverage_target_cache_benchmark=true`. It runs beside the normal
   cache-off `rust-full` control, uses the same coverage action and profile, and
@@ -440,7 +440,7 @@ report retains the existing filename exclusions. The stable `rust-full` job
 applies the line threshold after it merges the four test reports and the policy
 report. After its report, shard 1 uses the executable for both plugin-runtime
 commands and the generated-projection clean-diff check before uploading it for
-Python integration tests. The separate doctest command stays required even
+bootstrap integration tests. The separate doctest command stays required even
 when the workspace currently has no doctests. Nextest's slow-test status and
 final status output remain visible in the job log.
 
@@ -510,7 +510,7 @@ The workflow enforces these modes after both live observation windows completed:
 
 - `full` runs format, full Clippy, dependency policy, full coverage, doctests,
   repository policy, plugin projection validation, and the Linux artifact for
-  Python integration tests. Manual dispatches and merge-queue runs always take
+  bootstrap integration tests. Manual dispatches and merge-queue runs always take
   this path. A normal push to `main` runs only trusted cache publication.
 - `partial` accepts only Rust-source changes whose Cargo-metadata package
   closure is a strict subset of the workspace and contains `larch-cli`. The
@@ -520,7 +520,7 @@ The workflow enforces these modes after both live observation windows completed:
   locked all-feature Clippy. `rust-partial` runs selected locked all-feature
   tests and applicable library doctests, builds the candidate `larch` binary,
   runs repository policy and plugin projection validation with it, and uploads
-  it for Python integration. It does not claim or enforce the full-workspace
+  it for bootstrap integration. It does not claim or enforce the full-workspace
   coverage threshold. Dependency policy is skipped only because manifests,
   lockfile, Cargo configuration, and deny inputs are all global `full` inputs.
 - `skip` accepts only supplementary paths with explicit owners: root
@@ -528,7 +528,7 @@ The workflow enforces these modes after both live observation windows completed:
   `python/`, and `skills/`. The selector records every applicable owner. The
   normal lint, agent, Python, and plugin checks still validate their owned
   content. Rust repository policy and plugin validation run through a verified
-  trusted-main executable; Python integration receives that same verified
+  trusted-main executable; bootstrap integration receives that same verified
   executable. No pull-request Rust binary runs in this path. The `rust-skip`
   job's elapsed duration is the selected execution-path measurement;
   `rust-coverage` and `rust-gate` prove required status coverage but do not

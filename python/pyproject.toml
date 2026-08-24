@@ -7,5 +7,4 @@ requires-python = ">=3.11"
 pythonpath = ["."]
 markers = [
     "commit_fixes: review-and-fix commit-fixes contract tests",
-    "rust_integration: requires the verified Rust larch executable",
 ]
