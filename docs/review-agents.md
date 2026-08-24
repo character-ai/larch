@@ -72,6 +72,8 @@ Larch also ships generated specialist Claude agents for focused review lanes. Th
 
 This complements but is distinct from the existing note in *Persistent Agent vs. Inline Template* below about external-reviewer prompt taxonomy — that note covers **what** external reviewers are asked to look at; this section covers **what** they can do to the filesystem regardless of what they were asked. See [the canonical research boundary](security/workflow-trust-and-mutations.md#research) for the full trust-model framing and [`docs/external-reviewers.md`](external-reviewers.md) for integration mechanics (launch order, timeouts, sentinel monitoring).
 
+Review dispatch, collection, retries, and vendor lifecycle are Rust-owned commands reached through `scripts/larch.sh`. Codex and Cursor children are built from typed requests and launched only through the shared `ExternalProcessRunner`; skills do not invoke vendor binaries directly. The runner clears ambient environment state, applies typed credential overrides, bounds captured output, and terminates the child process group on cancellation or timeout. There is no Python reviewer-launcher fallback.
+
 ## Persistent Agent vs. Inline Template
 
 The archetype can be invoked either through the persistent agent definition or through the inline template:

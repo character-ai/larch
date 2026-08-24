@@ -8,8 +8,8 @@ covered by exactly one target (no test uncovered, no test covered twice).
 
 This locks in the per-target `-k` slicing landed for #4439 (Tricks A1/A2),
 the research-target de-duplication (Trick A3), the timing-blind-spot
-de-duplication of the five previously-untimed full-file pytest groups
-(test_agents/test_tokens/test_report_tokens_cost/test_timing/test_clarify),
+de-duplication of the remaining previously-untimed full-file pytest groups
+(test_tokens/test_report_tokens_cost/test_timing/test_clarify),
 and the #4459 follow-up batch that closed coverage gaps / overlaps in seven
 more already-sliced files (test_execution_issues/
 test_plan_review), plus the #4459 Bucket-1 full-file duplicate group
@@ -42,7 +42,6 @@ MAKEFILE = os.path.join(REPO_ROOT, "Makefile")
 # (e.g. test_research.py after the Trick A3 de-duplication).
 ENFORCED = (
     "python/tests/research/test_research.py",
-    "python/tests/agents/test_agents.py",
     "python/tests/report/test_tokens.py",
     "python/tests/report/test_report_tokens_cost.py",
     "python/tests/report/test_timing.py",

@@ -39,12 +39,12 @@ Update this list whenever a new consumer sources the registry.
 
 ## Non-goals
 
-Per-tool model defaults and plugin `userConfig` environment variables stay in `python/agents.py`; this shell registry only names tool taxonomy.
+Per-tool model defaults and plugin `userConfig` environment variables stay in `crates/larch-core/src/vendor_model.rs`; this shell registry only names tool taxonomy.
 
 ## Adding a new external tool
 
 1. Append the new id to `LARCH_EXTERNAL_TOOLS` and to `LARCH_IMPLEMENTER_CODERS` if it is also an implementer.
-2. Add the per-tool branch in `python3 scripts/larch.sh agent model-args`.
+2. Add the per-tool branch in `scripts/larch.sh agent model-args` and its Rust owner.
 3. Add the per-tool branch in `agent check-reviewers` presence detection and in any dispatcher fallback helpers; decide opt-in vs. default and update `--include-*` policy accordingly.
 4. If the new tool is also an implementer, add the launcher branch in `implement step2-dispatch`.
 5. No change is required for `scripts/larch.sh agent run-external-agent`'s raw `--tool` label: it sanitizes `.meta` `TOOL=` for any input. Prefer a label-safe id (alphanumerics, `.`, `_`, `-`) so `.meta` `TOOL=` matches the registry id verbatim; non-label-safe ids may still collide after sanitization (e.g. `tool/a` and `tool?a` both become `tool_a`), so `.meta` `TOOL=` is not a bijection from arbitrary labels. Direct execution remains closed to approved typed vendor programs; add an explicit process-port variant before a new vendor executable can launch.

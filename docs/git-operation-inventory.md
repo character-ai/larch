@@ -107,8 +107,6 @@ crates/larch-cli/src/token_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/token_measurement_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/triage_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked-paths
-python/larch/agents/_run_external.py	later-domain	#7678	dynamic
-python/larch/agents/_claude_runner.py	later-domain	#7678	checkout,diff,ls-files,restore
 crates/larch-cli/src/agent_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/oos_commands.rs	gix-read	#7671	typed-read
 python/larch/core/architectural_guidelines.py	later-domain	#7686	diff,merge-base,rev-parse

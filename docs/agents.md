@@ -40,6 +40,12 @@ This pattern is used for:
 
 Orchestrators often run in an ordered handoff: `/design` is a **prerequisite peer** (not a nested child of `/implement`) that writes the issue-body `larch:plan`; `/implement` then materializes and lands the work from that anchor; Step 5 runs `review-and-fix CLI` on the implementation diff (standalone `/review` is a separate skill).
 
+## Runtime ownership
+
+Agent orchestration commands are Rust-owned and enter through `scripts/larch.sh`. `larch-core` owns typed vendor requests, model selection, retry and lifecycle policy; `larch-cli` composes workflow commands; and `larch-adapters` owns process, filesystem, credential, and diagnostic effects. The retired `python/larch/agents` package is not a compatibility path or fallback.
+
+Claude Code Agent-tool launches remain host-controlled in-session agents. Every Claude, Codex, or Cursor binary child launched by larch uses the typed `ExternalProcessRunner` port. `TokioProcessRunner` in `crates/larch-adapters/src/process.rs` is the sole production spawn owner, with closed program enums, allowlisted child environments, bounded output, cancellation, timeout, and process-group cleanup. Skills and hooks select Rust commands; they do not construct vendor processes directly.
+
 ## Agent Types
 
 Larch uses several categories of agents:
