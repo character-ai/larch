@@ -155,8 +155,38 @@ running that base's cache-key action. It retains the same exact key schema,
 checksum, input digest, `refs/heads/main` provenance, source-SHA shape, version,
 and fail-to-full validation. Candidate files still cannot supply an executable
 or identity. This restores the intended trusted-base lookup without changing
-the classifier or weakening its trust contract. A succeeding rerun on #8873
-must provide the enforced partial measurement.
+the classifier or weakening its trust contract. Pull request
+[#8874](https://github.com/character-ai/larch/pull/8874) carried that correction.
+
+The first selected-partial run after that correction,
+[`32676763609`](https://github.com/character-ai/larch/actions/runs/32676763609),
+proved the selector and Rust producer but exposed a downstream contract error.
+[`rust-partial`, 519 s](https://github.com/character-ai/larch/actions/runs/32676763609/job/97286320990),
+[`rust-coverage`](https://github.com/character-ai/larch/actions/runs/32676763609/job/97287516941),
+and [`rust-gate`](https://github.com/character-ai/larch/actions/runs/32676763609/job/97287537385)
+succeeded while `rust-full` stayed skipped. The required
+[`python-tests-gate`](https://github.com/character-ai/larch/actions/runs/32676763609/job/97287537469)
+failed because it required LLVM profile output from the deliberately
+uninstrumented partial binary. Pull request
+[#8875](https://github.com/character-ai/larch/pull/8875) made that assertion
+mode-aware while preserving it for coverage-built `full` and `skip` binaries.
+Artifact checksum, source, version, and producer validation did not change.
+
+The final same-candidate validation is complete:
+
+| Run | Artifact decision | Selected Rust producer | Required result |
+|---|---|---|---|
+| [Enforced partial `32679479548`, attempt 2](https://github.com/character-ai/larch/actions/runs/32679479548) | [`rust-ci-selection`](https://github.com/character-ai/larch/actions/runs/32679479548/job/97293497726): `partial` → `partial`; `selector-proposed-partial`; `rollout_state=enforced`; `observation_only=false` | [`rust-partial`, 455 s](https://github.com/character-ai/larch/actions/runs/32679479548/job/97295111599); [`rust-full` skipped](https://github.com/character-ai/larch/actions/runs/32679479548/job/97295112296) | [`rust-coverage`](https://github.com/character-ai/larch/actions/runs/32679479548/job/97296250673), [`rust-gate`](https://github.com/character-ai/larch/actions/runs/32679479548/job/97296275028), and [`python-tests-gate`](https://github.com/character-ai/larch/actions/runs/32679479548/job/97296275041) succeeded; all 13 required contexts passed |
+| [Label-forced full `32680683805`](https://github.com/character-ai/larch/actions/runs/32680683805) | [`rust-ci-selection`](https://github.com/character-ai/larch/actions/runs/32680683805/job/97296735447): `partial` → `full`; `forced-by-full-rust-ci-label`; `rollout_state=forced-full`; `observation_only=false` | [`rust-full`, 707 s](https://github.com/character-ai/larch/actions/runs/32680683805/job/97296843971); [`rust-partial` skipped](https://github.com/character-ai/larch/actions/runs/32680683805/job/97296844478) | [`rust-coverage`](https://github.com/character-ai/larch/actions/runs/32680683805/job/97298512788), [`rust-gate`](https://github.com/character-ai/larch/actions/runs/32680683805/job/97298533574), and [`python-tests-gate`](https://github.com/character-ai/larch/actions/runs/32680683805/job/97298533596) succeeded; all 13 required contexts passed |
+
+The first attempt of run `32679479548` stopped safely when an unchanged test
+fixture reported `could not read bundle executable version` for its temporary
+shell after 1,893 sibling tests passed. The identical failed-job rerun passed
+and is recorded separately above; the first attempt is not claimed as
+successful evidence. On the successful same-candidate comparison, the partial
+producer was 252 seconds (36%) shorter than the forced-full producer. The
+label-forced row validates the escape hatch but remains excluded from the live
+observation window.
 
 ### Live-row collection
 
