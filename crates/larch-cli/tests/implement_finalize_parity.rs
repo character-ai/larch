@@ -6,7 +6,7 @@
 #[allow(dead_code)]
 mod parity_support;
 
-use std::{env, path::PathBuf, process::Command};
+use std::{env, path::PathBuf, process::Command, sync::OnceLock};
 
 use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
 
@@ -43,12 +43,17 @@ fn repository_root() -> PathBuf {
 }
 
 fn python_executable() -> PathBuf {
-    let output = Command::new("python3")
-        .args(["-c", "import sys; print(sys.executable)"])
-        .output()
-        .expect("resolve Python interpreter");
-    assert!(output.status.success());
-    PathBuf::from(String::from_utf8(output.stdout).expect("UTF-8").trim())
+    static PYTHON: OnceLock<PathBuf> = OnceLock::new();
+    PYTHON
+        .get_or_init(|| {
+            let output = Command::new("python3")
+                .args(["-c", "import sys; print(sys.executable)"])
+                .output()
+                .expect("resolve Python interpreter");
+            assert!(output.status.success());
+            PathBuf::from(String::from_utf8(output.stdout).expect("UTF-8").trim())
+        })
+        .clone()
 }
 
 fn case(name: &'static str, verb: &str, tail: &[&str], seeds: Vec<SeedFile>) -> ParityCase {
