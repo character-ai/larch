@@ -899,7 +899,6 @@
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"checks-commit-route --checks-site step5-self-review","id":"ported _structure_implement_specialized.py:103 [16154a8526]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"Implementing with main agent (coder=claude)","id":"ported _structure_implement_specialized.py:103 [18331bd218]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"session read-key --file \"$IMPLEMENT_TMPDIR/session-env.sh\" --key LARCH_TOKEN_SESSION_ID","id":"ported _structure_implement_specialized.py:103 [19d720943c]"}
-{"path":"skills/implement/SKILL.md","kind":"absent","needle":"skills/implement/scripts/step-5-entry.sh","id":"ported _structure_implement_specialized.py:103 [1a2d1d3f16]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"Present the relayed degraded explanation block verbatim (from bootstrap stderr during Step 0)","id":"ported _structure_implement_specialized.py:103 [1a90e805a0]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"compose-report --report-kind escalation-success","id":"ported _structure_implement_specialized.py:103 [1b591bf913]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"branch on envelope `ROUTE=` and `REBASE_RC=` from the Step 0 bootstrap stdout envelope","id":"ported _structure_implement_specialized.py:103 [1f0872a3ab]"}
@@ -951,7 +950,6 @@
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"check-review-changes.md","id":"ported _structure_implement_specialized.py:103 [e609c749be]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"step18-cleanup.md","id":"ported _structure_implement_specialized.py:103 [eb53accc9b]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"Use the gate phase below","id":"ported _structure_implement_specialized.py:103 [ef76e16d6e]"}
-{"path":"skills/implement/SKILL.md","kind":"absent","needle":"\"$HOME/.cache/larch/sessions/implement-run-$PPID.sh\" scripts/phantom-probe-with-warn.sh --step 8-pre-ship","id":"ported _structure_implement_specialized.py:103 [f0530346b4]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"\"$HOME/.cache/larch/sessions/implement-run-$PPID.sh\" skills/implement/scripts/step-8-seed-initial.sh","id":"ported _structure_implement_specialized.py:103 [f2582fbdff]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"autonomous CI-fix sub-procedure from `ship-pr-exit-matrix.md`","id":"ported _structure_implement_specialized.py:103 [f78e3f2222]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"sys.version_info >= (3, 11)","id":"ported _structure_implement_specialized.py:103 [f7f1c191cc]"}
