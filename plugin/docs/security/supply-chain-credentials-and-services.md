@@ -210,14 +210,16 @@ repository policy and plugin validation. Its exact key binds the runner OS and
 architecture plus tracked crate Rust sources (not generated target output),
 root and crate manifests, root or crate build scripts, lockfile, toolchain, and
 Cargo configuration. It has no restore-key fallback.
-Before a pull request may use it, CI checks every expected member is a regular,
-non-symlink file; verifies the executable checksum; matches the Rust-input
+For a pull request, the isolated base checkout's trusted cache-key action
+derives both the exact lookup key and the expected Rust-input digest. Candidate
+files cannot choose either value. CI then checks every expected member is a
+regular, non-symlink file; verifies the executable checksum; matches that base
 digest; requires `refs/heads/main` provenance; validates the recorded source
 SHA shape; and compares the executable's reported version. The selection job
-then supplies that executable only to the trusted pull-request-base wrapper. A
-miss, corruption, Rust-input change, or metadata mismatch produces a static
-`full` selection without compiling or executing pull-request code. The skip
-lane is the only consumer of an artifact handoff, so selection uploads the
+supplies the executable only to the trusted pull-request-base wrapper. A miss,
+corruption, unpublished base-input identity, or metadata mismatch produces a
+static `full` selection without compiling or executing pull-request code. The
+skip lane is the only consumer of an artifact handoff, so selection uploads the
 verified cache files only when `skip` is the effective mode. The skip lane
 repeats the same checks after that handoff.
 

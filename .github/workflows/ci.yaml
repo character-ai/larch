@@ -404,7 +404,9 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - id: main-cache-keys
-        uses: ./.github/actions/main-cache-keys
+        uses: ./.rust-ci-selector-base/.github/actions/main-cache-keys
+        with:
+          rust-policy-source-root: .rust-ci-selector-base
       - name: Restore trusted main Rust policy binary
         id: trusted-main-policy-cache
         continue-on-error: true
@@ -415,7 +417,7 @@ jobs:
       - name: Verify trusted main Rust policy binary
         id: trusted-main-policy-validation
         env:
-          RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
+          RUST_POLICY_INPUTS_SHA256: ${{ steps.main-cache-keys.outputs.rust-policy-inputs-sha256 }}
           TRUSTED_POLICY_CACHE_HIT: ${{ steps.trusted-main-policy-cache.outputs.cache-hit }}
         run: |
           set -euo pipefail
@@ -449,7 +451,7 @@ jobs:
           RUST_CI_EVENT_NAME: ${{ github.event_name }}
           RUST_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           RUST_CI_HEAD_SHA: ${{ github.sha }}
-          RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
+          RUST_POLICY_INPUTS_SHA256: ${{ steps.main-cache-keys.outputs.rust-policy-inputs-sha256 }}
           TRUSTED_POLICY_VALID: ${{ steps.trusted-main-policy-validation.outputs.valid }}
         run: |
           set -euo pipefail
@@ -548,7 +550,9 @@ jobs:
             printf '%s\n' '## Rust CI selection'
             printf '%s\n' "Proposed mode: \`full\` because the trusted selector executable was unavailable."
           fi
-          test -n "$RUST_POLICY_INPUTS_SHA256"
+          if [ -z "$RUST_POLICY_INPUTS_SHA256" ]; then
+            printf '%s\n' '::warning::Trusted base cache-key action did not expose a Rust-input digest; the full fallback remains required.'
+          fi
           {
             printf 'RUST_SELECTION_HISTORY_MILLISECONDS=%s\n' "$selector_history_milliseconds"
             printf 'RUST_SELECTION_HISTORY_SOURCE=%s\n' "$selector_history_source"

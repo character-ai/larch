@@ -651,9 +651,12 @@ trusted-main repository-policy job that continues to validate it. The
 [Supply Chain, Credentials, and Services](supply-chain-credentials-and-services.md#ci-tool-bootstrap-and-caches).
 The selection job and skip job both verify that content-derived identity before
 they execute it. The selection job additionally executes it only through the
-trusted base wrapper and uploads the verified handoff only for an effective
-`skip` decision. A cache miss or failed verification selects `full`; no
-pull-request-provided Rust binary is accepted for selection or `skip`.
+trusted base wrapper. Its trusted base cache-key action derives the lookup key
+and expected Rust-input digest from that same isolated checkout, so candidate
+Rust files cannot name or validate an executable. The job uploads the verified
+handoff only for an effective `skip` decision. A cache miss or failed
+verification selects `full`; no pull-request-provided Rust binary is accepted
+for selection or `skip`.
 
 `RUST_CI_PARTIAL_ENFORCEMENT` and `RUST_CI_SKIP_ENFORCEMENT` are `true` only
 because each durable live record has at least three independent non-full
