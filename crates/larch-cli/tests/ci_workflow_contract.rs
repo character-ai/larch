@@ -25,60 +25,82 @@ fn assert_contains_all(source: &str, needles: &[&str]) {
     }
 }
 
-fn assert_tree_lacks(path: &Path, needle: &str) {
-    for entry in fs::read_dir(path).expect("read test tree") {
-        let entry = entry.expect("read test-tree entry");
-        let file_type = entry.file_type().expect("read test-tree entry type");
-        if file_type.is_dir() {
-            if entry.file_name() == "__pycache__" {
-                continue;
-            }
-            assert_tree_lacks(&entry.path(), needle);
-        } else if file_type.is_file() {
-            let source = fs::read(entry.path()).expect("read test source");
-            assert!(
-                !source
-                    .windows(needle.len())
-                    .any(|window| window == needle.as_bytes()),
-                "{} retains {needle:?}",
-                entry.path().display()
-            );
-        }
+#[test]
+fn selected_rust_paths_own_bootstrap_integration_without_python_checks() {
+    let root = repository_root();
+    let workflow = fs::read_to_string(root.join(".github/workflows/ci.yaml"))
+        .expect("read CI workflow");
+    let action = fs::read_to_string(root.join(".github/actions/rust-coverage/action.yaml"))
+        .expect("read Rust coverage action");
+    let full = section(&workflow, "\n  rust-full-shards:");
+    let partial = section(&workflow, "\n  rust-partial:");
+    let skip = section(&workflow, "\n  rust-skip:");
+
+    for retired in [
+        "\n  python-pyright:\n",
+        "\n  python-tests:\n",
+        "\n  python-rust-integration:\n",
+        "name: python-tests-gate",
+        "python/requirements-dev.txt",
+        "python/requirements-test.txt",
+        "make py-typecheck",
+        "make py-test",
+    ] {
+        assert!(!workflow.contains(retired), "retains {retired:?}");
+    }
+
+    assert!(full.contains("COVERAGE_RUN_BOOTSTRAP_INTEGRATION: \"true\""));
+    assert_contains_all(
+        &action,
+        &[
+            "Run bootstrap integration with coverage executable",
+            "COVERAGE_RUN_BOOTSTRAP_INTEGRATION == 'true'",
+            "RUST_CI_MODE: full",
+            "bash scripts/test-rust-integration-consumer.sh",
+            "make test-findings-classification",
+        ],
+    );
+    for (mode, producer) in [("partial", partial), ("skip", skip)] {
+        assert!(producer.contains(&format!("RUST_CI_MODE: {mode}")));
+        assert!(producer.contains("bash scripts/test-rust-integration-consumer.sh"));
+        assert!(producer.contains("make test-findings-classification"));
     }
 }
 
 #[test]
-fn selected_rust_bootstrap_job_replaces_the_pytest_integration_lane() {
+fn retired_python_ci_assets_stay_absent() {
     let root = repository_root();
-    let workflow = fs::read_to_string(root.join(".github/workflows/ci.yaml"))
-        .expect("read CI workflow");
-    let integration = section(&workflow, "\n  python-rust-integration:");
-
-    for required in [
-        "name: python-tests-gate",
-        "needs: [rust-coverage, python-tests]",
-        "if: always()",
-        "Verify selected Rust integration artifact",
-        "sha256sum --check --strict larch.sha256",
-        "LARCH_TEST_RUST_BINARY_SHA256",
-        "bash scripts/test-rust-integration-consumer.sh",
+    for path in [
+        "python/conftest.py",
+        "python/pyproject.toml",
+        "python/pyrightconfig.json",
+        "python/pytest_sharding.py",
+        "python/requirements-dev.txt",
+        "python/requirements-test.txt",
+        "python/ruff.toml",
+        "python/shard-assignments.json",
+        "scripts/lint-harness-pytest-partition.py",
     ] {
-        assert!(integration.contains(required), "missing {required:?}");
-    }
-    for retired in [
-        "actions/setup-python",
-        "requirements-test.txt",
-        "python3 -m pytest",
-        "-m rust_integration",
-    ] {
-        assert!(!integration.contains(retired), "retains {retired:?}");
+        assert!(!root.join(path).exists(), "retains {path}");
     }
 
-    let python_tests = section(&workflow, "\n  python-tests:");
-    assert!(!python_tests.contains("PYTEST_ADDOPTS"));
     let makefile = fs::read_to_string(root.join("Makefile")).expect("read Makefile");
-    assert!(!makefile.contains("python3 -m pytest"));
-    assert_tree_lacks(&root.join("python/tests"), "rust_integration");
+    for target in ["py-lint:", "py-typecheck:", "py-test:"] {
+        assert!(!makefile.lines().any(|line| line == target));
+    }
+
+    for (path, retired) in [
+        (".pre-commit-config.yaml", "      - id: ruff\n"),
+        (".pre-commit-config.yaml", "      - id: pyright\n"),
+        (".github/workflows/main-cache-publication.yaml", "main-cache-python"),
+        (".github/actions/main-cache-keys/action.yaml", "pip-python"),
+        (".github/main-cache-inventory.json", "site-python"),
+    ] {
+        let source = fs::read_to_string(root.join(path)).unwrap_or_else(|error| {
+            panic!("cannot read {path}: {error}");
+        });
+        assert!(!source.contains(retired), "{path} retains {retired:?}");
+    }
 }
 
 #[test]

@@ -282,8 +282,6 @@ fn is_live_runtime_or_tooling_path(path: &str) -> bool {
     path == "Makefile"
         || path == "agent-lint.toml"
         || path == ".pre-commit-config.yaml"
-        || path == "python/shard-assignments.json"
-        || path == "python/ruff.toml"
         || [
             "agents/",
             "hooks/",

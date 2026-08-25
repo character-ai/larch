@@ -41,17 +41,16 @@ impl WorkflowPort for FixtureWorkflow {
             _ => {}
         }
         Ok(PreparedPlan {
-            kind: RebalanceKind::Python,
+            kind: RebalanceKind::Rust,
             repository: GitHubRepositoryRef::new("owner", "repo").unwrap(),
             harness: None,
-            python: Some(PythonPlan {
-                assignments: BTreeMap::from([("test::one".to_owned(), 1)]),
-                shard_count: 1,
-                assignments_changed: !self.noop,
-                workflow_changed: false,
+            rust: Some(RustPlan {
+                current_shard_count: 1,
+                shard_count: if self.noop { 1 } else { 2 },
+                baseline_slowest_wall_clock: 500.0,
+                approved_slowest_wall_clock: 500.0,
                 changed: !self.noop,
             }),
-            rust: None,
             decision: if self.noop { "noop" } else { "change" }.to_owned(),
         })
     }
@@ -69,7 +68,7 @@ impl WorkflowPort for FixtureWorkflow {
             self.events.push("write-rollback");
             return Err("candidate write failed".to_owned());
         }
-        Ok(vec![Artifact::Assignments])
+        Ok(vec![Artifact::CiWorkflow])
     }
 
     fn publish(
@@ -122,29 +121,17 @@ impl GitFixture {
     fn new() -> Self {
         let root = tempfile::tempdir().expect("temporary repository root");
         let remote = tempfile::tempdir().expect("temporary origin");
-        fs::create_dir_all(root.path().join("python")).expect("create assignments directory");
         fs::write(
             root.path().join(MAKEFILE),
             "test-harnesses-1: test-harness-shards-coverage alpha\n\
              test-harnesses-2: beta\n",
         )
         .expect("write fixture Makefile");
-        fs::write(root.path().join(ASSIGNMENTS), "{\n  \"test::old\": 1\n}\n")
-            .expect("write fixture assignments");
         fs::create_dir_all(root.path().join(".github/workflows"))
             .expect("create workflow directory");
         fs::write(
             root.path().join(CI_WORKFLOW),
             r#"jobs:
-  python-tests:
-    strategy:
-      matrix:
-        shard: [1, 2]
-    steps:
-      - name: Run Python tests (shard ${{ matrix.shard }} of 2)
-        env:
-          PYTEST_SHARD_COUNT: "2"
-  # These are the only Python tests
   rust-full-shards:
     strategy:
       matrix:
@@ -306,14 +293,12 @@ fn git_output(root: &Path, arguments: &[&str]) -> Output {
 
 fn arguments() -> RebalanceRunArguments {
     RebalanceRunArguments {
-        kind: RebalanceKind::Python,
+        kind: RebalanceKind::Rust,
         repo: Some(GitHubRepositoryRef::new("owner", "repo").unwrap()),
         n_runs: 1,
         branch_prefix: "rebalance-shards".to_owned(),
         n_verify_runs: 1,
-        n_python_shards: None,
         n_rust_shards: None,
-        balance_threshold: 15.0,
         max_shard_wall_clock: 300.0,
         max_rust_shard_wall_clock: 600.0,
         experimental_wall_clock_override: None,
@@ -352,13 +337,6 @@ fn changed_plan() -> PreparedPlan {
             approved_slowest_wall_clock: 12.0,
             changed: true,
         }),
-        python: Some(PythonPlan {
-            assignments: BTreeMap::from([("test::one".to_owned(), 1), ("test::two".to_owned(), 2)]),
-            shard_count: 2,
-            assignments_changed: true,
-            workflow_changed: false,
-            changed: true,
-        }),
         rust: Some(RustPlan {
             current_shard_count: 1,
             shard_count: 1,
@@ -373,15 +351,6 @@ fn changed_plan() -> PreparedPlan {
 fn harness_only_plan() -> PreparedPlan {
     let mut plan = changed_plan();
     plan.kind = RebalanceKind::Harness;
-    plan.python = None;
-    plan.rust = None;
-    plan
-}
-
-fn python_only_plan() -> PreparedPlan {
-    let mut plan = changed_plan();
-    plan.kind = RebalanceKind::Python;
-    plan.harness = None;
     plan.rust = None;
     plan
 }
@@ -390,7 +359,6 @@ fn rust_only_plan() -> PreparedPlan {
     let mut plan = changed_plan();
     plan.kind = RebalanceKind::Rust;
     plan.harness = None;
-    plan.python = None;
     let rust = plan.rust.as_mut().expect("Rust plan");
     rust.shard_count = 4;
     rust.approved_slowest_wall_clock = 480.0;
@@ -415,16 +383,6 @@ fn approved_response(plan: &PreparedPlan) -> PlanResponse {
             approved_slowest_wall_clock: 12.0,
             is_noop: false,
         }),
-        python: Some(PlanPythonResponse {
-            assignments: plan
-                .python
-                .as_ref()
-                .expect("python plan")
-                .assignments
-                .clone(),
-            shard_count: 2,
-            is_noop: false,
-        }),
         rust: Some(PlanRustResponse {
             current_shard_count: 1,
             shard_count: 1,
@@ -438,11 +396,10 @@ fn approved_response(plan: &PreparedPlan) -> PlanResponse {
 fn timing_reports() -> (
     larch_core::HarnessTimingReport,
     larch_core::JobTimingReport,
-    larch_core::PytestTimingReport,
     larch_core::JobTimingReport,
 ) {
     let harness = serde_json::from_value(json!({
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "harness",
         "sampled_run_ids": [11],
         "rows": [],
@@ -454,7 +411,7 @@ fn timing_reports() -> (
     }))
     .expect("fixture harness timing report");
     let jobs = serde_json::from_value(json!({
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "jobs",
         "sampled_run_ids": [11],
         "rows": [],
@@ -462,17 +419,6 @@ fn timing_reports() -> (
         "skipped_run_ids": [],
     }))
     .expect("fixture job timing report");
-    let pytest = serde_json::from_value(json!({
-        "schema_version": 1,
-        "kind": "pytest",
-        "sampled_run_ids": [11],
-        "rows": [],
-        "nodeid_medians": [],
-        "shard_medians": [],
-        "observed_shard_count": 2,
-        "skipped_run_ids": [],
-    }))
-    .expect("fixture pytest timing report");
     let rust = serde_json::from_value(json!({
         "schema_version": 2,
         "kind": "rust-jobs",
@@ -482,80 +428,7 @@ fn timing_reports() -> (
         "skipped_run_ids": [],
     }))
     .expect("fixture Rust job timing report");
-    (harness, jobs, pytest, rust)
-}
-
-#[test]
-fn python_workflow_shard_count_rewrite_updates_the_three_lockstep_fields() {
-    let source = r#"jobs:
-  python-tests:
-    strategy:
-      matrix:
-        shard: [1, 2]
-    steps:
-      - name: Run Python tests (shard ${{ matrix.shard }} of 2)
-        env:
-          PYTEST_SHARD_COUNT: "2"
-  # These are the only Python tests
-"#;
-
-    assert_eq!(python_workflow_shard_count(source), Ok(2));
-    let rewritten = rewrite_python_workflow_shard_count(source, 4).expect("rewrite workflow");
-    assert_eq!(python_workflow_shard_count(&rewritten), Ok(4));
-    assert!(rewritten.contains("shard: [1, 2, 3, 4]"));
-    assert!(rewritten.contains("Run Python tests (shard ${{ matrix.shard }} of 4)"));
-    assert!(rewritten.contains("PYTEST_SHARD_COUNT: \"4\""));
-}
-
-#[test]
-fn python_workflow_shard_count_refuses_inconsistent_lockstep_fields() {
-    let source = r#"jobs:
-  python-tests:
-    strategy:
-      matrix:
-        shard: [1, 2]
-    steps:
-      - name: Run Python tests (shard ${{ matrix.shard }} of 3)
-        env:
-          PYTEST_SHARD_COUNT: "2"
-  # These are the only Python tests
-"#;
-
-    assert!(
-        python_workflow_shard_count(source)
-            .expect_err("inconsistent workflow must fail closed")
-            .contains("inconsistent")
-    );
-}
-
-#[test]
-fn python_workflow_shard_count_refuses_ambiguous_job_boundaries() {
-    let source = r#"jobs:
-  python-tests:
-    strategy:
-      matrix:
-        shard: [1]
-    steps:
-      - name: Run Python tests (shard ${{ matrix.shard }} of 1)
-        env:
-          PYTEST_SHARD_COUNT: "1"
-  # These are the only Python tests
-  python-tests:
-    strategy:
-      matrix:
-        shard: [1]
-    steps:
-      - name: Run Python tests (shard ${{ matrix.shard }} of 1)
-        env:
-          PYTEST_SHARD_COUNT: "1"
-  # These are the only Python tests
-"#;
-
-    assert!(
-        python_workflow_shard_count(source)
-            .expect_err("ambiguous workflow must fail closed")
-            .contains("unambiguous")
-    );
+    (harness, jobs, rust)
 }
 
 #[test]
@@ -621,40 +494,6 @@ fn production_workflow_writes_a_rust_matrix_resize_as_one_artifact() {
 }
 
 #[test]
-fn production_workflow_writes_python_assignments_and_matrix_in_lockstep() {
-    let fixture = GitFixture::new();
-    let mut workflow = fixture.workflow();
-    let mut plan = python_only_plan();
-    let python = plan.python.as_mut().expect("Python plan");
-    python.shard_count = 4;
-    python.assignments_changed = true;
-    python.workflow_changed = true;
-    python.changed = true;
-    let expected_assignments = python.assignments.clone();
-
-    let artifacts = workflow
-        .write_candidates(&plan)
-        .expect("write Python rebalance artifacts");
-    assert_eq!(artifacts, vec![Artifact::Assignments, Artifact::CiWorkflow]);
-    let workflow_text =
-        fs::read_to_string(fixture.root.path().join(CI_WORKFLOW)).expect("read rewritten workflow");
-    assert_eq!(python_workflow_shard_count(&workflow_text), Ok(4));
-    let assignments: BTreeMap<String, u32> = serde_json::from_str(
-        &fs::read_to_string(fixture.root.path().join(ASSIGNMENTS))
-            .expect("read rewritten assignments"),
-    )
-    .expect("parse rewritten assignments");
-    assert_eq!(assignments, expected_assignments);
-
-    workflow
-        .restore_artifacts(&artifacts)
-        .expect("restore Python rebalance artifacts");
-    let restored =
-        fs::read_to_string(fixture.root.path().join(CI_WORKFLOW)).expect("read restored workflow");
-    assert_eq!(python_workflow_shard_count(&restored), Ok(2));
-}
-
-#[test]
 fn production_workflow_writes_pushes_and_recovers_with_an_isolated_origin() {
     let fixture = GitFixture::new();
     let mut workflow = fixture.workflow();
@@ -663,8 +502,6 @@ fn production_workflow_writes_pushes_and_recovers_with_an_isolated_origin() {
     publish_arguments.kind = RebalanceKind::All;
     let original_makefile =
         fs::read_to_string(fixture.root.path().join(MAKEFILE)).expect("read fixture Makefile");
-    let original_assignments = fs::read_to_string(fixture.root.path().join(ASSIGNMENTS))
-        .expect("read fixture assignments");
 
     workflow
         .fetch_and_require_immutable_main()
@@ -672,15 +509,10 @@ fn production_workflow_writes_pushes_and_recovers_with_an_isolated_origin() {
     let artifacts = workflow
         .write_candidates(&plan)
         .expect("write candidate artifacts");
-    assert_eq!(artifacts, [Artifact::Makefile, Artifact::Assignments]);
+    assert_eq!(artifacts, [Artifact::Makefile]);
     assert_ne!(
         fs::read_to_string(fixture.root.path().join(MAKEFILE)).expect("read candidate Makefile"),
         original_makefile
-    );
-    assert_ne!(
-        fs::read_to_string(fixture.root.path().join(ASSIGNMENTS))
-            .expect("read candidate assignments"),
-        original_assignments
     );
 
     let branch = "rebalance-fixture";
@@ -700,11 +532,6 @@ fn production_workflow_writes_pushes_and_recovers_with_an_isolated_origin() {
     assert_eq!(
         fs::read_to_string(fixture.root.path().join(MAKEFILE)).expect("read restored Makefile"),
         original_makefile
-    );
-    assert_eq!(
-        fs::read_to_string(fixture.root.path().join(ASSIGNMENTS))
-            .expect("read restored assignments"),
-        original_assignments
     );
 }
 
@@ -795,7 +622,6 @@ fn production_workflow_verification_rejects_an_incomplete_plan_after_dispatch() 
         kind: RebalanceKind::All,
         repository,
         harness: None,
-        python: None,
         rust: None,
         decision: "approved".to_owned(),
     };
@@ -833,8 +659,6 @@ fn production_workflow_collects_each_selected_planning_leg_before_rejecting_empt
         IssueServiceExchange::any_json(200, empty_workflow_runs())
             .expect("valid empty harness selection"),
         IssueServiceExchange::any_json(200, empty_workflow_runs())
-            .expect("valid empty pytest selection"),
-        IssueServiceExchange::any_json(200, empty_workflow_runs())
             .expect("valid empty Rust coverage selection"),
     ]);
     let workflow = workflow_with_github(&fixture, &server);
@@ -851,7 +675,7 @@ fn production_workflow_collects_each_selected_planning_leg_before_rejecting_empt
             .finish()
             .expect("all typed planning selections are consumed")
             .len(),
-        3
+        2
     );
 }
 
@@ -869,7 +693,6 @@ fn production_workflow_collects_each_selected_verification_leg_before_failing_cl
             .expect("valid completed workflow list"),
         IssueServiceExchange::any_json(404, "{}").expect("valid harness log failure"),
         IssueServiceExchange::any_json(404, "{}").expect("valid jobs failure"),
-        IssueServiceExchange::any_json(404, "{}").expect("valid pytest log failure"),
         IssueServiceExchange::any_json(404, "{}").expect("valid Rust jobs failure"),
     ]);
     let mut workflow = workflow_with_github(&fixture, &server);
@@ -896,7 +719,7 @@ fn production_workflow_collects_each_selected_verification_leg_before_failing_cl
             .finish()
             .expect("all typed verification requests are consumed")
             .len(),
-        8
+        7
     );
 }
 
@@ -966,7 +789,6 @@ fn push_branch_refuses_a_remote_branch_that_already_exists() {
 fn plan_and_verify_requests_preserve_complete_evidence() {
     let mut request_arguments = arguments();
     request_arguments.kind = RebalanceKind::All;
-    request_arguments.n_python_shards = Some(2);
     request_arguments.experimental_wall_clock_override = Some("experiment-42".to_owned());
     request_arguments.compile_affinity = vec![CompileAffinityArgument {
         target: "crate-a".to_owned(),
@@ -975,8 +797,7 @@ fn plan_and_verify_requests_preserve_complete_evidence() {
     }];
     let plan = changed_plan();
     let harness_map = &plan.harness.as_ref().expect("harness plan").current_shards;
-    let assignments = &plan.python.as_ref().expect("python plan").assignments;
-    let (harness, jobs, pytest, rust_jobs) = timing_reports();
+    let (harness, jobs, rust_jobs) = timing_reports();
 
     let planned: serde_json::Value = serde_json::from_str(
         &plan_request(
@@ -985,8 +806,6 @@ fn plan_and_verify_requests_preserve_complete_evidence() {
                 current_harness: Some(harness_map),
                 harness_timing: Some(&harness),
                 jobs_timing: Some(&jobs),
-                current_assignments: Some(assignments),
-                pytest_timing: Some(&pytest),
                 current_rust_shard_count: Some(1),
                 rust_timing: Some(&rust_jobs),
             },
@@ -995,10 +814,11 @@ fn plan_and_verify_requests_preserve_complete_evidence() {
     )
     .expect("parse planning request");
     assert_eq!(planned["kind"], "plan");
+    assert_eq!(planned["schema_version"], 2);
     assert_eq!(planned["selection"], "all");
     assert_eq!(planned["harness"]["expected_run_ids"], json!([11]));
-    assert_eq!(planned["python"]["expected_run_ids"], json!([11]));
     assert_eq!(planned["rust"]["expected_run_ids"], json!([11]));
+    assert!(planned.get("python").is_none());
     assert_eq!(
         planned["options"]["compile_affinities"][0]["target"],
         "crate-a"
@@ -1010,8 +830,6 @@ fn plan_and_verify_requests_preserve_complete_evidence() {
                 current_harness: Some(harness_map),
                 harness_timing: None,
                 jobs_timing: Some(&jobs),
-                current_assignments: Some(assignments),
-                pytest_timing: Some(&pytest),
                 current_rust_shard_count: Some(1),
                 rust_timing: Some(&rust_jobs),
             },
@@ -1026,16 +844,16 @@ fn plan_and_verify_requests_preserve_complete_evidence() {
             &[21, 22],
             Some(&harness),
             Some(&jobs),
-            Some(&pytest),
             Some(&rust_jobs),
         )
         .expect("render verification request"),
     )
     .expect("parse verification request");
     assert_eq!(verified["kind"], "verify");
+    assert_eq!(verified["schema_version"], 2);
     assert_eq!(verified["harness"]["expected_run_ids"], json!([21, 22]));
-    assert_eq!(verified["python"]["expected_shard_count"], 2);
     assert_eq!(verified["rust"]["expected_shard_count"], 1);
+    assert!(verified.get("python").is_none());
     assert!(
         verify_request(
             &request_arguments,
@@ -1043,7 +861,6 @@ fn plan_and_verify_requests_preserve_complete_evidence() {
             &[21],
             None,
             Some(&jobs),
-            Some(&pytest),
             Some(&rust_jobs),
         )
         .is_err()
@@ -1069,7 +886,6 @@ fn plan_response_prepares_selected_legs() {
     assert!(!prepared.is_noop());
     let mut noop = prepared;
     noop.harness.as_mut().expect("harness leg").changed = false;
-    noop.python.as_mut().expect("python leg").changed = false;
     assert!(noop.is_noop());
 }
 
@@ -1093,26 +909,20 @@ fn pull_request_text_preserves_selected_legs() {
     body_arguments.kind = RebalanceKind::All;
     body_arguments.experimental_wall_clock_override = Some("experiment-42".to_owned());
     let body = pull_request_body(&body_arguments, &prepared);
-    assert!(body.contains("- Legs: harness, python, rust"));
-    assert!(body.contains("- Files: Makefile, python/shard-assignments.json"));
+    assert!(body.contains("- Legs: harness, rust"));
+    assert!(body.contains("- Files: Makefile"));
     assert!(body.contains("- Harness predicted packed spread: 4.0s"));
     assert!(body.contains("- Rust coverage shards: 1 to 1"));
     assert!(body.contains("- Experimental wall-clock override: experiment-42"));
     assert!(body.ends_with('\n'));
 
-    let mut python_only = prepared;
-    python_only.harness = None;
-    python_only.rust = None;
-    python_only.kind = RebalanceKind::Python;
-    let mut python_arguments = body_arguments;
-    python_arguments.kind = RebalanceKind::Python;
-    let body = pull_request_body(&python_arguments, &python_only);
+    let mut rust_only = prepared;
+    rust_only.harness = None;
+    rust_only.kind = RebalanceKind::Rust;
+    let mut rust_arguments = body_arguments;
+    rust_arguments.kind = RebalanceKind::Rust;
+    let body = pull_request_body(&rust_arguments, &rust_only);
     assert!(!body.contains("- Experimental wall-clock override:"));
-
-    let python = python_only.python.as_mut().expect("Python plan");
-    python.workflow_changed = true;
-    let body = pull_request_body(&python_arguments, &python_only);
-    assert!(body.contains("- Files: python/shard-assignments.json, .github/workflows/ci.yaml"));
 }
 
 #[test]
@@ -1121,13 +931,12 @@ fn plan_response_rejects_incomplete_selected_legs() {
         decision: "approved".to_owned(),
         violations: Vec::new(),
         harness: None,
-        python: None,
         rust: None,
     };
     assert!(
         missing
             .into_prepared(
-                RebalanceKind::Python,
+                RebalanceKind::All,
                 GitHubRepositoryRef::new("owner", "repo").expect("fixture repository"),
                 None,
             )
@@ -1144,7 +953,6 @@ fn plan_response_rejects_incomplete_selected_legs() {
             approved_slowest_wall_clock: 0.0,
             is_noop: true,
         }),
-        python: None,
         rust: None,
     };
     assert!(
@@ -1161,7 +969,6 @@ fn plan_response_rejects_incomplete_selected_legs() {
             decision: "rejected".to_owned(),
             violations: Vec::new(),
             harness: None,
-            python: None,
             rust: None,
         }),
         "rebalance plan was rejected"
@@ -1171,7 +978,6 @@ fn plan_response_rejects_incomplete_selected_legs() {
             decision: "rejected".to_owned(),
             violations: vec!["fresh main required".to_owned()],
             harness: None,
-            python: None,
             rust: None,
         }),
         "rebalance plan was rejected: fresh main required"
@@ -1189,7 +995,6 @@ fn selected_leg_responses_and_pull_request_text_remain_specific() {
         .current_shards
         .clone();
     let mut harness_response = approved_response(&changed_plan());
-    harness_response.python = None;
     harness_response.rust = None;
     let harness = harness_response
         .into_prepared(
@@ -1201,22 +1006,9 @@ fn selected_leg_responses_and_pull_request_text_remain_specific() {
     let harness_body = pull_request_body(&arguments(), &harness);
     assert!(harness_body.contains("- Legs: harness"));
     assert!(harness_body.contains("- Files: Makefile"));
-    assert!(!harness_body.contains("Python nodeids"));
-
-    let mut python_response = approved_response(&changed_plan());
-    python_response.harness = None;
-    python_response.rust = None;
-    let python = python_response
-        .into_prepared(RebalanceKind::Python, repository, None)
-        .expect("python response prepares only its selected leg");
-    let python_body = pull_request_body(&arguments(), &python);
-    assert!(python_body.contains("- Legs: python"));
-    assert!(python_body.contains("- Files: python/shard-assignments.json"));
-    assert!(!python_body.contains("Harness baseline"));
 
     let mut rust_response = approved_response(&changed_plan());
     rust_response.harness = None;
-    rust_response.python = None;
     let rust = rust_response.rust.as_mut().expect("Rust response");
     rust.shard_count = 4;
     rust.approved_slowest_wall_clock = 480.0;
@@ -1237,7 +1029,7 @@ fn selected_leg_responses_and_pull_request_text_remain_specific() {
 
 #[test]
 fn single_leg_requests_require_only_the_matching_evidence() {
-    let (harness_timing, jobs_timing, pytest_timing, _rust_timing) = timing_reports();
+    let (harness_timing, jobs_timing, rust_timing) = timing_reports();
     let harness_plan = harness_only_plan();
     let mut harness_arguments = arguments();
     harness_arguments.kind = RebalanceKind::Harness;
@@ -1254,8 +1046,6 @@ fn single_leg_requests_require_only_the_matching_evidence() {
                 current_harness: Some(harness_shards),
                 harness_timing: Some(&harness_timing),
                 jobs_timing: Some(&jobs_timing),
-                current_assignments: None,
-                pytest_timing: None,
                 current_rust_shard_count: None,
                 rust_timing: None,
             },
@@ -1264,7 +1054,7 @@ fn single_leg_requests_require_only_the_matching_evidence() {
     )
     .expect("parse harness planning request");
     assert_eq!(requested["selection"], "harness");
-    assert!(requested["python"].is_null());
+    assert!(requested.get("python").is_none());
     assert!(
         plan_request(
             &harness_arguments,
@@ -1272,8 +1062,6 @@ fn single_leg_requests_require_only_the_matching_evidence() {
                 current_harness: Some(harness_shards),
                 harness_timing: None,
                 jobs_timing: Some(&jobs_timing),
-                current_assignments: None,
-                pytest_timing: None,
                 current_rust_shard_count: None,
                 rust_timing: None,
             },
@@ -1288,44 +1076,35 @@ fn single_leg_requests_require_only_the_matching_evidence() {
             Some(&harness_timing),
             None,
             None,
-            None,
         )
         .is_err()
     );
 
-    let python_plan = python_only_plan();
-    let python_assignments = &python_plan
-        .python
-        .as_ref()
-        .expect("python plan")
-        .assignments;
-    let mut python_arguments = arguments();
-    python_arguments.kind = RebalanceKind::Python;
+    let rust_plan = rust_only_plan();
+    let mut rust_arguments = arguments();
+    rust_arguments.kind = RebalanceKind::Rust;
     let verified: serde_json::Value = serde_json::from_str(
         &verify_request(
-            &python_arguments,
-            &python_plan,
+            &rust_arguments,
+            &rust_plan,
             &[18],
             None,
             None,
-            Some(&pytest_timing),
-            None,
+            Some(&rust_timing),
         )
-        .expect("render python verification request"),
+        .expect("render Rust verification request"),
     )
-    .expect("parse python verification request");
-    assert_eq!(verified["selection"], "python");
+    .expect("parse Rust verification request");
+    assert_eq!(verified["selection"], "rust");
     assert!(verified["harness"].is_null());
     assert!(
         plan_request(
-            &python_arguments,
+            &rust_arguments,
             &PlanRequestEvidence {
                 current_harness: None,
                 harness_timing: None,
                 jobs_timing: None,
-                current_assignments: Some(python_assignments),
-                pytest_timing: None,
-                current_rust_shard_count: None,
+                current_rust_shard_count: Some(4),
                 rust_timing: None,
             },
         )
@@ -1336,20 +1115,14 @@ fn single_leg_requests_require_only_the_matching_evidence() {
 #[test]
 fn workflow_helpers_cover_every_rebalance_kind_and_noop_recovery() {
     assert!(RebalanceKind::Harness.includes_harness());
-    assert!(!RebalanceKind::Harness.includes_python());
-    assert!(RebalanceKind::Python.includes_python());
-    assert!(!RebalanceKind::Python.includes_harness());
     assert!(RebalanceKind::Rust.includes_rust());
-    assert!(!RebalanceKind::Rust.includes_python());
     assert!(RebalanceKind::All.includes_rust());
     assert_eq!(RebalanceKind::Harness.wire(), "harness");
-    assert_eq!(RebalanceKind::Python.wire(), "python");
     assert_eq!(RebalanceKind::Rust.wire(), "rust");
     assert_eq!(RebalanceKind::Harness.commit_label(), "harness");
-    assert_eq!(RebalanceKind::Python.commit_label(), "python");
     assert_eq!(RebalanceKind::Rust.commit_label(), "rust");
+    assert_eq!(RebalanceKind::All.commit_label(), "harness+rust");
     assert_eq!(Artifact::Makefile.path(), MAKEFILE);
-    assert_eq!(Artifact::Assignments.path(), ASSIGNMENTS);
     assert_eq!(Artifact::CiWorkflow.path(), CI_WORKFLOW);
     assert_eq!(
         predicted_packed_spread(&BTreeMap::from([(1, 10.0), (2, 6.0)])).to_bits(),
@@ -1364,10 +1137,6 @@ fn workflow_helpers_cover_every_rebalance_kind_and_noop_recovery() {
     let mut workflow = fixture.workflow();
     let mut unchanged = changed_plan();
     unchanged.harness.as_mut().expect("harness plan").changed = false;
-    let python = unchanged.python.as_mut().expect("python plan");
-    python.assignments_changed = false;
-    python.workflow_changed = false;
-    python.changed = false;
     unchanged.rust.as_mut().expect("Rust plan").changed = false;
     assert_eq!(
         workflow
@@ -1506,7 +1275,6 @@ fn parsers_accept_safe_rebalance_inputs() {
         parse_run_count(&larch_core::MAX_CI_TIMING_RUNS.to_string()),
         Ok(larch_core::MAX_CI_TIMING_RUNS)
     );
-    assert_eq!(parse_positive_u32("2"), Ok(2));
     assert_eq!(parse_rust_shard_count("4"), Ok(4));
     assert_eq!(parse_positive_f64("1.5"), Ok(1.5));
     assert_eq!(
@@ -1528,7 +1296,6 @@ fn parsers_accept_safe_rebalance_inputs() {
 fn parsers_reject_unsafe_rebalance_inputs() {
     assert!(parse_run_count("0").is_err());
     assert!(parse_run_count("not-a-number").is_err());
-    assert!(parse_positive_u32("0").is_err());
     assert!(parse_rust_shard_count("0").is_err());
     assert!(parse_rust_shard_count("33").is_err());
     assert!(parse_positive_f64("NaN").is_err());
@@ -1598,13 +1365,9 @@ fn verification_run_selection_requires_one_matching_dispatch() {
 }
 
 #[test]
-fn assignment_format_and_subject_match_the_existing_contract() {
-    assert_eq!(
-        assignments_json(&BTreeMap::from([("b".to_owned(), 2), ("a".to_owned(), 1)])),
-        "{\n  \"a\": 1,\n  \"b\": 2\n}\n"
-    );
+fn subject_matches_the_active_contract() {
     assert_eq!(
         commit_subject(RebalanceKind::All),
-        "chore: rebalance test shards (harness+python+rust)"
+        "chore: rebalance test shards (harness+rust)"
     );
 }

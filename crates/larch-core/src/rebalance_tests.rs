@@ -9,12 +9,11 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
     HarnessBootstrapRow, HarnessTimingReport, HarnessTimingRow, JobTimingReport, JobTimingRow,
-    OrderedJson, PytestTimingReport, ShardTiming, TestShardTiming, pack_test_shards,
-    pack_test_shards_with_fixed_startup,
+    OrderedJson, ShardTiming, TestShardTiming, pack_test_shards_with_fixed_startup,
 };
 
 /// Version of the `rebalance-tests` JSON contract.
-pub const REBALANCE_TESTS_SCHEMA_VERSION: u8 = 1;
+pub const REBALANCE_TESTS_SCHEMA_VERSION: u8 = 2;
 /// Largest Rust coverage matrix accepted by the rebalance contract.
 pub const MAX_RUST_COVERAGE_SHARDS: u32 = 32;
 const GUARD_TARGET: &str = "test-harness-shards-coverage";
@@ -35,24 +34,22 @@ pub struct RebalanceJsonResult {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Request<Options, Harness, Python, Rust> {
+struct Request<Options, Harness, Rust> {
     schema_version: u8,
     kind: String,
     selection: Selection,
     options: Options,
     harness: Option<Harness>,
-    python: Option<Python>,
     rust: Option<Rust>,
 }
 
-type PlanWire = Request<PlanOptions, HarnessPlanWire, PythonPlanWire, RustPlanWire>;
-type VerifyWire = Request<VerifyOptions, HarnessVerifyWire, PythonVerifyWire, RustVerifyWire>;
+type PlanWire = Request<PlanOptions, HarnessPlanWire, RustPlanWire>;
+type VerifyWire = Request<VerifyOptions, HarnessVerifyWire, RustVerifyWire>;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum Selection {
     Harness,
-    Python,
     Rust,
     All,
 }
@@ -63,8 +60,6 @@ struct PlanOptions {
     max_shard_wall_clock: f64,
     #[serde(default = "default_max_rust_shard_wall_clock")]
     max_rust_shard_wall_clock: f64,
-    balance_threshold: f64,
-    n_python_shards: Option<u32>,
     #[serde(default)]
     n_rust_shards: Option<u32>,
     #[serde(rename = "experimental_wall_clock_override")]
@@ -78,7 +73,6 @@ struct VerifyOptions {
     max_shard_wall_clock: f64,
     #[serde(default = "default_max_rust_shard_wall_clock")]
     max_rust_shard_wall_clock: f64,
-    balance_threshold: f64,
     #[serde(rename = "experimental_wall_clock_override")]
     experimental_override: Option<String>,
 }
@@ -102,14 +96,6 @@ struct HarnessPlanWire {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PythonPlanWire {
-    expected_run_ids: Vec<u64>,
-    current_assignments: BTreeMap<String, u32>,
-    timing: PytestTimingReport,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct RustPlanWire {
     expected_run_ids: Vec<u64>,
     current_shard_count: u32,
@@ -126,14 +112,6 @@ struct HarnessVerifyWire {
     approved_slowest_wall_clock: f64,
     timing: HarnessTimingReport,
     jobs: JobTimingReport,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PythonVerifyWire {
-    expected_run_ids: Vec<u64>,
-    expected_shard_count: u32,
-    timing: PytestTimingReport,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -192,7 +170,6 @@ struct PlanResponse {
     violations: Vec<String>,
     experimental_override: Option<String>,
     harness: Option<HarnessPlanResponse>,
-    python: Option<PythonPlanResponse>,
     #[serde(skip_serializing_if = "Option::is_none")]
     rust: Option<RustPlanResponse>,
 }
@@ -207,13 +184,6 @@ struct HarnessPlanResponse {
     baseline_slowest_wall_clock: f64,
     baseline_runner_seconds: f64,
     approved_slowest_wall_clock: f64,
-    is_noop: bool,
-}
-
-#[derive(Clone, Serialize)]
-struct PythonPlanResponse {
-    assignments: BTreeMap<String, u32>,
-    shard_count: u32,
     is_noop: bool,
 }
 
@@ -233,7 +203,6 @@ struct VerifyResponse {
     outcome: Outcome,
     experimental_override: Option<String>,
     harness: Option<HarnessVerifyResponse>,
-    python: Option<PythonVerifyResponse>,
     #[serde(skip_serializing_if = "Option::is_none")]
     rust: Option<RustVerifyResponse>,
 }
@@ -245,15 +214,6 @@ struct HarnessVerifyResponse {
     baseline_slowest_wall_clock: f64,
     observed_slowest_wall_clock: f64,
     observed_runner_seconds: f64,
-    violations: Vec<String>,
-}
-
-#[derive(Serialize)]
-struct PythonVerifyResponse {
-    outcome: Outcome,
-    shard_medians: BTreeMap<u32, f64>,
-    spread: f64,
-    balance_threshold: f64,
     violations: Vec<String>,
 }
 
@@ -277,12 +237,7 @@ pub fn plan_json(source: &str) -> Result<RebalanceJsonResult, String> {
     let wire: PlanWire = decode(source, "plan request")?;
     validate_header(wire.schema_version, &wire.kind, "plan")?;
     validate_plan_options(&wire.options)?;
-    validate_legs(
-        wire.selection,
-        wire.harness.is_some(),
-        wire.python.is_some(),
-        wire.rust.is_some(),
-    )?;
+    validate_legs(wire.selection, wire.harness.is_some(), wire.rust.is_some())?;
     let (harness, harness_violations) = wire
         .harness
         .map(|input| build_harness_plan(input, &wire.options))
@@ -290,16 +245,11 @@ pub fn plan_json(source: &str) -> Result<RebalanceJsonResult, String> {
         .map_or((None, Vec::new()), |(response, violations)| {
             (Some(response), violations)
         });
-    let python = wire
-        .python
-        .map(|input| build_python_plan(input, &wire.options))
-        .transpose()?;
     let rust = wire
         .rust
         .map(|input| build_rust_plan(input, &wire.options))
         .transpose()?;
     let noop = harness.as_ref().is_none_or(|response| response.is_noop)
-        && python.as_ref().is_none_or(|response| response.is_noop)
         && rust.as_ref().is_none_or(|response| response.is_noop);
     let mut violations = harness_violations;
     if let Some(response) = harness.as_ref()
@@ -339,7 +289,6 @@ pub fn plan_json(source: &str) -> Result<RebalanceJsonResult, String> {
             violations,
             experimental_override: wire.options.experimental_override,
             harness,
-            python,
             rust,
         },
         decision != PlanDecision::Rejected,
@@ -356,19 +305,10 @@ pub fn verify_json(source: &str) -> Result<RebalanceJsonResult, String> {
     let wire: VerifyWire = decode(source, "verify request")?;
     validate_header(wire.schema_version, &wire.kind, "verify")?;
     validate_verify_options(&wire.options)?;
-    validate_legs(
-        wire.selection,
-        wire.harness.is_some(),
-        wire.python.is_some(),
-        wire.rust.is_some(),
-    )?;
+    validate_legs(wire.selection, wire.harness.is_some(), wire.rust.is_some())?;
     let harness = wire
         .harness
         .map(|input| verify_harness(input, &wire.options))
-        .transpose()?;
-    let python = wire
-        .python
-        .map(|input| verify_python(input, &wire.options))
         .transpose()?;
     let rust = wire
         .rust
@@ -377,9 +317,6 @@ pub fn verify_json(source: &str) -> Result<RebalanceJsonResult, String> {
     let outcome = if harness
         .as_ref()
         .is_some_and(|value| value.outcome == Outcome::Rejected)
-        || python
-            .as_ref()
-            .is_some_and(|value| value.outcome == Outcome::Rejected)
         || rust
             .as_ref()
             .is_some_and(|value| value.outcome == Outcome::Rejected)
@@ -403,7 +340,6 @@ pub fn verify_json(source: &str) -> Result<RebalanceJsonResult, String> {
             outcome,
             experimental_override: wire.options.experimental_override,
             harness,
-            python,
             rust,
         },
         outcome != Outcome::Rejected,
@@ -437,19 +373,11 @@ fn validate_header(version: u8, kind: &str, expected: &str) -> Result<(), String
     Ok(())
 }
 
-fn validate_legs(
-    selection: Selection,
-    harness: bool,
-    python: bool,
-    rust: bool,
-) -> Result<(), String> {
+fn validate_legs(selection: Selection, harness: bool, rust: bool) -> Result<(), String> {
     let matches = match selection {
-        Selection::Harness => (harness, python, rust) == (true, false, false),
-        Selection::Python => (harness, python, rust) == (false, true, false),
-        Selection::Rust => (harness, python, rust) == (false, false, true),
-        // Schema v1 originally defined `all` as the harness and Python legs.
-        // Keep accepting that wire shape while new callers add the Rust leg.
-        Selection::All => harness && python,
+        Selection::Harness => (harness, rust) == (true, false),
+        Selection::Rust => (harness, rust) == (false, true),
+        Selection::All => (harness, rust) == (true, true),
     };
     matches
         .then_some(())
@@ -462,10 +390,6 @@ fn validate_plan_options(options: &PlanOptions) -> Result<(), String> {
         options.max_rust_shard_wall_clock,
         "max_rust_shard_wall_clock",
     )?;
-    positive(options.balance_threshold, "balance_threshold")?;
-    if options.n_python_shards == Some(0) {
-        return Err("rebalance-tests n_python_shards must be positive".to_owned());
-    }
     if options
         .n_rust_shards
         .is_some_and(|count| count == 0 || count > MAX_RUST_COVERAGE_SHARDS)
@@ -497,7 +421,6 @@ fn validate_verify_options(options: &VerifyOptions) -> Result<(), String> {
         options.max_rust_shard_wall_clock,
         "max_rust_shard_wall_clock",
     )?;
-    positive(options.balance_threshold, "balance_threshold")?;
     validate_experiment(options.experimental_override.as_deref())
 }
 
@@ -540,18 +463,6 @@ fn shards(
     Ok(output)
 }
 
-fn assignments(
-    values: BTreeMap<String, u32>,
-    context: &str,
-) -> Result<BTreeMap<String, u32>, String> {
-    if values.keys().any(String::is_empty) || values.values().any(|value| *value == 0) {
-        return Err(format!(
-            "rebalance-tests {context} has an empty nodeid or zero shard"
-        ));
-    }
-    Ok(values)
-}
-
 fn contiguous(values: &BTreeMap<u32, Vec<String>>, context: &str) -> Result<(), String> {
     let count = u32::try_from(values.len())
         .map_err(|_| format!("rebalance-tests {context} has too many shards"))?;
@@ -566,12 +477,6 @@ fn contiguous(values: &BTreeMap<u32, Vec<String>>, context: &str) -> Result<(), 
 fn harness_report(report: HarnessTimingReport) -> Result<HarnessTimingReport, String> {
     report_header(report.schema_version, &report.kind, "harness")?;
     report_ids(&report.sampled_run_ids, &report.skipped_run_ids, "harness")?;
-    Ok(report)
-}
-
-fn pytest_report(report: PytestTimingReport) -> Result<PytestTimingReport, String> {
-    report_header(report.schema_version, &report.kind, "pytest")?;
-    report_ids(&report.sampled_run_ids, &report.skipped_run_ids, "pytest")?;
     Ok(report)
 }
 
@@ -690,53 +595,6 @@ fn build_harness_plan(
         },
         violations(&current, &candidate.predicted, approved_slowest_wall_clock),
     ))
-}
-
-fn build_python_plan(
-    wire: PythonPlanWire,
-    options: &PlanOptions,
-) -> Result<PythonPlanResponse, String> {
-    let expected_run_ids = run_ids(wire.expected_run_ids, "python.expected_run_ids")?;
-    let current_assignments = assignments(wire.current_assignments, "python.current_assignments")?;
-    let timing = pytest_report(wire.timing)?;
-    validate_pytest_cohort(&timing, &expected_run_ids)?;
-    let count = match (options.n_python_shards, timing.observed_shard_count) {
-        // An explicit count is the requested output matrix width. The caller
-        // still supplies complete observed timing evidence, but a rebalance
-        // must be able to reduce or expand that prior matrix.
-        (Some(expected), _) => expected,
-        (None, Some(observed)) => observed,
-        (None, None) => {
-            return Err("rebalance-tests pytest timing has no observed shard count".to_owned());
-        }
-    };
-    if timing.nodeid_medians.is_empty() {
-        return Err("rebalance-tests pytest timing has no nodeid medians".to_owned());
-    }
-    let timings = timing
-        .nodeid_medians
-        .iter()
-        .map(|row| TestShardTiming {
-            target: row.nodeid.clone(),
-            seconds: row.seconds,
-            affinity_group: None,
-            affinity_setup_seconds: 0.0,
-        })
-        .collect::<Vec<_>>();
-    let packed = pack_test_shards(&timings, count, "", &[])
-        .map_err(|error| format!("rebalance-tests cannot pack pytest nodeids: {error}"))?;
-    let assignments = packed
-        .into_iter()
-        .flat_map(|(shard, nodeids)| nodeids.into_iter().map(move |nodeid| (nodeid, shard)))
-        .collect::<BTreeMap<_, _>>();
-    if assignments.len() != timing.nodeid_medians.len() {
-        return Err("rebalance-tests test-shard owner omitted a pytest nodeid".to_owned());
-    }
-    Ok(PythonPlanResponse {
-        is_noop: assignments == current_assignments,
-        assignments,
-        shard_count: count,
-    })
 }
 
 fn build_rust_plan(wire: RustPlanWire, options: &PlanOptions) -> Result<RustPlanResponse, String> {
@@ -963,57 +821,6 @@ fn validate_jobs_cohort(
         return Err(format!(
             "rebalance-tests jobs timing has missing or duplicate {label} shard rows"
         ));
-    }
-    Ok(())
-}
-
-fn validate_pytest_cohort(
-    report: &PytestTimingReport,
-    expected_runs: &[u64],
-) -> Result<(), String> {
-    if report.sampled_run_ids != expected_runs || !report.skipped_run_ids.is_empty() {
-        return Err(
-            "rebalance-tests pytest timing cohort does not match requested complete run ids"
-                .to_owned(),
-        );
-    }
-    if report.rows.is_empty()
-        || report
-            .rows
-            .iter()
-            .map(|row| row.run_id)
-            .collect::<BTreeSet<_>>()
-            != expected_runs.iter().copied().collect()
-        || report.rows.iter().any(|row| {
-            row.shard == 0
-                || row.nodeid.is_empty()
-                || row.attempt == 0
-                || !row.seconds.is_finite()
-                || row.seconds < 0.0
-        })
-    {
-        return Err("rebalance-tests pytest timing has incomplete rows".to_owned());
-    }
-    if let Some(count) = report.observed_shard_count {
-        let expected = (1..=count).collect::<BTreeSet<_>>();
-        if count == 0
-            || report.rows.iter().any(|row| {
-                row.shard > count
-                    || row
-                        .shard_total
-                        .is_some_and(|total| total == 0 || total != count)
-            })
-            || expected_runs.iter().any(|run| {
-                report
-                    .rows
-                    .iter()
-                    .filter_map(|row| (row.run_id == *run).then_some(row.shard))
-                    .collect::<BTreeSet<_>>()
-                    != expected
-            })
-        {
-            return Err("rebalance-tests pytest timing has incompatible shard counts".to_owned());
-        }
     }
     Ok(())
 }
@@ -1472,46 +1279,6 @@ fn verify_harness(
         baseline_slowest_wall_clock,
         observed_slowest_wall_clock: slowest,
         observed_runner_seconds: runner_seconds,
-        violations,
-    })
-}
-
-fn verify_python(
-    wire: PythonVerifyWire,
-    options: &VerifyOptions,
-) -> Result<PythonVerifyResponse, String> {
-    let expected_run_ids = run_ids(wire.expected_run_ids, "python.expected_run_ids")?;
-    let shard_count = nonzero(wire.expected_shard_count, "python.expected_shard_count")?;
-    let timing = pytest_report(wire.timing)?;
-    validate_pytest_cohort(&timing, &expected_run_ids)?;
-    let shard_medians = shard_map(&timing.shard_medians, "pytest timing shard_medians")?;
-    validate_shard_map(&shard_medians, shard_count, "pytest timing shard_medians")?;
-    let slowest = maximum(&shard_medians)
-        .ok_or_else(|| "rebalance-tests pytest timing has no shard medians".to_owned())?;
-    let fastest = shard_medians
-        .values()
-        .copied()
-        .min_by(f64::total_cmp)
-        .expect("nonempty checked above");
-    let spread = slowest - fastest;
-    let violations = (spread > options.balance_threshold)
-        .then(|| {
-            format!(
-                "pytest shard spread {spread:.1}s exceeds balance_threshold {threshold:.1}s",
-                threshold = options.balance_threshold
-            )
-        })
-        .into_iter()
-        .collect::<Vec<_>>();
-    Ok(PythonVerifyResponse {
-        outcome: if violations.is_empty() {
-            Outcome::Passed
-        } else {
-            Outcome::Rejected
-        },
-        shard_medians,
-        spread,
-        balance_threshold: options.balance_threshold,
         violations,
     })
 }

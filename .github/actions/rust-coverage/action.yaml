@@ -630,6 +630,18 @@ runs:
           "$((finished - started))" "$outcome" "$result" "$coverage_larch" \
           >> "$COVERAGE_TIMING_FILE"
         exit "$result"
+    - name: Run bootstrap integration with coverage executable
+      if: success() && steps.coverage-init.outputs.primary == 'true' && env.COVERAGE_RUN_BOOTSTRAP_INTEGRATION == 'true'
+      env:
+        LARCH_TEST_RUST_BINARY: ${{ github.workspace }}/target/llvm-cov-target/debug/larch
+        RUST_CI_MODE: full
+      shell: bash
+      run: |
+        set -euo pipefail
+        read -r LARCH_TEST_RUST_BINARY_SHA256 _ < <(sha256sum "$LARCH_TEST_RUST_BINARY")
+        export LARCH_TEST_RUST_BINARY_SHA256
+        bash scripts/test-rust-integration-consumer.sh
+        LARCH_BINARY="$LARCH_TEST_RUST_BINARY" make test-findings-classification
     - name: Upload Rust coverage report
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
@@ -643,13 +655,11 @@ runs:
         name: rust-repository-policy-rule-timings${{ env.COVERAGE_TIMING_ARTIFACT_SUFFIX }}
         path: ${{ runner.temp }}/rust-repository-policy-rules-*.tsv
         if-no-files-found: error
-    - name: Prepare coverage-built Rust integration artifact
-      # The direct production lane supplies the sole artifact consumed by the
-      # focused bootstrap integration job. A benchmark uses a distinct artifact
-      # name so its upload cost remains measurable without racing that handoff.
-      # Keep the source SHA, checksum, and version beside the executable so the
-      # consumer can reject a missing, stale, or altered handoff.
-      if: success() && steps.coverage-init.outputs.primary == 'true' && env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'
+    - name: Prepare coverage-built Rust policy bundle
+      # A successful merge-group run may stage this bundle for trusted-main
+      # policy-cache publication. Keep its source SHA, checksum, and version
+      # beside the executable so promotion can reject stale or altered input.
+      if: success() && steps.coverage-init.outputs.primary == 'true' && env.COVERAGE_RUN_BOOTSTRAP_INTEGRATION == 'true' && github.event_name == 'merge_group'
       shell: bash
       run: |
         set -euo pipefail
@@ -660,13 +670,6 @@ runs:
           --artifact-dir "$RUNNER_TEMP/larch-linux-test-binary" \
           --source-sha "$GITHUB_SHA" \
           --rust-inputs-sha256 "$RUST_POLICY_INPUTS_SHA256"
-    - name: Upload coverage-built Rust executable for bootstrap integration tests
-      if: success() && steps.coverage-init.outputs.primary == 'true' && env.COVERAGE_PRODUCES_PYTHON_ARTIFACT == 'true'
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: ${{ env.COVERAGE_PYTHON_ARTIFACT_NAME }}
-        path: ${{ runner.temp }}/larch-linux-test-binary
-        if-no-files-found: error
     # Artifacts and correctness checks above are intentionally complete
     # before this cache-only cleanup path. cargo clean removes workspace
     # products while preserving reusable third-party dependency artifacts.

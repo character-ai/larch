@@ -174,13 +174,11 @@ cargo run --quiet --locked --package larch-cli -- lint rule analytics-7684-closu
 cargo run --quiet --locked --package larch-cli -- release plugin-runtime --check
 ```
 
-### Python lint and type checks
+### Retired Python product checks
 
-`make py-lint` runs Ruff followed by Pyright. CI runs Ruff through the
-`lint-local` pre-commit lane and Pyright through the dedicated
-`python-pyright` job. The Python-only custom ratchets, Pylint matrix, and their
-baselines were retired in #8097; `python/ruff.toml` and
-`python/pyrightconfig.json` remain the active configuration authorities.
+The Python product lint, type-check, and test targets were retired with their
+CI jobs in #8902. Utility Python environments remain only where repository
+linters or Bash harnesses require pinned third-party tools.
 
 ### Python test assertion convention
 
@@ -223,7 +221,7 @@ The agent tool-contract checks (rules A012 and A013) are owned by the pinned `ag
 
 There are four pre-commit-driven paths:
 
-- **CI**: The `lint` job runs `make lint-only` (repo-wide pre-commit over all files) with dedicated-job hooks skipped. `agent-lint`, `agnix`, and `lintlang` share the consolidated `agent-lint` job; `shellcheck` and `gitleaks` have dedicated jobs, Ruff runs in `lint-local`, and Pyright runs in `python-pyright`. CI owns every exhaustive Rust operation: `rust-lint` runs format and Clippy, `rust-deny` runs dependency policy in parallel, and the parallel coverage jobs own the full workspace tests, doctests, coverage, repository policy, plugin projection validation, and Linux executable artifact. `rust-full-lcov-tool` prepares the pinned LCOV runtime while those producers run. The required `rust-coverage` job validates the selected execution topology and owns the full-mode LCOV merge and line gate. The required `rust-gate` job runs independently after `rust-lint`, `rust-deny`, and the raw execution producers, so it does not add another runner hop after `rust-coverage`. CI runs regression harnesses through the two-cell `test-harnesses` matrix (`make test-harnesses-1` and `make test-harnesses-2`) instead of one serial harness job. Non-secret-scan jobs use sparse checkouts. `gitleaks` and `trufflehog` keep full source history. Remote run archives pass the run-log scrubber before publication and are not fetched into CI. Local `make lint` runs regression harnesses, Rust policy rules, and pre-commit; it does **not** run `py-lint` or `py-test`. CI also runs `contains-pins`, `python-pyright`, and `python-tests`, with Pytest and harnesses parallelized.
+- **CI**: The `lint` job runs `make lint-only` (repo-wide pre-commit over all files) with dedicated-job hooks skipped. `agent-lint`, `agnix`, and `lintlang` share the consolidated `agent-lint` job; `shellcheck` and `gitleaks` have dedicated jobs. CI owns every exhaustive Rust operation: `rust-lint` runs format and Clippy, `rust-deny` runs dependency policy in parallel, and the parallel coverage jobs own the full workspace tests, doctests, coverage, repository policy, plugin projection validation, Linux executable, and bootstrap integration checks. `rust-full-lcov-tool` prepares the pinned LCOV runtime while those producers run. The required `rust-coverage` job validates the selected execution topology and owns the full-mode LCOV merge and line gate. The required `rust-gate` job runs independently after `rust-lint`, `rust-deny`, and the raw execution producers, so it does not add another runner hop after `rust-coverage`. CI runs regression harnesses through the two-cell `test-harnesses` matrix (`make test-harnesses-1` and `make test-harnesses-2`) instead of one serial harness job. Non-secret-scan jobs use sparse checkouts. `gitleaks` and `trufflehog` keep full source history. Remote run archives pass the run-log scrubber before publication and are not fetched into CI. Local `make lint` runs regression harnesses, Rust policy rules, and pre-commit. CI also runs `contains-pins`.
 
   Pull requests, merge groups, and manual dispatches run this validation
   workflow with cache restores only. A normal `main` push runs the separate
@@ -237,18 +235,22 @@ There are four pre-commit-driven paths:
   a redacted proposed/effective decision artifact. The recorded independent
   observation windows promote partial and skip enforcement to `true`.
   `partial` retains selected package tests, Clippy, doctests, candidate-built
-  repository policy, plugin validation, and the Python artifact. `skip` keeps
+  repository policy, plugin validation, and bootstrap integration. `skip` keeps
   non-Rust owners and uses a checksum-verified, input-keyed trusted-main policy
   executable. Missing trust evidence falls back to `full`. The stable
   `rust-coverage` status aggregates the one effective execution path, while
   the merge queue remains the full per-merge backstop.
   See [Rust testing](rust-testing.md) for ownership, cache identity, the
   `full-rust-ci` escape hatch, and the recorded observation window.
-- **Relevant checks CLI (`scripts/larch.sh checks run-relevant`)** — The Rust dispatcher finds branch, staged, unstaged, and untracked changes; filters existing regular files for `pre-commit run --files`; and runs the contains-pin scanner. The scoped pre-commit phase carries ruff autofix (`ruff check --fix`) for changed Python files. Pyright and agent/config scans are manual or dedicated-CI work. For Rust paths, the filename-aware hook selects and logs the exact Cargo packages and targets, then runs one bounded Clippy configuration. A deleted or otherwise non-regular Rust path skips that hook and uses the same bounded entry point once as a compatibility fallback. A missing proof marker fails closed. The CLI never follows pre-commit with `make rust-check`, `cargo check`, a full-repository `agent-lint`, tests, or coverage. A no-change run is a fast freshness check. `/implement` and `/review` use the CLI to capture verbose output under the session tmpdir and emit a one-line `RELEVANT_CHECKS_OK=true ...` green-path envelope when checks succeed. The default path fails closed on structural errors; `RELEVANT_CHECKS_SKIPPED=true` is reserved for explicit `--allow-skip` test paths. On failure, orchestrators read `DIGEST_FILE` first when the helper envelope includes it, then fall back to `REDACTED_LOG_FILE`; folded composite stdout may place those keys after leading file or git KVs, so consumers must scan the full composite stdout for both keys. `REDACTED_LOG_FILE` remains the full-log fallback and repair-loop input.
+- **Relevant checks CLI (`scripts/larch.sh checks run-relevant`)**: The Rust dispatcher finds branch, staged, unstaged, and untracked changes; filters existing regular files for `pre-commit run --files`; and runs the contains-pin scanner. For Rust paths, the filename-aware hook selects and logs the exact Cargo packages and targets, then runs one bounded Clippy configuration. A deleted or otherwise non-regular Rust path skips that hook and uses the same bounded entry point once as a compatibility fallback. A missing proof marker fails closed. The CLI never follows pre-commit with `make rust-check`, `cargo check`, a full-repository `agent-lint`, tests, or coverage. A no-change run is a fast freshness check. `/implement` and `/review` use the CLI to capture verbose output under the session tmpdir and emit a one-line `RELEVANT_CHECKS_OK=true ...` green-path envelope when checks succeed. The default path fails closed on structural errors; `RELEVANT_CHECKS_SKIPPED=true` is reserved for explicit `--allow-skip` test paths. On failure, orchestrators read `DIGEST_FILE` first when the helper envelope includes it, then fall back to `REDACTED_LOG_FILE`; folded composite stdout may place those keys after leading file or git KVs, so consumers must scan the full composite stdout for both keys. `REDACTED_LOG_FILE` remains the full-log fallback and repair-loop input.
 - **Local git hook** — Run `make setup` (or `pre-commit install`) to enable pre-commit hooks on every commit. Bypassable via `git commit --no-verify`; the CI jobs are the enforced backstop.
 - **Manual pre-commit stage** — Run `pre-commit run --hook-stage manual --all-files` only when deliberately requesting repository-wide policy, agent/config, secret, or type scans. It is not part of relevant checks or the default git hook.
 
-`.github/workflows/requirements-lint.txt` is the central pinned dependency file for the CI Python lint environment. The `lint`, `shellcheck`, and `test-harnesses` matrix cells use it for `actions/setup-python` pip caching and `pip install -r`. `agent-sync` is Rust-only: it restores the exact trusted Cargo-input and lint-dependency caches, then runs `make agent-sync`.
+`.github/workflows/requirements-lint.txt` pins the pre-commit environment used
+by CI lint jobs. `.github/workflows/requirements-test-harnesses.txt` pins
+PyYAML for Bash harness parsers. These utility environments do not run or test
+larch Python product code. `agent-sync` is Rust-only: it restores the exact
+trusted Cargo-input and lint-dependency caches, then runs `make agent-sync`.
 
 ## Shellcheck Engine
 
@@ -304,21 +306,6 @@ bypasses incomplete evidence. To add a single new target, append it to any
 shard, run `make test-harness-shards-coverage` to verify the partition, then
 rebalance by timing.
 
-For Python unit test shards, use the `/rebalance-tests` dev skill
-(`.claude/skills/rebalance-tests/`):
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" rebalance-tests run --kind python
-```
-
-Python mode refreshes the checked-in `python/shard-assignments.json` map from
-`python-tests` pytest `--durations=0` `call` rows. When the requested shard
-count changes, it also rewrites the CI matrix, visible shard total, and
-`PYTEST_SHARD_COUNT` in the same candidate transaction. Merge is left to the operator.
-
-Python verification fails closed when verification logs contain zero parseable
-rows, do not cover every expected shard, or exceed `--balance-threshold`.
-
 For full Rust coverage shards, use the same dev skill with an explicit target
 count:
 
@@ -336,45 +323,20 @@ shard above the approved baseline cap or `--max-rust-shard-wall-clock`
 (default 600s). Missing, skipped, duplicate, or incomplete job rows stop the
 workflow.
 
-Before any write, branch, or PR, the unified pre-write gate runs in memory.
-Python work rejects empty timing rows, dedupes retried shard attempts before
-medians, and requires observed timing to match the configured `python-tests`
-matrix before applying a requested `--n-python-shards` output count. The current
-matrix count is 4, and the parser prefers the `shard X of N` total from CI logs
-over the maximum shard id seen in rows.
-
-The artifact cleanliness gate requires `python/shard-assignments.json` to be
-clean in git. Dirty paths abort with a named error and no branch or PR.
-
-After PR creation, one shared `workflow_dispatch` loop runs for every selected
-kind before leg-specific verification collection. Python fail-closed checks run
-only after those verification runs finish.
-
-The Rust `larch ci-timing pytest` command parses `call` rows and dedupes retried
-shards by duration-section attempt for both baseline packing and verification
-totals. At runtime, assigned nodeids use `python/shard-assignments.json`;
-unassigned nodeids keep the global collection-index round-robin fallback.
-Malformed maps, including JSON booleans as shard ids, fail closed during pytest
-collection. A non-empty map whose maximum shard id does not match the runtime
-`PYTEST_SHARD_COUNT` is ignored in favor of round-robin selection so coverage is
-not reduced.
-
 See `.claude/skills/rebalance-tests/SKILL.md` for flags and full workflow
 documentation. Rust fixture and wire-contract tests live in
 `crates/larch-core/src/ci_timing.rs` and `crates/larch-core/src/test_shards.rs`.
 The orchestration boundary is covered by
 `crates/larch-cli/src/rebalance_tests_workflow.rs` and
-`crates/larch-cli/tests/rebalance_tests_workflow.rs`. Python assignment loading
-remains covered by `python/tests/test_pytest_sharding.py`. Run the targeted
-Cargo and pytest commands before changing the rebalance contract.
+`crates/larch-cli/tests/rebalance_tests_workflow.rs`. Run the targeted Cargo
+commands before changing the rebalance contract.
 
 `larch rebalance-tests run` owns the checked Git, GitHub Actions, pull request,
 atomic-write, and repository-state workflow. `larch rebalance-tests plan` and
 `larch rebalance-tests verify` remain its versioned pure JSON decision core.
 They consume already-collected Rust CI-timing reports and reuse the Rust shard
-packer. They do not inspect or rewrite `Makefile`,
-`python/shard-assignments.json`, or `.github/workflows/ci.yaml`, make Git or
-GitHub calls, or dispatch CI. See
+packer. They do not inspect or rewrite `Makefile` or
+`.github/workflows/ci.yaml`, make Git or GitHub calls, or dispatch CI. See
 `.claude/skills/rebalance-tests/scripts/rebalance.md` for the exact contract.
 
 **Harness timing formats.** The Makefile's `HARNESS_MARK` invokes the
@@ -427,8 +389,6 @@ required context is source-bound to the GitHub Actions integration (`15368`):
 - `gitleaks`
 - `agent-sync`
 - `trufflehog`
-- `python-pyright`
-- `python-tests-gate`
 
 Do not require a matrix leg or a conditional implementation detail. In
 particular, `rust-selection`, `rust-lint`, `rust-deny`,
@@ -494,7 +454,6 @@ The PR creation surface now lives in `scripts/larch.sh pr create`. Before cuttin
 | Target | Description |
 |--------|-------------|
 | `make lint` | Run all linters repo-wide |
-| `make py-lint` | Run Ruff and Pyright over the Python tree. |
 | `make skill-closure-size` | Report ratcheted prompt closure size for `design`, `implement`, `review`, and `panel-tier`. |
 | `make rust-lint` | Run the Rust-owned repository policy rules, including the cross-language em dash, Codex execution, run-log walker, skill lifecycle, skill structure, and KV codec checks. |
 | `make shellcheck` | Run shellcheck only |
@@ -592,7 +551,6 @@ The PR creation surface now lives in `scripts/larch.sh pr create`. Before cuttin
 | `make test-run-step2-dispatch` | Run the focused Rust unit tests for `scripts/larch.sh implement run-dispatch`, including required arguments, telemetry, and result-env publication. A standalone alias; the `rust-full-shards` jobs own the complete Rust suite in CI. |
 | `make test-step2-dispatch` | Run the Rust black-box parity suite for `scripts/larch.sh implement step2-dispatch`, including argument validation, Claude fallback, post-dispatch routing, and active-leg termination. A standalone alias; the `rust-full-shards` jobs own the complete Rust suite in CI. |
 | `make test-commit-implementation` | Run the Rust black-box parity harness for `implement commit`: usage/HINT refusals, `--help`, and `COMMITTED`/`SHA`/`ERROR` envelopes. Exercises `crates/larch-cli/tests/implement_commit_route_parity.rs`. A `make lint` prerequisite via `test-harnesses-14`. |
-| `python/tests/issue/test_plan_marker_ownership.py` | Proves the remaining Python runtime does not hardcode plan markers. The Rust `larch_core::plan_scope` owner covers `## Files to modify/create` heading extraction, path de-duplication, legacy first-token fallback, optional-heading filtering, and empty-scope fallback; `plan scope-paths` command coverage lives in `crates/larch-cli/tests/parity.rs`. A `make py-test` prerequisite. |
 | `make test-git-commit-only` | Run Rust CLI coverage for `scripts/larch.sh git commit --only --pathspec-from-file`, proving NUL-delimited recovery pathspec commits include paths with spaces while leaving unrelated pre-staged content staged and uncommitted. Focused local target; required CI ownership is [rust-full-shards](rust-testing.md#bash-shard-cargo-target-ownership). |
 | `make test-run-external-agent-args` | Run Rust CLI argument-validation coverage for `scripts/larch.sh agent run-external-agent`. Pins that unsafe output paths create no sidecars and `--timeout 0` exits 1 with `ERROR: --timeout must be a positive integer, got '0'`. A standalone Rust integration-test alias; the Rust CI suite covers it. |
 | `make test-reviewer-prune` | Run the offline harness for `scripts/larch.sh review reviewer-prune`, covering ledger recording, exact attribution, per-round replacement, fail-open filtering, the off switch, and all-pruned markers. A `make lint` prerequisite via `test-harnesses-8`. |

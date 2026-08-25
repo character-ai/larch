@@ -70,7 +70,7 @@ Inspect branch state BEFORE editing. Run these in order and read the output:
 Preventive checks, not hard guards:
 
 - Legacy lifecycle title-prefix literals such as `[IN PROGRESS]` or `[PLANNED]`: run or account for `scripts/test-legacy-title-prefix-literals-scope.sh` and extend `ALLOW=`.
-- Tests in files split across Makefile targets: keep `-k` selectors disjoint per `scripts/lint-harness-pytest-partition.py`.
+- Tests split across Makefile targets: keep selectors disjoint and preserve the target inventory guard.
 - PLR0911 is enforced; when a function is near the return limit, consolidate equivalent guard returns instead of adding duplicate early returns or suppression comments.
 
 ## Reuse-before-write check
@@ -258,7 +258,7 @@ Before writing `<MANIFEST_PATH>`, verify:
 - [ ] `files_touched[].path` and `tests_added_or_modified`: normalized repo-relative paths, not submodules.
 - [ ] `summary_bullets`: WHY, not HOW; public PR body and CHANGELOG copy.
 - [ ] `oos_observations`: only post-triage filed-OOS candidates not fixed here; exclude folded rules 1-2 and private-security-routed findings; each entry has `title`, `description`, `phase: "implement"`.
-- [ ] `todos_left`: actionable deferred implementation work only. Do not list unrun full-suite validation commands, including full `make py-lint` / `make py-test`, when focused relevant checks passed or `/implement`/CI owns later validation.
+- [ ] `todos_left`: actionable deferred implementation work only. Do not list unrun full-suite validation commands when focused relevant checks passed or `/implement`/CI owns later validation.
 - [ ] Manifest `jq -e` self-validation against `<MANIFEST_PATH>.tmp` exited 0.
 - [ ] For `needs_qa`, qa-pending `jq -e` self-validation against `<QA_PENDING_PATH>.tmp` exited 0.
 

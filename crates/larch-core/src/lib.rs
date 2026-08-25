@@ -165,10 +165,8 @@ pub use bgjob_daemon::{
 };
 pub use ci_timing::{
     CiTimingRunSelection, HarnessBootstrapRow, HarnessTimingReport, HarnessTimingRow,
-    JobTimingReport, JobTimingRow, MAX_CI_TIMING_REQUIRED_TARGETS, MAX_CI_TIMING_RUNS,
-    NodeidTiming, PytestTimingReport, PytestTimingRow, ShardTiming, TargetTiming,
-    collect_harness_timing, collect_job_timing, collect_pytest_timing,
-    collect_rust_coverage_job_timing,
+    JobTimingReport, JobTimingRow, MAX_CI_TIMING_REQUIRED_TARGETS, MAX_CI_TIMING_RUNS, ShardTiming,
+    TargetTiming, collect_harness_timing, collect_job_timing, collect_rust_coverage_job_timing,
 };
 pub use complete_umbrella::{
     COMPLETE_UMBRELLA_CHILD_COMPLETE, COMPLETE_UMBRELLA_CHILD_FAILURE_INCOMPLETE_ENVELOPE_SHIP,

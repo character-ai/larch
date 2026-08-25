@@ -12,7 +12,7 @@ this recipe.
 - **Hooks stay bash**: Claude Code hooks remain bash pending a separate overhaul.
 - **Package layout** (completed via issues #4982 + #5175): all runtime modules live under coherent `larch.*` sub-packages inside `python/larch/`. New packages are `larch.rendering`, `larch.release`, `larch.lint`, `larch.research`, and `larch.calibration`; existing packages (`larch.core`, `larch.issue`, `larch.implement`, and `larch.report`) absorbed the remaining flat modules. The temporary `larch.review` migration package was retired by #8452, and #8786 retired `larch.design` after its final shared parser moved to Rust. The dispatcher is now `larch.cli`; `python/cli.py` is a thin entry-point shim. Backward-compat re-export stubs remain at the old flat locations for test compat. New modules go directly into the appropriate package; the flat root is no longer the target.
 - **`skills/**/*.py` importer scan scope** (#5698): Python scripts under `skills/` and `.claude/skills/` may add `python/` to `sys.path` at runtime (the `sys.path.insert(0, python_dir)` bootstrap pattern), making flat-root module names importable directly. When retiring a flat module, scan `python/ skills/ .claude/skills/ --include="*.py"` for importers — not `python/` alone. Confirm zero matches before deletion. See recipe step 4.
-- **Stdlib-only, Python ≥ 3.11**: the runtime must not import third-party packages; dev/CI linters (Ruff and Pyright) and Pytest are installed separately via requirements files.
+- **Stdlib-only, Python ≥ 3.11**: the remaining compatibility runtime must not import third-party packages. Issue #8902 retired its Ruff, Pyright, Pytest, and requirements-file toolchain.
 - **`cli.py` is the canonical entrypoint** for all external consumers. Adopted modules MAY keep `if __name__ == "__main__":` blocks as compatibility pass-throughs; `cli.py` becomes canonical via consumer cutover + docs + lint, not by disabling module execution.
 - **fd-3 via `quiet_init`/`contract_stream`/`emit_kv`**: KV output intended for the .md orchestrator always goes to the contract stream (fd 3 after `quiet_init`, else stdout). Post-quiet human diagnostics go through `BreadcrumbWriter` (never raw `print(file=sys.stderr)` after `quiet_init`).
 
@@ -928,7 +928,7 @@ Issue #8836 completes the later scope-anchor cutover. `crates/larch-cli/src/rend
 - Every unreachable runtime module and each test dedicated to deleted code is removed. The remaining Python tests cover the empty dispatcher, temporary development tooling, and live repository contracts without importing deleted runtime packages.
 - Shared Python test helpers, analysis scripts, and Python-owned fixture directories are removed. The live Rust calibration corpus moves to `fixtures/plan-fidelity-calibration/`.
 - Rust parity suites whose frozen references imported retired shared packages now execute the Rust owner against their recorded pre-cutover goldens. Self-contained frozen references continue to provide live differential coverage.
-- Production commands remain Rust-owned through `scripts/larch.sh`. Issues #8902 and #8903 own the later development-tooling and release-artifact cleanup.
+- Production commands remain Rust-owned through `scripts/larch.sh`. Issue #8902 retired the Python CI jobs, pre-commit hooks, dependencies, Make targets, and shard tooling. Issue #8903 owns the final release-artifact cleanup.
 
 ## E3 terminal Bash sweep
 

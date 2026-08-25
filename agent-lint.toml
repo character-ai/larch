@@ -305,10 +305,8 @@ exclude = [
   # invoked from skill prose at runtime, so dead-script reachability is a false
   # positive for these test entrypoints.
   "python/test_run_logs.py",
-  # python/test_redact.py is the Makefile-only regression harness for the
-  # python redaction surfaces (py-test target); not invoked from runtime
-  # skill prose, matching the same Makefile-only pattern as the other
-  # run-log test-* harnesses above.
+  # python/test_redact.py is a retained removal input for #8903; it is not
+  # invoked from runtime skill prose.
   "python/test_redact.py",
   # Makefile-only harness for metadata summary publication. Runtime reachability
   # is through Step 0 helpers, not direct SKILL.md invocation.
@@ -377,8 +375,8 @@ exclude = [
   # The Rust `session cleanup-tmpdir` invoke-time audit log. Referenced only from
   # (sibling contract), matching the same Makefile-only pattern as the other
   # Makefile-only harnesses above.
-  # /cleanup (sibling contract in test-cleanup.md). Referenced only from Makefile
-  # (make py-test), matching the Makefile-only harness pattern above.
+  # /cleanup (sibling contract in test-cleanup.md). The Python fixture remains
+  # a removal input for #8903.
   # python/cli.py session entry-gate. Referenced only from Makefile
   # (sibling contract), matching the same Makefile-only pattern as
   # scripts/test-sessionstart-health.sh above. Both the .sh and the .md are

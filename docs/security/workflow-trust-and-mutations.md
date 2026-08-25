@@ -642,7 +642,7 @@ become `full`. The partial decision is a strict Rust-source package closure
 derived from locked offline Cargo metadata. It includes normal, build, and dev
 reverse dependency edges; it must contain `larch-cli` and be smaller than the
 workspace. The selected lane builds that candidate executable, runs repository
-policy and plugin validation, and supplies the Python artifact, so it does not
+policy, plugin validation, and bootstrap integration with it, so it does not
 mistake an all-workspace closure for a partial path.
 
 Skip ownership is explicit rather than extension-based. Each root or path

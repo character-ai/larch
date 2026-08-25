@@ -86,7 +86,7 @@ const OPTIONS: &[&str] = &[
     "--repo-unavailable", "--no-admin-fallback", "--no-logs-commit",
     "--expected-session-id", "--expected-tmpdir-basename-prefix", "--result-env-path",
 ];
-const DEFAULT_TEST_PLAN: &str = "- [ ] `make py-lint`\n- [ ] `make py-test`\n";
+const DEFAULT_TEST_PLAN: &str = "- [ ] `make rust-check`\n- [ ] `make test-harnesses`\n";
 const MANIFEST_LIMIT: u64 = 1024 * 1024;
 const CI_WAIT_SECONDS: u64 = 1_800;
 const MERGE_WAIT_SECONDS: u64 = 7_500;

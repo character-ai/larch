@@ -360,7 +360,6 @@ fn included(path: &str) -> bool {
     !path.starts_with("larch-logs/")
         && path != "CHANGELOG.md"
         && path != ".claude-plugin/plugin.json"
-        && path != "python/shard-assignments.json"
         && path != MANIFEST_PATH
 }
 

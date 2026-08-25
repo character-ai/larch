@@ -200,7 +200,7 @@ process; external callers continue through `scripts/larch.sh`.
 <!-- github-service-ownership:start -->
 ```text
 operation	adapter_owner	current_owner	planning_issues	implementation_parity	consumer_cutover	python_removal	commands
-actions	crates/larch-adapters/src/github_actions.rs	rust	#7676,#7685,#8362,#8862	complete	complete	complete	ci-timing harness,ci-timing jobs,ci-timing rust-jobs,ci-timing merge-group-source,ci-timing pytest,gh run-logs,gh workflow-path,rebalance-tests run
+actions	crates/larch-adapters/src/github_actions.rs	rust	#7676,#7685,#8362,#8862	complete	complete	complete	ci-timing harness,ci-timing jobs,ci-timing rust-jobs,ci-timing merge-group-source,gh run-logs,gh workflow-path,rebalance-tests run
 attestations	crates/larch-adapters/src/github/attestation.rs	rust	#7674	complete	complete	complete	release validate-assets
 comments	crates/larch-adapters/src/github_rest.rs	rust	#7680	complete	complete	complete	clarify *
 dependency-consumers	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	deps *
@@ -256,7 +256,7 @@ incomplete, so a partial cutover cannot land.
 ## Completed shared cutovers
 
 `gh remote-repo`, `gh resolve-repo` (#7764), `gh run-logs`, `gh workflow-path`
-(#7765), and `ci-timing harness`, `ci-timing jobs`, `ci-timing pytest` (#8098)
+(#7765), and `ci-timing harness`, `ci-timing jobs` (#8098)
 have Rust parity, consumer cutover, and Python removal complete. No Python
 registration or superseded command implementation remains for them. Their
 callers enter the single larch executable through `scripts/larch.sh`; the
