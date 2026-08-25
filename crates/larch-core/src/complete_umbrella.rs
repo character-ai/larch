@@ -299,11 +299,11 @@ pub fn umbrella_leaf_opening(umbrella: u64) -> String {
     format!("This is a leaf of umbrella #{umbrella}. Read the umbrella in full before acting.")
 }
 
-/// Validate the durable lifecycle identity of one umbrella parent.
+/// Validate the lifecycle identity of one umbrella parent.
 ///
 /// # Errors
-/// Rejects pull requests, missing proposal records, invalid lifecycle titles,
-/// and closed parents when `require_open` is true.
+/// Rejects pull requests, invalid lifecycle titles, and closed parents when
+/// `require_open` is true. Parent body content is not an admission signal.
 pub fn validate_complete_umbrella_parent(
     parent: &GitHubIssue,
     require_open: bool,
@@ -313,9 +313,6 @@ pub fn validate_complete_umbrella_parent(
     }
     if require_open && parent.state != GitHubIssueState::Open {
         return Err("umbrella target is not open".to_owned());
-    }
-    if !has_umbrella_proposal(&parent.body) {
-        return Err("parent lacks the durable umbrella proposal".to_owned());
     }
     complete_umbrella_start_title(&parent.title)
         .or_else(|_| complete_umbrella_done_title(&parent.title))
@@ -800,16 +797,18 @@ mod tests {
     }
 
     #[test]
-    fn parent_identity_requires_a_managed_proposal_and_open_state_on_entry() {
+    fn parent_identity_uses_lifecycle_instead_of_body_content() {
         let mut parent = leaf("[UMBRELLA] Ship it", GitHubIssueState::Open);
-        parent.body = format!("Requirements\n{UMBRELLA_PROPOSAL_MARKER} -->");
+        parent.body = "Requirements without a proposal record".to_owned();
+        assert!(validate_complete_umbrella_parent(&parent, true).is_ok());
+        parent.body.clear();
         assert!(validate_complete_umbrella_parent(&parent, true).is_ok());
         parent.title = "[IMPLEMENTING] [UMBRELLA] Ship it".to_owned();
         assert!(validate_complete_umbrella_parent(&parent, true).is_ok());
         parent.state = GitHubIssueState::Closed;
         assert!(validate_complete_umbrella_parent(&parent, true).is_err());
         assert!(validate_complete_umbrella_parent(&parent, false).is_ok());
-        parent.body.clear();
+        parent.title = "[BUG] Ship it".to_owned();
         assert!(validate_complete_umbrella_parent(&parent, false).is_err());
     }
 }

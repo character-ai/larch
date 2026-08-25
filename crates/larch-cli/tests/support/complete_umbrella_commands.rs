@@ -10,6 +10,7 @@ const UMBRELLA: u64 = 40;
 const LEAF: u64 = 41;
 const GAP: u64 = 42;
 const PROPOSAL_BODY: &str = "Requirements\n<!-- larch:umbrella-proposal v1 -->";
+const RECORDLESS_BODY: &str = "Requirements\n\n#### Leaves";
 const BEFORE: &str = "2026-08-01T00:00:00Z";
 const AFTER: &str = "2026-08-01T00:01:00Z";
 const CLOSED_AT: &str = "2026-08-01T00:02:00Z";
@@ -2260,12 +2261,12 @@ fn expected_paths_and_leaf_files_fail_closed() {
 }
 
 #[tokio::test]
-async fn start_remote_applies_only_the_active_title_transition() {
+async fn start_remote_accepts_a_runnable_markerless_umbrella() {
     let original = issue_json(
         UMBRELLA,
         400,
         "[UMBRELLA] Ship it",
-        PROPOSAL_BODY,
+        RECORDLESS_BODY,
         "open",
         BEFORE,
     );
@@ -2273,21 +2274,27 @@ async fn start_remote_applies_only_the_active_title_transition() {
         UMBRELLA,
         400,
         "[IMPLEMENTING] [UMBRELLA] Ship it",
-        PROPOSAL_BODY,
+        RECORDLESS_BODY,
         "open",
         AFTER,
     );
-    let (client, server) = service(vec![
-        // read_graph runnability pre-check (zero leaves -> audit-runnable).
-        response(200, &original),
-        response(200, "[]"),
-        response(200, "[]"),
+    let leaf = issue_json(
+        LEAF,
+        410,
+        "[LEAF OF 40] Implement it",
+        &format!("{}\n\nWork remains.", umbrella_leaf_opening(UMBRELLA)),
+        "open",
+        BEFORE,
+    );
+    let mut exchanges = open_graph(&original, &leaf);
+    exchanges.extend([
         // read_snapshot, then apply (read, PATCH, read-back).
         response(200, &original),
         response(200, &original),
         response(200, &active),
         response(200, &active),
     ]);
+    let (client, server) = service(exchanges);
 
     start_remote(
         &client,
@@ -2314,6 +2321,36 @@ async fn start_remote_applies_only_the_active_title_transition() {
     assert!(
         String::from_utf8_lossy(&patch.body.bytes).contains("[IMPLEMENTING] [UMBRELLA] Ship it")
     );
+}
+
+#[tokio::test]
+async fn start_refuses_a_parent_without_a_selectable_direct_leaf() {
+    let original = issue_json(
+        UMBRELLA,
+        400,
+        "[UMBRELLA] Ship it",
+        RECORDLESS_BODY,
+        "open",
+        BEFORE,
+    );
+    let (client, server) = service(vec![
+        response(200, &original),
+        response(200, "[]"),
+        response(200, "[]"),
+    ]);
+
+    let error = start_remote(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
+    .expect_err("a fresh start needs graph-backed leaf authority");
+    assert_eq!(error, "cannot start without a selectable direct leaf");
+    let requests = server.finish().expect("stub completed");
+    assert!(requests.iter().all(|request| request.method != "PATCH"));
 }
 
 #[tokio::test]
@@ -2886,7 +2923,7 @@ async fn finish_remote_proves_closed_leaves_and_ignores_closed_historical_extra_
         UMBRELLA,
         400,
         "[IMPLEMENTING] [UMBRELLA] Ship it",
-        PROPOSAL_BODY,
+        RECORDLESS_BODY,
         "open",
         BEFORE,
     );
@@ -2894,7 +2931,7 @@ async fn finish_remote_proves_closed_leaves_and_ignores_closed_historical_extra_
         UMBRELLA,
         400,
         "[DONE] [UMBRELLA] Ship it",
-        PROPOSAL_BODY,
+        RECORDLESS_BODY,
         "open",
         AFTER,
     );
@@ -2902,7 +2939,7 @@ async fn finish_remote_proves_closed_leaves_and_ignores_closed_historical_extra_
         UMBRELLA,
         400,
         "[DONE] [UMBRELLA] Ship it",
-        PROPOSAL_BODY,
+        RECORDLESS_BODY,
         "closed",
         CLOSED_AT,
     );
