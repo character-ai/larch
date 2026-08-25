@@ -1320,6 +1320,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "issue",
         "cleanup-failed",
     ),
+    CleanInstallCase::new(
+        "clean-install-issue-create-batch",
+        "issue",
+        "create-batch",
+    ),
     CleanInstallCase::new("clean-install-issue-create-one", "issue", "create-one"),
     CleanInstallCase::new(
         "clean-install-issue-fetch-issue-details",

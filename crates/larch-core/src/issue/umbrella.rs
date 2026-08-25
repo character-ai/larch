@@ -78,6 +78,14 @@ impl UmbrellaRefusal {
 
 /// The record could not be read as a bounded, self-consistent proposal.
 pub const INVALID_PROPOSAL_RECORD: UmbrellaRefusal = UmbrellaRefusal("invalid-proposal-record");
+/// A drafted leaf identity does not hash its exact title and body.
+pub const IDENTITY_MISMATCH: UmbrellaRefusal = UmbrellaRefusal("identity-mismatch");
+/// A drafted leaf title does not carry its umbrella's exact prefix.
+pub const MISSING_LEAF_PREFIX: UmbrellaRefusal = UmbrellaRefusal("missing-leaf-prefix");
+/// A drafted leaf body does not begin with the fixed umbrella instruction.
+pub const MISSING_LEAF_OPENING: UmbrellaRefusal = UmbrellaRefusal("missing-leaf-opening");
+/// A drafted leaf carries an unknown or internally incomplete state.
+pub const BAD_STATE: UmbrellaRefusal = UmbrellaRefusal("bad-state");
 /// A number that must identify an issue was absent, non-decimal, or zero.
 pub const INVALID_UMBRELLA_NUMBER: UmbrellaRefusal = UmbrellaRefusal("invalid-umbrella");
 /// A leaf number that must identify an issue was absent, non-decimal, or zero.
@@ -606,6 +614,66 @@ pub fn parse_proposal(text: &str) -> Result<ProposalRecord, UmbrellaRefusal> {
         prepared_input_sha256,
         prepared_deps_sha256,
     })
+}
+
+/// Read a caller-drafted proposal and name the leaf invariant it violates.
+///
+/// The durable parser intentionally keeps one compatibility refusal for old
+/// records. The public drafting boundary can be more precise: it checks the
+/// values an author can repair before falling back to the durable grammar.
+///
+/// # Errors
+/// Returns a specific leaf-contract refusal when identity, lifecycle state,
+/// title prefix, or opening text is wrong. Other malformed records retain
+/// [`INVALID_PROPOSAL_RECORD`] or [`INVALID_UMBRELLA_NUMBER`].
+pub fn parse_drafted_proposal(text: &str) -> Result<ProposalRecord, UmbrellaRefusal> {
+    let value: Value = serde_json::from_str(text).map_err(|_| INVALID_PROPOSAL_RECORD)?;
+    let row = value.as_object().ok_or(INVALID_PROPOSAL_RECORD)?;
+    let leaves = row
+        .get("leaves")
+        .and_then(Value::as_array)
+        .ok_or(INVALID_PROPOSAL_RECORD)?;
+    for value in leaves {
+        let leaf = value.as_object().ok_or(INVALID_PROPOSAL_RECORD)?;
+        let identity = string_field(leaf, "identity")?;
+        let title = string_field(leaf, "title")?;
+        let body = string_field(leaf, "body")?;
+        if leaf_identity(&title, &body) != identity {
+            return Err(IDENTITY_MISMATCH);
+        }
+        let state = optional_string_field(leaf, "state", "pending")?;
+        let Some(state) = LeafState::parse(&state) else {
+            return Err(BAD_STATE);
+        };
+        if state == LeafState::Resolved {
+            let number = optional_string_field(leaf, "number", "")?;
+            let url = optional_string_field(leaf, "url", "")?;
+            if number.is_empty()
+                || !number.bytes().all(|byte| byte.is_ascii_digit())
+                || url.is_empty()
+            {
+                return Err(BAD_STATE);
+            }
+        }
+    }
+    let record = parse_proposal(text)?;
+    let prefix = format!("[LEAF OF {}] ", record.umbrella);
+    let opening = umbrella_leaf_opening_text(&record.umbrella);
+    if record
+        .leaves
+        .iter()
+        .any(|leaf| !leaf.title.starts_with(&prefix))
+    {
+        return Err(MISSING_LEAF_PREFIX);
+    }
+    if record
+        .leaves
+        .iter()
+        .any(|leaf| !leaf.body.starts_with(&opening))
+    {
+        return Err(MISSING_LEAF_OPENING);
+    }
+    Ok(record)
 }
 
 /// Refuse a duplicated, self-referential, dangling, or cyclic edge set.
@@ -1214,19 +1282,20 @@ pub const fn check_leaf_cap(record: &ProposalRecord) -> Result<(), UmbrellaRefus
 #[cfg(test)]
 mod tests {
     use super::{
-        ADOPTED_UMBRELLA_SOURCE, AMBIGUOUS_IN_FLIGHT_RECOVERY, CLOSED_INPUT,
+        ADOPTED_UMBRELLA_SOURCE, AMBIGUOUS_IN_FLIGHT_RECOVERY, BAD_STATE, CLOSED_INPUT,
         COMPLETION_SENTINEL_VERSION, CandidateIssue, CompletionSentinel, DependencyEdge,
-        ExpectedLeaf, INCOMPATIBLE_INPUT, INCOMPATIBLE_MANAGED_PARTITION, INCOMPATIBLE_UMBRELLA,
-        INCOMPLETE_GRAPH_STATE, INVALID_COMPLETION_SENTINEL, INVALID_FINAL_UMBRELLA,
-        INVALID_PREPARED_DEPENDENCIES, INVALID_PREPARED_PARTITION, INVALID_PROPOSAL_RECORD,
-        INVALID_UMBRELLA_NUMBER, LEAF_ALREADY_RESOLVED, LeafState, MANAGED_PARTITION_PREFIXES,
+        ExpectedLeaf, IDENTITY_MISMATCH, INCOMPATIBLE_INPUT, INCOMPATIBLE_MANAGED_PARTITION,
+        INCOMPATIBLE_UMBRELLA, INCOMPLETE_GRAPH_STATE, INVALID_COMPLETION_SENTINEL,
+        INVALID_FINAL_UMBRELLA, INVALID_PREPARED_DEPENDENCIES, INVALID_PREPARED_PARTITION,
+        INVALID_PROPOSAL_RECORD, INVALID_UMBRELLA_NUMBER, LEAF_ALREADY_RESOLVED, LeafState,
+        MANAGED_PARTITION_PREFIXES, MISSING_LEAF_OPENING, MISSING_LEAF_PREFIX,
         PREPARED_DEPENDENCY_CYCLE, PREPARED_PARTITION_TOO_LARGE, ProposalRecord, RemoteLeaf,
         ResolvedLeaf, STALE_PREPARED_PARTITION, UNKNOWN_LEAF_IDENTITY, UmbrellaSnapshot,
         UmbrellaSourceKind, classify_umbrella_source, completion_sentinel_for_record,
         expected_completion_sentinel, is_controlling_umbrella_title, leaf_identity,
-        mark_leaf_in_flight, parse_proposal, prepare_proposal_from_batch, reconcile_in_flight,
-        record_leaf_resolved, render_proposal, render_snapshot, umbrella_leaf_opening_text,
-        validate_final_umbrella, verify_graph_state,
+        mark_leaf_in_flight, parse_drafted_proposal, parse_proposal, prepare_proposal_from_batch,
+        reconcile_in_flight, record_leaf_resolved, render_proposal, render_snapshot,
+        umbrella_leaf_opening_text, validate_final_umbrella, verify_graph_state,
     };
 
     fn snapshot() -> UmbrellaSnapshot {
@@ -1280,6 +1349,56 @@ mod tests {
         let rendered = render_proposal(&record());
         assert!(rendered.ends_with("\"version\":1}\n"));
         assert_eq!(parse_proposal(&rendered).expect("record parses"), record());
+    }
+
+    #[test]
+    fn drafted_record_refusals_name_the_repairable_leaf_invariant() {
+        let valid = record();
+        assert_eq!(
+            parse_drafted_proposal(&render_proposal(&valid)),
+            Ok(valid.clone())
+        );
+
+        let identity = valid.leaves[0].identity.clone();
+        assert_eq!(
+            parse_drafted_proposal(&render_proposal(&valid).replace(&identity, &"a".repeat(64))),
+            Err(IDENTITY_MISMATCH)
+        );
+
+        let mut missing_prefix = valid.clone();
+        missing_prefix.leaves[0].title = "One".to_owned();
+        missing_prefix.leaves[0].identity = leaf_identity(
+            &missing_prefix.leaves[0].title,
+            &missing_prefix.leaves[0].body,
+        );
+        assert_eq!(
+            parse_drafted_proposal(&render_proposal(&missing_prefix)),
+            Err(MISSING_LEAF_PREFIX)
+        );
+
+        let mut missing_opening = valid.clone();
+        missing_opening.leaves[0].body = "Implement the leaf.".to_owned();
+        missing_opening.leaves[0].identity = leaf_identity(
+            &missing_opening.leaves[0].title,
+            &missing_opening.leaves[0].body,
+        );
+        assert_eq!(
+            parse_drafted_proposal(&render_proposal(&missing_opening)),
+            Err(MISSING_LEAF_OPENING)
+        );
+
+        assert_eq!(
+            parse_drafted_proposal(
+                &render_proposal(&valid).replace("\"state\":\"pending\"", "\"state\":\"shipped\"")
+            ),
+            Err(BAD_STATE)
+        );
+        assert_eq!(
+            parse_drafted_proposal(
+                &render_proposal(&valid).replace("\"state\":\"pending\"", "\"state\":\"resolved\"")
+            ),
+            Err(BAD_STATE)
+        );
     }
 
     #[test]
