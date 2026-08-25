@@ -220,7 +220,6 @@ impl CleanInstallCase {
             | "clean-install-voting-degraded-warning"
             | "clean-install-voting-voter-status-block"
             | "clean-install-plan-review-drift-baseline"
-            | "clean-install-plan-review-step3-mav"
             | "clean-install-plan-review-step3b-tail"
             // Both prompt renderers preserve the legacy `add_help=False`
             // contract, so the clean-install `--help` token is a usage error.

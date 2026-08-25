@@ -90,7 +90,7 @@ pub enum PlanReviewCommand {
     /// Mutate Step 3 completion and re-entry state.
     #[command(name = "step3-state", disable_help_flag = true)]
     Step3State(AgentRawArguments),
-    /// Run the existing `MainAgent`-vote wrapper.
+    /// Run the Rust-owned `MainAgent` vote and re-tally transaction.
     #[command(name = "step3-mav", disable_help_flag = true)]
     Step3Mav(AgentRawArguments),
     /// Record a Gate B bypass unless Step 3.5 is already partial.
@@ -199,7 +199,7 @@ pub fn run(command: PlanReviewCommand) -> ExitCode {
             loop_implementation::step3_state(&arguments.arguments)
         }
         PlanReviewCommand::Step3Mav(arguments) => {
-            loop_implementation::delegate_script("design-step3-mav.sh", &arguments.arguments)
+            crate::plan_review_mav_commands::run(&arguments.arguments)
         }
         PlanReviewCommand::Step3GateBBypass(arguments) => {
             loop_implementation::step3_gate_b_bypass(&arguments.arguments)

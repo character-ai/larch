@@ -106,7 +106,7 @@ const EXPECTED_COMMANDS: [ExpectedCommand; 79] = [
     ExpectedCommand::new("plan-review", "step3-entry-preview", 8449, 7679),
     ExpectedCommand::new("plan-review", "step3-entry-state", 8449, 7679),
     ExpectedCommand::new("plan-review", "step3-gate-b-bypass", 8449, 7679),
-    ExpectedCommand::new("plan-review", "step3-mav", 8449, 7679),
+    ExpectedCommand::new("plan-review", "step3-mav", 8929, 7679),
     ExpectedCommand::new("plan-review", "step3-state", 8449, 7679),
     ExpectedCommand::new("plan-review", "step35", 8449, 7679),
     ExpectedCommand::new("plan-review", "step3b-tail", 8449, 7679),
