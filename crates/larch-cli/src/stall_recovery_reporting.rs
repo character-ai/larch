@@ -4,7 +4,10 @@
 //! and verify it, then publish it through the confined atomic writer. A failed
 //! redaction never leaves a report or comment slice on disk.
 
-use crate::github_repository_resolution::parse_github_remote_url;
+use crate::{
+    github_repository_resolution::parse_github_remote_url,
+    stall_recovery_file_report::{FileReportArguments, execute as execute_file_report},
+};
 use chrono::{SecondsFormat, Utc};
 use larch_adapters::github::{LiveMutationRequest, check_live_mutation_auth};
 use larch_adapters::stall_recovery::{
@@ -21,11 +24,10 @@ use sha2::{Digest as _, Sha256};
 use std::{
     collections::BTreeMap,
     env,
-    ffi::OsString,
     fmt::Write as _,
     fs,
     path::{Path, PathBuf},
-    process::{Command, ExitCode, Output},
+    process::{Command, ExitCode},
 };
 
 pub type Options = BTreeMap<String, String>;
@@ -427,99 +429,40 @@ pub fn dedup_tier_a_report(globals: &Options, options: &Options) -> ExitCode {
         println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=unauthorized-mutation:{reason}");
         return ExitCode::SUCCESS;
     }
-    let Some(plugin_root) = plugin_root() else {
-        println!("STALL_RECOVERY_REPORT_STATUS=lookup-failed-open");
-        println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=helper-missing");
-        return ExitCode::SUCCESS;
-    };
-    let helper = plugin_root.join("scripts/file-failure-report-cross-repo.sh");
-    if !helper.is_file() {
-        println!("STALL_RECOVERY_REPORT_STATUS=lookup-failed-open");
-        println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=helper-missing");
-        return ExitCode::SUCCESS;
-    }
     let Some(repo) = current_repo_slug() else {
         println!("STALL_RECOVERY_REPORT_STATUS=lookup-failed-open");
         println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=current-repo-unresolved");
         return ExitCode::SUCCESS;
     };
-    let request = TierAHelperRequest {
-        helper: &helper,
-        repo: &repo,
-        body: &body,
-        attempts: &attempts,
-        escalation: &escalation,
-        root_cause: &root_cause,
-        context: &context,
-        run_id: &run_id,
-        trusted_root: root.path(),
-        create_after_dedup: options
-            .get("--create-after-dedup")
-            .is_some_and(|value| value == "true"),
-    };
-    let output = invoke_tier_a_helper(&request);
-    let Ok(output) = output else {
-        println!("STALL_RECOVERY_REPORT_STATUS=lookup-failed-open");
-        println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=helper-failed");
-        return ExitCode::SUCCESS;
-    };
+    let create_after_dedup = options
+        .get("--create-after-dedup")
+        .is_some_and(|value| value == "true");
+    let output = execute_file_report(FileReportArguments {
+        repo,
+        body_file: body,
+        title: if create_after_dedup {
+            "/implement terminal failure".to_owned()
+        } else {
+            String::new()
+        },
+        dedup_only: !create_after_dedup,
+        create_on_lookup_failure: create_after_dedup,
+        attempts_file: Some(attempts),
+        escalation_file: Some(escalation),
+        root_cause_file: Some(root_cause),
+        publication_tier: "tier-a".to_owned(),
+        mutation_context: context,
+        run_id,
+        trusted_root: root.path().to_path_buf(),
+        ..FileReportArguments::default()
+    });
     let helper_env = root.path().join("stall-recovery-tier-a-dedup.env");
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = output.render();
     if write_text(&root, &helper_env, &stdout).is_err() {
         return report_error("dedup result write failed");
     }
     emit_normalized_file_failure_env(&stdout);
     ExitCode::SUCCESS
-}
-
-struct TierAHelperRequest<'a> {
-    helper: &'a Path,
-    repo: &'a str,
-    body: &'a Path,
-    attempts: &'a Path,
-    escalation: &'a Path,
-    root_cause: &'a Path,
-    context: &'a Path,
-    run_id: &'a str,
-    trusted_root: &'a Path,
-    create_after_dedup: bool,
-}
-
-fn invoke_tier_a_helper(request: &TierAHelperRequest<'_>) -> std::io::Result<Output> {
-    let mut command = Command::new(request.helper); // lint-subprocess-via-runner: ok bounded retained cross-repo helper lacks a typed Rust port
-    command.args([
-        OsString::from("--repo"),
-        OsString::from(request.repo),
-        OsString::from("--body-file"),
-        request.body.as_os_str().to_owned(),
-        OsString::from("--publication-tier"),
-        OsString::from("tier-a"),
-        OsString::from("--attempts-file"),
-        request.attempts.as_os_str().to_owned(),
-        OsString::from("--escalation-ledger-file"),
-        request.escalation.as_os_str().to_owned(),
-        OsString::from("--root-cause-file"),
-        request.root_cause.as_os_str().to_owned(),
-        OsString::from("--mutation-context"),
-        request.context.as_os_str().to_owned(),
-        OsString::from("--run-id"),
-        OsString::from(request.run_id),
-        OsString::from("--trusted-root"),
-        request.trusted_root.as_os_str().to_owned(),
-    ]);
-    if request.create_after_dedup {
-        // Keep lookup's historical fail-open-create behavior inside the same
-        // descriptor-owning helper. The helper derives the actual title from
-        // its approved body snapshot, never from this placeholder.
-        command.args([
-            "--title",
-            "/implement terminal failure",
-            "--create-on-lookup-failure",
-        ]);
-    } else {
-        command.arg("--dedup-only");
-    }
-    command.output()
 }
 
 fn ensure_dedup_slices(
@@ -953,15 +896,9 @@ fn emit_chat_print_filing_status(
         return;
     };
     let resolver = plugin_root.join("scripts/resolve-upstream-larch-repo.sh");
-    let helper = plugin_root.join("scripts/file-failure-report-cross-repo.sh");
     if !resolver.is_file() {
         println!("STALL_RECOVERY_REPORT_STATUS=fallback-print-required");
         println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=upstream-repo-unresolved");
-        return;
-    }
-    if !helper.is_file() {
-        println!("STALL_RECOVERY_REPORT_STATUS=fallback-print-required");
-        println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=cross-repo-helper-missing");
         return;
     }
     let resolver_output = Command::new(resolver) // lint-subprocess-via-runner: ok bounded retained upstream resolver lacks a typed Rust port
@@ -981,38 +918,33 @@ fn emit_chat_print_filing_status(
     }
     let helper_out =
         stall_recovery_artifact_path(root.path(), "stall-recovery-tier-b-file.env", prefix);
-    let output = Command::new(helper) // lint-subprocess-via-runner: ok bounded retained cross-repo helper lacks a typed Rust port
-        .args([
-            OsString::from("--repo"),
-            OsString::from(upstream),
-            OsString::from("--body-file"),
-            paths.output.as_os_str().to_owned(),
-            OsString::from("--title"),
-            OsString::from(title),
-            OsString::from("--publication-tier"),
-            OsString::from("tier-b"),
-            OsString::from("--attempts-file"),
-            stall_recovery_artifact_path(root.path(), TIER_B_ATTEMPTS, prefix).into_os_string(),
-            OsString::from("--escalation-ledger-file"),
-            stall_recovery_artifact_path(root.path(), TIER_B_ESCALATION, prefix).into_os_string(),
-            OsString::from("--root-cause-file"),
-            stall_recovery_artifact_path(root.path(), TIER_B_ROOT_CAUSE, prefix).into_os_string(),
-            OsString::from("--sensitive-corpus-file"),
-            paths.sensitive.as_os_str().to_owned(),
-            OsString::from("--mutation-context"),
-            paths.session_env.as_os_str().to_owned(),
-            OsString::from("--run-id"),
-            OsString::from(run_id),
-            OsString::from("--trusted-root"),
-            root.path().as_os_str().to_owned(),
-        ])
-        .output();
-    let Ok(output) = output else {
-        println!("STALL_RECOVERY_REPORT_STATUS=fallback-print-required");
-        println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=cross-repo-helper-failed");
-        return;
-    };
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let output = execute_file_report(FileReportArguments {
+        repo: upstream,
+        body_file: paths.output.clone(),
+        title: title.to_owned(),
+        attempts_file: Some(stall_recovery_artifact_path(
+            root.path(),
+            TIER_B_ATTEMPTS,
+            prefix,
+        )),
+        escalation_file: Some(stall_recovery_artifact_path(
+            root.path(),
+            TIER_B_ESCALATION,
+            prefix,
+        )),
+        root_cause_file: Some(stall_recovery_artifact_path(
+            root.path(),
+            TIER_B_ROOT_CAUSE,
+            prefix,
+        )),
+        sensitive_corpus_file: Some(paths.sensitive.clone()),
+        publication_tier: "tier-b".to_owned(),
+        mutation_context: paths.session_env.clone(),
+        run_id,
+        trusted_root: root.path().to_path_buf(),
+        ..FileReportArguments::default()
+    });
+    let stdout = output.render();
     if write_text(root, &helper_out, &stdout).is_err() {
         println!("STALL_RECOVERY_REPORT_STATUS=fallback-print-required");
         println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=cross-repo-helper-failed");

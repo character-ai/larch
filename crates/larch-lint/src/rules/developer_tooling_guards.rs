@@ -40,7 +40,6 @@ const RESIDUAL_BASH_PATH: &str = "scripts/residual-bash-paths.txt";
 const RELEASE_WORKFLOW_PATH: &str = ".github/workflows/rust-release-assets.yaml";
 const GITHUB_AUTH_CONFIG_PATH: &str = ".github/actions/github-auth-config/action.yaml";
 const CLEAN_INSTALL_BOOTSTRAP_PATH: &str = "scripts/larch.sh";
-const FAILURE_REPORT_PATH: &str = "scripts/file-failure-report-cross-repo.sh";
 const SUBMODULE_GUARD_PATH: &str = "scripts/block-submodule-edit.sh";
 const STALE_PLUGIN_PATH: &str = "scripts/check-stale-plugin.sh";
 const SESSIONSTART_HEALTH_PATH: &str = "scripts/sessionstart-health.sh";
@@ -490,8 +489,7 @@ fn documented_process_exception(path: &str, program: &str, residual: &BTreeSet<S
         (
             RELEASE_WORKFLOW_PATH
                 | GITHUB_AUTH_CONFIG_PATH
-                | CLEAN_INSTALL_BOOTSTRAP_PATH
-                | FAILURE_REPORT_PATH,
+                | CLEAN_INSTALL_BOOTSTRAP_PATH,
             "gh"
         ) | (
             SUBMODULE_GUARD_PATH

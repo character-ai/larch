@@ -1,8 +1,8 @@
 //! Bounded repository, issue, comment, label, and search operations.
 
 use crate::github::{
-    GitHubCompletionError, OctocrabGitHubService, github_utc_timestamp, octocrab_is_unreachable,
-    octocrab_status,
+    GitHubCompletionError, OctocrabGitHubService, collect_bounded_response, github_utc_timestamp,
+    octocrab_is_unreachable, octocrab_status,
 };
 use larch_core::{
     GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue, GitHubIssueBodyMode,
@@ -14,7 +14,7 @@ use larch_core::{
     resolve_issue_list,
 };
 use octocrab::{Page, models, params};
-use serde::Serialize;
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::{
     future::Future,
@@ -36,6 +36,20 @@ struct IssueListCollectionOptions {
     limit: usize,
     mode: GitHubIssueListMode,
     body_mode: GitHubIssueBodyMode,
+}
+
+#[derive(Serialize)]
+struct IssueCreatePayload<'a> {
+    title: &'a str,
+    body: &'a str,
+    labels: &'a [String],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    assignees: Option<&'a [String]>,
+}
+
+#[derive(Serialize)]
+struct CommentCreatePayload<'a> {
+    body: &'a str,
 }
 
 #[allow(
@@ -213,21 +227,26 @@ impl GitHubService for OctocrabGitHubService {
                 for label in &request.labels {
                     validate_string(label, self.policy)?;
                 }
-                let issues = self
-                    .client
-                    .issues(request.repo.owner(), request.repo.name());
-                let mut create = issues
-                    .create(&request.title)
-                    .body(&request.body)
-                    .labels(request.labels.clone());
-                if !request.assignees.is_empty() {
-                    create = create.assignees(request.assignees.clone());
-                }
-                let result = create.send().await;
+                let route = format!(
+                    "/repos/{}/{}/issues",
+                    request.repo.owner(),
+                    request.repo.name()
+                );
+                let payload = IssueCreatePayload {
+                    title: &request.title,
+                    body: &request.body,
+                    labels: &request.labels,
+                    assignees: (!request.assignees.is_empty())
+                        .then_some(request.assignees.as_slice()),
+                };
+                let result: Result<models::issues::Issue, _> =
+                    self.post_mutation_json(&route, &payload).await;
                 match result {
                     Ok(value) => issue_from_model(value, self.policy),
-                    Err(error) if transient_octocrab_error(&error) => Err(ambiguous(&error, self)),
-                    Err(error) => Err(map_octocrab_error(&error, self)),
+                    Err(error) if mutation_outcome_is_ambiguous(&error) => {
+                        Err(ambiguous_operation(&error, self))
+                    }
+                    Err(error) => Err(error),
                 }
             })
             .await
@@ -374,15 +393,20 @@ impl GitHubService for OctocrabGitHubService {
                 validate_repo(repo)?;
                 validate_number(number)?;
                 validate_string(body, self.policy)?;
-                match self
-                    .client
-                    .issues(repo.owner(), repo.name())
-                    .create_comment(number, body)
-                    .await
-                {
+                let route = format!(
+                    "/repos/{}/{}/issues/{number}/comments",
+                    repo.owner(),
+                    repo.name()
+                );
+                let payload = CommentCreatePayload { body };
+                let result: Result<models::issues::Comment, _> =
+                    self.post_mutation_json(&route, &payload).await;
+                match result {
                     Ok(value) => comment_from_model(value, self.policy),
-                    Err(error) if transient_octocrab_error(&error) => Err(ambiguous(&error, self)),
-                    Err(error) => Err(map_octocrab_error(&error, self)),
+                    Err(error) if mutation_outcome_is_ambiguous(&error) => {
+                        Err(ambiguous_operation(&error, self))
+                    }
+                    Err(error) => Err(error),
                 }
             })
             .await
@@ -550,6 +574,64 @@ impl GitHubService for OctocrabGitHubService {
 }
 
 impl OctocrabGitHubService {
+    /// POST one typed mutation while retaining the HTTP status through response
+    /// decoding. Octocrab's semantic POST path loses the status when an error
+    /// envelope is itself malformed, which would otherwise make an HTTP write
+    /// refusal indistinguishable from an unusable success read-back.
+    async fn post_mutation_json<T, P>(
+        &self,
+        route: &str,
+        payload: &P,
+    ) -> Result<T, GitHubOperationError>
+    where
+        T: DeserializeOwned + Serialize,
+        P: Serialize + Sync + ?Sized,
+    {
+        let response = self
+            .client
+            ._post(route, Some(payload))
+            .await
+            .map_err(|error| map_octocrab_error(&error, self))?;
+        let status = response.status().as_u16();
+        let bytes = collect_bounded_response(response, self.policy.limits().body_bytes())
+            .await
+            .map_err(|()| {
+                let kind = if (200..300).contains(&status) {
+                    GitHubOperationErrorKind::LimitExceeded
+                } else {
+                    classify_status(Some(status), "")
+                };
+                GitHubOperationError::new(
+                    kind,
+                    Some(status),
+                    None,
+                    "GitHub mutation response body exceeded its bound or could not be read",
+                )
+            })?;
+        if !(200..300).contains(&status) {
+            let detail = mutation_http_error_detail(status, &bytes, self);
+            return Err(GitHubOperationError::new(
+                classify_status(Some(status), &detail),
+                Some(status),
+                None,
+                &detail,
+            ));
+        }
+        let value = serde_json::from_slice(&bytes).map_err(|error| {
+            let detail = self.redact_diagnostic(format!(
+                "GitHub mutation success response was malformed: {error}"
+            ));
+            GitHubOperationError::new(
+                GitHubOperationErrorKind::MalformedResponse,
+                Some(status),
+                None,
+                detail.as_str(),
+            )
+        })?;
+        validate_json(&value, self.policy)?;
+        Ok(value)
+    }
+
     async fn guarded<T, F>(
         &self,
         cancellation: &dyn ProcessCancellation,
@@ -1118,7 +1200,16 @@ fn map_octocrab_error(
 ) -> GitHubOperationError {
     let status = octocrab_status(error);
     let detail = service.redact_diagnostic(error.to_string());
-    let kind = classify_octocrab_kind(octocrab_is_unreachable(error), status, detail.as_str());
+    let kind = if matches!(
+        error,
+        octocrab::Error::Serde { .. }
+            | octocrab::Error::Json { .. }
+            | octocrab::Error::InvalidUtf8 { .. }
+    ) {
+        GitHubOperationErrorKind::MalformedResponse
+    } else {
+        classify_octocrab_kind(octocrab_is_unreachable(error), status, detail.as_str())
+    };
     GitHubOperationError::new(kind, status, retry_after_from_error(error), detail.as_str())
 }
 
@@ -1192,6 +1283,44 @@ fn ambiguous(error: &octocrab::Error, service: &OctocrabGitHubService) -> GitHub
         None,
         format!("GitHub mutation outcome is ambiguous after reconciliation: {detail}"),
     )
+}
+
+fn mutation_outcome_is_ambiguous(error: &GitHubOperationError) -> bool {
+    error.is_unreachable()
+        || error.kind() == GitHubOperationErrorKind::AmbiguousMutation
+        || error.kind() == GitHubOperationErrorKind::RateLimited
+        || matches!(error.status(), Some(408 | 429 | 500 | 502 | 503 | 504))
+}
+
+fn ambiguous_operation(
+    error: &GitHubOperationError,
+    service: &OctocrabGitHubService,
+) -> GitHubOperationError {
+    if error.kind() == GitHubOperationErrorKind::AmbiguousMutation {
+        return error.clone();
+    }
+    let detail = service.redact_diagnostic(error.to_string());
+    GitHubOperationError::new(
+        GitHubOperationErrorKind::AmbiguousMutation,
+        error.status(),
+        None,
+        format!("GitHub mutation outcome is ambiguous after reconciliation: {detail}"),
+    )
+}
+
+fn mutation_http_error_detail(
+    status: u16,
+    bytes: &[u8],
+    service: &OctocrabGitHubService,
+) -> String {
+    let message = serde_json::from_slice::<Value>(bytes)
+        .ok()
+        .and_then(|value| value.get("message")?.as_str().map(str::to_owned));
+    let detail = message.map_or_else(
+        || format!("GitHub mutation failed with HTTP {status}"),
+        |message| format!("GitHub mutation failed with HTTP {status}: {message}"),
+    );
+    service.redact_diagnostic(detail).to_string()
 }
 
 fn operation_error(

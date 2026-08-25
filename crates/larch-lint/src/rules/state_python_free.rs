@@ -19,8 +19,10 @@ const COMMAND_REGISTRY_PATH: &str = "crates/larch-lint/data/command-registry.tom
 const SESSION_AUTHORITY_PATH: &str = "crates/larch-cli/src/session_closeout_commands.rs";
 const STALL_AUTHORITY_PATH: &str = "crates/larch-cli/src/stall_recovery_commands.rs";
 const UMBRELLA_ISSUE: i64 = 7677;
-const EXPECTED_COMMAND_COUNT: usize = 58;
-const MIGRATION_LEAVES: &[i64] = &[8056, 8057, 8058, 8059, 8060, 8061, 8062, 8063, 8064, 8065, 8066, 8067, 8068];
+const EXPECTED_COMMAND_COUNT: usize = 59;
+const MIGRATION_LEAVES: &[i64] = &[
+    8056, 8057, 8058, 8059, 8060, 8061, 8062, 8063, 8064, 8065, 8066, 8067, 8068, 8928,
+];
 const RETIRED_MODULES: &[&str] = &[
     "python/larch/state/admission.py",
     "python/larch/state/dirty_tree.py",
