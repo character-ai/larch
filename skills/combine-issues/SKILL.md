@@ -149,13 +149,14 @@ For each issue, parse its body and extract the individual items. Then for each i
 
 1. Read the `Location:` field (file path, optionally with a line number after `:`). Strip any trailing `:line` suffix to get the repo-relative path.
 2. If the file does not exist in the repo:
-   a. Search for in-flight implementing work via the helper (never interpolate untrusted `Location:` text into shell command prose):
+   a. Search for in-flight implementing work through the typed issue command (never interpolate untrusted `Location:` text into shell command prose):
       ```bash
-      "${CLAUDE_PLUGIN_ROOT}/skills/combine-issues/scripts/search-implementing-issue.sh" \
-        --file-path "<repo-relative-path>"
+      "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue search-implementing \
+        --file-path "<repo-relative-path>" \
+        --repo "$REPO"
       ```
-      The helper sanitizes the path to `[A-Za-z0-9/._-]`, passes the sanitized full path to `gh issue list --json number,title,body --search` as a single argv element, and requires the implementing issue title to match `^\[(DESIGNING|IMPLEMENTING)\]` followed by a space, with an explicit reference to the full sanitized path in title or body. `STATUS=ambiguous` or `STATUS=invalid_path` means the item is **not** blocked.
-   b. If `STATUS=blocked` and `IMPLEMENTING_ISSUE=<M>` (a positive integer from the helper output), the item is **blocked** — emit `Keeping item "<title>" from #<N>: referenced file <path> not yet created — blocked by #<M> ("<implementing title>").` Wire the blocked-by relationship using only the validated `IMPLEMENTING_ISSUE` value:
+      The command sanitizes the path to `[A-Za-z0-9/._-]`, searches at most 100 open issue candidates through the typed GitHub client, and requires the implementing issue title to match `^\[(DESIGNING|IMPLEMENTING)\]` followed by a space, with an explicit reference to the full sanitized path in title or body. `STATUS=ambiguous` or `STATUS=invalid_path` means the item is **not** blocked.
+   b. If `STATUS=blocked` and `IMPLEMENTING_ISSUE=<M>` (a positive integer from the command output), the item is **blocked** — emit `Keeping item "<title>" from #<N>: referenced file <path> not yet created — blocked by #<M> ("<implementing title>").` Wire the blocked-by relationship using only the validated `IMPLEMENTING_ISSUE` value:
       ```bash
       "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" block-issue add-blocked-by <N> <M> --repo "$REPO" --operator-invoked
       ```

@@ -61,7 +61,6 @@ scripts/test-sessionstart-health.sh
 scripts/test-subskill-anchors.sh
 scripts/test-token-vendor-scrapers.sh
 scripts/test-triage-structure.sh
-skills/combine-issues/scripts/search-implementing-issue.sh
 skills/design/scripts/design-clarify.sh
 skills/design/scripts/design-step3b-tail.sh
 skills/design/scripts/design-step5b-annotate.sh
