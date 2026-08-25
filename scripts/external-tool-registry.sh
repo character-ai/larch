@@ -2,7 +2,10 @@
 # scripts/external-tool-registry.sh - Single canonical source for external
 # tool name taxonomy and implementer-coder taxonomy used across larch.
 #
-# Sourced by:
+# Repository-side golden sourced by scripts/test-external-tool-registry.sh.
+# The harness checks these names against the Rust-owned agent and implement
+# command surfaces.
+# Parity checked against:
 #   - scripts/larch.sh agent model-args
 #   - scripts/larch.sh agent check-reviewers
 #   - scripts/larch.sh agent collect-results
