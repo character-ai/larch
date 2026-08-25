@@ -205,7 +205,7 @@ pub fn run(command: PlanReviewCommand) -> ExitCode {
             loop_implementation::step3_gate_b_bypass(&arguments.arguments)
         }
         PlanReviewCommand::Step3bTail(arguments) => {
-            loop_implementation::delegate_script("design-step3b-tail.sh", &arguments.arguments)
+            crate::design_step3_commands::step4_tail(&arguments.arguments)
         }
         PlanReviewCommand::Step35(arguments) => loop_implementation::step35(&arguments.arguments),
         PlanReviewCommand::Step35Settle(arguments) => {
@@ -1962,8 +1962,6 @@ mod loop_implementation {
         emit_round(&values);
         (state.exit_code,values)
     }
-
-    #[must_use] pub fn delegate_script(name:&str,arguments:&[OsString])->ExitCode{let Ok(root)=plugin_root()else{return ExitCode::from(2)};let script=root.join("skills/design/scripts").join(name);if !script.is_file()||script.is_symlink(){return ExitCode::from(2);}let status=Command::new("bash").arg(script).args(arguments).current_dir(&root).status();/* lint-subprocess-via-runner: ok fixed retained generated wrapper with no typed executable owner */status.map_or(ExitCode::FAILURE,|s|ExitCode::from(u8::try_from(s.code().unwrap_or(1)).unwrap_or(1)))}
 
     #[must_use] pub fn step3_entry(arguments:&[OsString])->ExitCode{let parsed=match parsed_known(arguments,"cli.py plan-review step3-entry",ENTRY_USAGE,ENTRY_HELP,&["--design-tmpdir"],&["--reentry"],&["--design-tmpdir"]){Ok(v)=>v,Err(c)=>return c};let root=match root(&text(&parsed,"--design-tmpdir"),"cli.py plan-review step3-entry"){Ok(v)=>v,Err(c)=>return c};if parsed.flag("--reentry"){let _=touch(&root.join(".step3-reentry"));}remove(&root.join(".pause-save-complete"));let stripped=root.join(".plan-review-scope-stripped.txt");let source=[root.join("issue-body.txt"),root.join("feature-description.txt")].into_iter().find(|p|p.is_file()&&p.metadata().is_ok_and(|m|m.len()>0));if let Some(source)=source{let out=child_owned(vec!["plan-block".into(),"strip-body".into(),"--file".into(),source.into_os_string(),"--output".into(),stripped.as_os_str().into()]);if !out.is_ok_and(|v|v.status().success()){let _=prelaunch_failure(&["--design-tmpdir".into(),root.as_os_str().into(),"--reason".into(),"strip-body-failure".into()]);return ExitCode::FAILURE;}}else{let _=write(&root,&stripped,"");}let mut body=read(&stripped);if root.join("design-outline.md").is_file()&&root.join(".outline-approved").is_file(){body.push_str("\n\n## Approved direction (outline)\n\n");body.push_str(&read(&root.join("design-outline.md")));}let body=body.trim();if body.is_empty(){let _=prelaunch_failure(&["--design-tmpdir".into(),root.as_os_str().into(),"--reason".into(),"scope-anchor-missing".into()]);return ExitCode::FAILURE;}let redacted=redact_secrets_only(body);if redacted.trim().is_empty()||write(&root,&root.join("plan-review-scope-anchor.txt"),&format!("{}{}",redacted,if redacted.ends_with('\n'){""}else{"\n"})).is_err(){let _=prelaunch_failure(&["--design-tmpdir".into(),root.as_os_str().into(),"--reason".into(),"scope-anchor-missing".into()]);return ExitCode::FAILURE;}emit_kv("SCOPE_ANCHOR_FILE",&root.join("plan-review-scope-anchor.txt").display().to_string());ExitCode::SUCCESS}
 

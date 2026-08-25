@@ -71,6 +71,7 @@ mod design_settle_commands;
 mod design_step0_commands;
 mod design_step1_commands;
 mod design_step2b_commands;
+mod design_step3_commands;
 mod design_terminal_commands;
 mod developer_tooling_commands;
 mod diagram_commands;
@@ -1625,6 +1626,9 @@ enum DesignCommand {
     /// Run the Step 3b finalize or Step 5b.5 diagram entry (#8583).
     #[command(name = "step3b-entry", disable_help_flag = true)]
     Step3bEntry(RawCompatibilityArguments),
+    /// Run the Step 4 rejected-findings and Gate C preview tail (#8931).
+    #[command(name = "step4-tail", disable_help_flag = true)]
+    Step4Tail(RawCompatibilityArguments),
     /// Write drafter-declared dialectic candidates (#8584).
     #[command(name = "dialectic-write-candidates", disable_help_flag = true)]
     DialecticWriteCandidates(RawCompatibilityArguments),
@@ -1655,6 +1659,9 @@ enum DesignCommand {
     /// Prepare accepted design OOS items for `/issue` filing (#8590).
     #[command(name = "file-oos-prepare", disable_help_flag = true)]
     FileOosPrepare(RawCompatibilityArguments),
+    /// Run Gate B completion and emit `APPROVE_REQUESTED=` (#8931).
+    #[command(name = "gate-b", disable_help_flag = true)]
+    GateB(RawCompatibilityArguments),
     /// Annotate accepted design OOS items after `/issue` filing (#8590).
     #[command(name = "file-oos-annotate", disable_help_flag = true)]
     FileOosAnnotate(RawCompatibilityArguments),
@@ -1673,6 +1680,9 @@ enum DesignCommand {
     /// Enter an automatic Step 3 continuation round (#8593).
     #[command(name = "step3-continuation-entry", disable_help_flag = true)]
     Step3ContinuationEntry(RawCompatibilityArguments),
+    /// Combined `/design` Step 3 entry: state, scope-anchor, preview (#8931).
+    #[command(name = "step3-entry", disable_help_flag = true)]
+    Step3Entry(RawCompatibilityArguments),
 }
 
 impl DesignCommand {
@@ -1719,6 +1729,7 @@ impl DesignCommand {
             Self::Step2bPostplan(_) => design_step2b_commands::step2b_postplan(&arguments),
             Self::PostplanEmit(_) => design_step2b_commands::postplan_emit(&arguments),
             Self::Step3bEntry(_) => design_step2b_commands::step3b_entry(&arguments),
+            Self::Step4Tail(_) => design_step3_commands::step4_tail(&arguments),
             Self::DialecticWriteCandidates(_) => {
                 design_dialectic_commands::write_candidates(&arguments)
             }
@@ -1737,6 +1748,7 @@ impl DesignCommand {
             Self::Step5bPrepare(_) => design_settle_commands::step5b_prepare(&arguments),
             Self::Step5bAnnotate(_) => design_settle_commands::step5b_annotate(&arguments),
             Self::FileOosPrepare(_) => design_oos_commands::file_oos_prepare_main(&arguments),
+            Self::GateB(_) => design_step3_commands::gate_b(&arguments),
             Self::FileOosAnnotate(_) => design_oos_commands::file_oos_annotate_main(&arguments),
             Self::PauseLoad(_) => design_pause_commands::pause_load_main(&arguments),
             Self::PauseSave(_) => design_pause_commands::pause_save_main(&arguments),
@@ -1747,6 +1759,7 @@ impl DesignCommand {
             Self::Step3ContinuationEntry(_) => {
                 design_step0_commands::step3_continuation_entry(&arguments)
             }
+            Self::Step3Entry(_) => design_step3_commands::step3_entry(&arguments),
         }
     }
 }
