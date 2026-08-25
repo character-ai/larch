@@ -1135,6 +1135,9 @@ enum ImplementCommand {
     /// Remove one validated implementation session directory.
     #[command(disable_help_flag = true)]
     Cleanup(RawCompatibilityArguments),
+    /// Generate the committed-diff Mermaid code-flow diagram.
+    #[command(name = "code-flow-diagram", disable_help_flag = true)]
+    CodeFlowDiagram(RawCompatibilityArguments),
     /// Compute, classify, or validate the checks bgjob input identity.
     #[command(name = "checks-result-identity", disable_help_flag = true)]
     ChecksResultIdentity(RawCompatibilityArguments),
@@ -3201,6 +3204,9 @@ fn run(
         Domain::Implement(command) => Ok(match command {
             ImplementCommand::Cleanup(arguments) => {
                 implement_finalize_commands::cleanup(&arguments.arguments)
+            }
+            ImplementCommand::CodeFlowDiagram(arguments) => {
+                diagram_commands::implement_code_flow_diagram(&arguments.arguments)
             }
             ImplementCommand::ChecksResultIdentity(arguments) => {
                 checks_identity_commands::checks_result_identity(&arguments.arguments)

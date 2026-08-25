@@ -114,7 +114,6 @@ scripts/sessionstart-health.sh	later-domain	#7677	branch,rev-parse,sparse-checko
 skills/implement/references/checks-repair-loop.md	later-domain	#7681	rev-parse
 skills/implement/references/codex-manifest-schema.md	later-domain	#7681	commit
 skills/implement/references/step2-dispatch.md	later-domain	#7681	commit
-skills/implement/scripts/generate-code-flow-diagram.sh	later-domain	#7681	diff,merge-base,rev-parse
 skills/implement/scripts/oos-disposition-gate.md	later-domain	#7681	merge-base
 ```
 <!-- git-ownership-matrix:end -->

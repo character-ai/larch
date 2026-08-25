@@ -1,4 +1,5 @@
-//! Black-box parity coverage for the Rust `diagram code-flow` command (#8839).
+//! Black-box parity coverage for the Rust `implement code-flow-diagram`
+//! command (#8933).
 //!
 //! Each case drives the real binary with `LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS`
 //! pointing at a deterministic stub launcher and pins the
@@ -23,7 +24,7 @@ fn write_stub(dir: &Path, name: &str, body: &str) -> String {
     path.display().to_string()
 }
 
-/// Run `diagram code-flow` against `tmpdir` from a non-repository working
+/// Run `implement code-flow-diagram` against `tmpdir` from a non-repository working
 /// directory so the changed-file probe is deterministic and offline.
 fn run(
     tmpdir: &Path,
@@ -37,8 +38,8 @@ fn run(
         .env("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS", launcher)
         .env("LARCH_TEST_DIAGRAM_RETRY_DELAY_SECONDS", "0")
         .args([
-            "diagram",
-            "code-flow",
+            "implement",
+            "code-flow-diagram",
             "--implement-tmpdir",
             &tmpdir.display().to_string(),
         ]);
@@ -54,18 +55,67 @@ const FIND_OUTPUT: &str = "out=\"\"\nprev=\"\"\nfor a in \"$@\"; do\n  if [ \"$p
 fn help_exits_zero() {
     AssertCommand::cargo_bin("larch")
         .expect("larch binary")
+        .args(["implement", "code-flow-diagram", "--help"])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr(predicates::str::contains(
+            "Usage: scripts/larch.sh implement code-flow-diagram",
+        ));
+}
+
+#[test]
+fn compatibility_selector_remains_available() {
+    AssertCommand::cargo_bin("larch")
+        .expect("larch binary")
         .args(["diagram", "code-flow", "--help"])
         .assert()
-        .success();
+        .success()
+        .stdout(predicates::str::contains("usage: cli.py diagram code-flow"));
 }
 
 #[test]
 fn missing_tmpdir_is_a_usage_error() {
     AssertCommand::cargo_bin("larch")
         .expect("larch binary")
-        .args(["diagram", "code-flow"])
+        .args(["implement", "code-flow-diagram"])
         .assert()
-        .code(2);
+        .code(2)
+        .stdout(predicates::str::contains(
+            "STATUS=failed\nDIAGRAM_FILE=\nSKIP_REASON=--implement-tmpdir is required\n",
+        ));
+}
+
+#[test]
+fn rejects_relative_tmpdir_and_unsafe_base_names() {
+    AssertCommand::cargo_bin("larch")
+        .expect("larch binary")
+        .args([
+            "implement",
+            "code-flow-diagram",
+            "--implement-tmpdir",
+            "relative",
+        ])
+        .assert()
+        .code(2)
+        .stdout(predicates::str::contains(
+            "SKIP_REASON=--implement-tmpdir must be absolute",
+        ));
+    AssertCommand::cargo_bin("larch")
+        .expect("larch binary")
+        .args([
+            "implement",
+            "code-flow-diagram",
+            "--implement-tmpdir",
+            "/tmp/larch-code-flow-test",
+            "--base-ref",
+            "main:unsafe",
+        ])
+        .assert()
+        .code(2)
+        .stdout(predicates::str::contains(
+            "SKIP_REASON=--base-ref must match ^[A-Za-z0-9._/-]+$",
+        ));
 }
 
 #[test]
@@ -90,6 +140,16 @@ fn accepts_a_valid_mermaid_diagram() {
         )))
         .stdout(predicates::str::contains("SKIP_REASON=\n"));
     assert!(diagram.is_file());
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("code-flow-prompt.md")).unwrap(),
+        "Generate a concise Mermaid code-flow diagram for the committed implementation diff.\nReturn markdown containing exactly one `## Code Flow Diagram` heading and one mermaid fence.\nFocus on runtime calls, data flow, and control flow. Avoid structural architecture duplication.\n\nChanged files:\n"
+    );
+    assert!(tmp.path().join("code-flow-launch.out").is_file());
+    assert!(tmp.path().join("code-flow-launch.err").is_file());
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("code-flow-sanitizer.failure.log")).unwrap(),
+        "STATUS=ok\n"
+    );
 }
 
 #[test]
@@ -108,6 +168,52 @@ fn rejects_an_unsafe_mermaid_diagram() {
         .success()
         .stdout(predicates::str::contains("STATUS=skipped"))
         .stdout(predicates::str::contains("SKIP_REASON=pipe-in-node-label"));
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("code-flow-sanitizer.failure.log")).unwrap(),
+        "STATUS=rejected\nREASON_TOKEN=pipe-in-node-label\n"
+    );
+}
+
+#[test]
+fn reports_candidate_write_failure() {
+    let tmp = TempDir::new().unwrap();
+    let work = TempDir::new().unwrap();
+    let stubs = TempDir::new().unwrap();
+    fs::create_dir(tmp.path().join("code-flow-diagram.candidate.md")).unwrap();
+    let launcher = write_stub(
+        stubs.path(),
+        "candidate-failure.sh",
+        &format!(
+            "#!/bin/sh\n{FIND_OUTPUT}printf '## Code Flow Diagram\\n\\n```mermaid\\nflowchart LR\\n  A --> B\\n```\\n' > \"$out\"\nexit 0\n"
+        ),
+    );
+    run(tmp.path(), work.path(), &launcher, &[])
+        .code(1)
+        .stdout(predicates::str::contains("STATUS=failed"))
+        .stdout(predicates::str::contains(
+            "SKIP_REASON=candidate-write-failed",
+        ));
+}
+
+#[test]
+fn reports_candidate_promotion_failure() {
+    let tmp = TempDir::new().unwrap();
+    let work = TempDir::new().unwrap();
+    let stubs = TempDir::new().unwrap();
+    fs::create_dir(tmp.path().join("code-flow-diagram.md")).unwrap();
+    let launcher = write_stub(
+        stubs.path(),
+        "promotion-failure.sh",
+        &format!(
+            "#!/bin/sh\n{FIND_OUTPUT}printf '## Code Flow Diagram\\n\\n```mermaid\\nflowchart LR\\n  A --> B\\n```\\n' > \"$out\"\nexit 0\n"
+        ),
+    );
+    run(tmp.path(), work.path(), &launcher, &[])
+        .code(1)
+        .stdout(predicates::str::contains("STATUS=failed"))
+        .stdout(predicates::str::contains(
+            "SKIP_REASON=candidate-write-failed",
+        ));
 }
 
 #[test]
@@ -129,6 +235,8 @@ fn labels_a_launcher_failure_class_without_retry() {
         ));
     assert!(!tmp.path().join("code-flow-diagram.retried").is_file());
     assert!(tmp.path().join("code-flow-diagram.failure.log").is_file());
+    assert!(tmp.path().join("code-flow-launch.out").is_file());
+    assert!(tmp.path().join("code-flow-launch.err").is_file());
 }
 
 #[test]
