@@ -40,6 +40,7 @@ use regex::Regex;
 
 use crate::{
     argparse_compat::{ParsedCommandLine, parse_required_with_help, parse_with_flags},
+    github_repository_resolution::valid_git_label,
     launcher_support::read_confined_bytes_checked,
     runtime_entrypoint::run_verified_larch,
     tracking_issue_commands::{
@@ -595,10 +596,10 @@ pub fn implement_code_flow_diagram(arguments: &[OsString]) -> ExitCode {
     let model = model.to_string_lossy();
     let base_remote = base_remote.to_string_lossy();
     let base_ref = base_ref.to_string_lossy();
-    if !valid_code_flow_base_component(&base_remote) {
+    if !valid_git_label(&base_remote) {
         return implement_code_flow_usage_failure("--base-remote must match ^[A-Za-z0-9._/-]+$");
     }
-    if !valid_code_flow_base_component(&base_ref) {
+    if !valid_git_label(&base_ref) {
         return implement_code_flow_usage_failure("--base-ref must match ^[A-Za-z0-9._/-]+$");
     }
     if fs::create_dir_all(&tmpdir).is_err() {
@@ -614,13 +615,6 @@ pub fn implement_code_flow_diagram(arguments: &[OsString]) -> ExitCode {
     let result = generate_code_flow_diagram(&tmpdir, &model, &base_remote, &base_ref);
     emit_code_flow_result(&result);
     ExitCode::from(u8::try_from(result.exit_code).unwrap_or(1))
-}
-
-fn valid_code_flow_base_component(value: &str) -> bool {
-    !value.is_empty()
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'/' | b'-'))
 }
 
 fn implement_code_flow_usage_failure(reason: &str) -> ExitCode {
