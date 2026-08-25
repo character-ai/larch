@@ -285,11 +285,8 @@ fn emit_plan_gate(design_tmpdir: &Path, plugin: &Path) -> bool {
         command.args(parts);
         command
     } else {
-        let mut command = Command::new("python3"); // lint-subprocess-via-runner: ok design driver emit remains Python-owned during plan-quality cutover
-        command
-            .arg(plugin.join("python/cli.py"))
-            .arg("design")
-            .arg("driver");
+        let mut command = Command::new(plugin.join("scripts/larch.sh")); // lint-subprocess-via-runner: ok the verified larch bootstrap owns recursive design-driver dispatch
+        command.arg("design").arg("driver");
         command
     };
     command
@@ -316,13 +313,12 @@ fn emit_plan_gate(design_tmpdir: &Path, plugin: &Path) -> bool {
 /// `plan revise-waterfall`
 pub fn revise_waterfall(arguments: &[OsString]) -> ExitCode {
     const PROGRAM: &str = "cli.py plan revise-waterfall";
-    const USAGE: &str =
-        include_str!("../../../fixtures/rust-parity/plan_quality_help/revise-waterfall.usage.txt");
+    const USAGE: &str = include_str!("../assets/plan-quality-help/revise-waterfall.usage.txt");
     let parsed = match parse_required_with_help(
         arguments,
         PROGRAM,
         USAGE,
-        include_str!("../../../fixtures/rust-parity/plan_quality_help/revise-waterfall.txt"),
+        include_str!("../assets/plan-quality-help/revise-waterfall.txt"),
         &[
             "--design-tmpdir",
             "--plan-file",
@@ -769,13 +765,12 @@ fn run_revise_attempt(
 /// `plan auto-fix-commands`
 pub fn auto_fix_commands(arguments: &[OsString]) -> ExitCode {
     const PROGRAM: &str = "cli.py plan auto-fix-commands";
-    const USAGE: &str =
-        include_str!("../../../fixtures/rust-parity/plan_quality_help/auto-fix-commands.usage.txt");
+    const USAGE: &str = include_str!("../assets/plan-quality-help/auto-fix-commands.usage.txt");
     let parsed = match parse_required_with_help(
         arguments,
         PROGRAM,
         USAGE,
-        include_str!("../../../fixtures/rust-parity/plan_quality_help/auto-fix-commands.txt"),
+        include_str!("../assets/plan-quality-help/auto-fix-commands.txt"),
         &[
             "--design-tmpdir",
             "--plan-file",
@@ -1102,9 +1097,7 @@ pub fn validator_autofix(arguments: &[OsString]) -> ExitCode {
             "-h" | "--help" => {
                 print!(
                     "{}",
-                    include_str!(
-                        "../../../fixtures/rust-parity/plan_quality_help/validator-autofix.txt"
-                    )
+                    include_str!("../assets/plan-quality-help/validator-autofix.txt")
                 );
                 return ExitCode::SUCCESS;
             }

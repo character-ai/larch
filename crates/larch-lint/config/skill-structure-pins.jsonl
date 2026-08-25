@@ -1,7 +1,6 @@
 # Live skill prompt contracts ported from the retired pytest structure suite for issue #8900.
-# Retired Python and migrated-script absence pins are owned by the dedicated python-free and retired-scripts rules.
+# Retired Python absence pins are owned by the dedicated Python-free rules.
 {"id":"design: AGENTS.md must pin bgjob-owned long-helper waits","path":"AGENTS.md","kind":"contains","needle":"Use larch bgjob daemons for long helpers"}
-{"id":"design: Make targets must route retired Python harnesses to Rust parity","path":"Makefile","kind":"contains","needle":"cargo test --locked --package larch-cli --test integration design_step1_migrated_parity::"}
 {"id":"implement: Step 19 teardown call stays near its phase","path":"crates/larch-cli/src/implement_terminal_commands.rs","kind":"near","needle":"implement_finalize_commands::execute","needle2":"FinalizePhase::Teardown","bound":900}
 {"id":"implement: Step 3 checks bgjob launch contract stays local","path":"skills/implement/SKILL.md","kind":"near","needle":"\"$HOME/.cache/larch/sessions/implement-run-$PPID.sh\" skills/implement/scripts/run-step-checks.sh --site step3 --commit-site step4 --rebase-checkpoint-4r","needle2":"Bgjob foreground launch required","bound":1400}
 {"id":"implement: Step 3 checks STARTED contract stays local","path":"skills/implement/SKILL.md","kind":"near","needle":"\"$HOME/.cache/larch/sessions/implement-run-$PPID.sh\" skills/implement/scripts/run-step-checks.sh --site step3 --commit-site step4 --rebase-checkpoint-4r","needle2":"BGJOB_STATUS=STARTED STEP=implement-step3-checks PGID=<n>","bound":1400}
@@ -168,10 +167,8 @@
 {"path":"crates/larch-cli/src/implement_preflight_commands.rs","kind":"contains","needle":"\"ADMISSION_RESULT\"","id":"ported _structure_implement_specialized.py:94 [f0ee030190]"}
 {"path":"crates/larch-cli/src/implement_preflight_commands.rs","kind":"contains","needle":"RESUME must be true or false","id":"ported _structure_implement_specialized.py:94 [fe35289bbe]"}
 {"path":"crates/larch-cli/src/implement_preflight_commands.rs","kind":"contains","needle":"BYPASS_COUNT must be numeric","id":"ported _structure_implement_specialized.py:94 [ff4472fb4f]"}
-{"path":"crates/larch-cli/src/implement_ship_commands.rs","kind":"contains","needle":"pub fn step8_python_guard","id":"ported _structure_implement_specialized.py:94 [02e1e2dc72]"}
 {"path":"crates/larch-cli/src/implement_ship_commands.rs","kind":"contains","needle":"8-pre-ship","id":"ported _structure_implement_specialized.py:94 [0e6db6eed7]"}
 {"path":"crates/larch-cli/src/implement_ship_commands.rs","kind":"contains","needle":"\"--no-admin-fallback\"","id":"ported _structure_implement_specialized.py:94 [2f26cd7b31]"}
-{"path":"crates/larch-cli/src/implement_ship_commands.rs","kind":"contains","needle":"PYTHON_GUARD_JSON","id":"ported _structure_implement_specialized.py:94 [2f9ea9f559]"}
 {"path":"crates/larch-cli/src/implement_ship_commands.rs","kind":"contains","needle":"crate::ship_pr_commands::pr","id":"ported _structure_implement_specialized.py:94 [62797f136f]"}
 {"path":"crates/larch-cli/src/implement_ship_commands.rs","kind":"contains","needle":"run_bgjob_adapt","id":"ported _structure_implement_specialized.py:94 [8b4a746cd3]"}
 {"path":"crates/larch-cli/src/implement_ship_commands.rs","kind":"contains","needle":"\"--state-file\"","id":"ported _structure_implement_specialized.py:94 [8e97d5cbd9]"}
@@ -228,19 +225,14 @@
 {"path":"crates/larch-cli/src/ship_pre_driver_commands.rs","kind":"contains","needle":"\"step-8-seed-initial\".into()","id":"ported _structure_implement_specialized.py:94 [00cb96feb8]"}
 {"path":"crates/larch-cli/src/ship_pre_driver_commands.rs","kind":"contains","needle":"emit_kv(\"NEXT_ACTION\", \"halt-seed\")","id":"ported _structure_implement_specialized.py:94 [3afc6e8b72]"}
 {"path":"crates/larch-cli/src/ship_pre_driver_commands.rs","kind":"contains","needle":"pub fn normalize_assessment_handoff","id":"ported _structure_implement_specialized.py:94 [502e93328f]"}
-{"path":"crates/larch-cli/src/ship_pre_driver_commands.rs","kind":"contains","needle":"\"step-8-python-guard\".into()","id":"ported _structure_implement_specialized.py:94 [67ec6cb970]"}
 {"path":"crates/larch-cli/src/ship_pre_driver_commands.rs","kind":"contains","needle":"pub fn pre_driver","id":"ported _structure_implement_specialized.py:94 [8422f83c90]"}
 {"path":"crates/larch-cli/src/ship_pre_driver_commands.rs","kind":"contains","needle":"pub fn route_exit","id":"ported _structure_implement_specialized.py:94 [897050d829]"}
 {"path":"crates/larch-cli/src/ship_pre_driver_commands.rs","kind":"contains","needle":"\"oos\".into()","id":"ported _structure_implement_specialized.py:94 [8a587dbeea]"}
 {"path":"crates/larch-cli/src/ship_pre_driver_commands.rs","kind":"contains","needle":"\"halt-oos\"","id":"ported _structure_implement_specialized.py:94 [e105b71e96]"}
 {"path":"crates/larch-cli/src/ship_pre_driver_commands.rs","kind":"contains","needle":"pub fn pre_fix_rebase","id":"ported _structure_implement_specialized.py:94 [f3af27a064]"}
 {"path":"crates/larch-cli/src/ship_recovery_commands.rs","kind":"contains","needle":"pub fn reconcile_manual_merge","id":"ported _structure_implement_specialized.py:94 [31ec695b83]"}
-{"path":"crates/larch-cli/tests/implement_admission_migrated_parity.rs","kind":"path_exists","id":"ported _structure_implement_specialized.py:191 [26f1f6fc9b]"}
-{"path":"crates/larch-cli/tests/implement_admission_migrated_parity.rs","kind":"contains","needle":"fn preflight_serves_its_help_text_on_stdout","id":"ported _structure_implement_specialized.py:94 [1618d1be7b]"}
-{"path":"crates/larch-cli/tests/implement_admission_migrated_parity.rs","kind":"contains","needle":"fn preflight_refuses_a_non_numeric_issue","id":"ported _structure_implement_specialized.py:94 [5829950d7a]"}
-{"path":"crates/larch-cli/tests/implement_admission_migrated_parity.rs","kind":"contains","needle":"fn test_preflight_force_short_flag_missing_plan_refuses_without_fallback","id":"ported _structure_implement_specialized.py:94 [9135c0b882]"}
-{"path":"crates/larch-cli/tests/parity.rs","kind":"contains","needle":"BOOTSTRAP_NEXT=cleanup","id":"ported _structure_implement_specialized.py:94 [147a6143c7]"}
-{"path":"crates/larch-cli/tests/parity.rs","kind":"contains","needle":"bootstrap_invoke_stdout_is_pinned_for_fresh_and_resume_paths","id":"ported _structure_implement_specialized.py:94 [68e7fe12cb]"}
+{"path":"crates/larch-cli/tests/clean_install.rs","kind":"contains","needle":"BOOTSTRAP_NEXT=cleanup","id":"ported _structure_implement_specialized.py:94 [147a6143c7]"}
+{"path":"crates/larch-cli/tests/clean_install.rs","kind":"contains","needle":"bootstrap_invoke_stdout_is_pinned_for_fresh_and_resume_paths","id":"ported _structure_implement_specialized.py:94 [68e7fe12cb]"}
 {"path":"crates/larch-core/src/implement/active_leg.rs","kind":"contains","needle":"terminate_active_leg_group","id":"ported _structure_implement_specialized.py:94 [778dc025fd]"}
 {"path":"crates/larch-core/src/implement/active_leg.rs","kind":"contains","needle":"ACTIVE_LEG_IDENTITY_FILE","id":"ported _structure_implement_specialized.py:94 [9b492eec30]"}
 {"path":"crates/larch-core/src/implement/active_leg.rs","kind":"contains","needle":"ACTIVE_LEG_KILL_LOG_FILE","id":"ported _structure_implement_specialized.py:94 [aa3a35c51b]"}
@@ -305,9 +297,6 @@
 {"path":"docs/topology.md","kind":"contains","needle":"id=\"debate.publication\"","id":"ported test_debate_skill_contract.py:183 [3d20f0d5e6]"}
 {"path":"docs/workflow-lifecycle.md","kind":"absent","needle":"Step 9a.1 additionally invokes `/issue` in batch mode","id":"ported _structure_implement_specialized.py:103 [65ca65413c]"}
 {"path":"docs/workflow-lifecycle.md","kind":"contains","needle":"Step 9a.1 runs the Rust-owned `scripts/larch.sh oos file` driver","id":"ported _structure_implement_specialized.py:94 [ea62050bf0]"}
-{"id":"design: cli registry must drop plan validator-autofix after Rust cutover","path":"python/larch/cli.py","kind":"absent","needle":"(\"plan\", \"validator-autofix\")"}
-{"id":"design: cli registry must not re-register Rust-owned design render-gate","path":"python/larch/cli.py","kind":"absent","needle":"(\"design\", \"render-gate\")"}
-{"id":"design: settle must not retain a Python runtime registration","path":"python/larch/cli.py","kind":"absent","needle":"(\"design\", \"step35-settle\")"}
 {"path":"skills/alias/SKILL.md","kind":"contains","needle":"argument-hint: \"[--merge] [--private]","id":"ported _structure_alias_specialized.py:101 [2e45429e4b]"}
 {"path":"skills/alias/SKILL.md","kind":"contains","needle":"\"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh\" verify skill-called \\\n  --sentinel-file \"$TARGET_DIR/SKILL.md\"","id":"ported _structure_alias_specialized.py:38 [17454150b5]"}
 {"path":"skills/alias/SKILL.md","kind":"absent","needle":"\"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh verify skill-called\"","id":"ported _structure_alias_specialized.py:40 [b2df4fde0d]"}
@@ -805,7 +794,7 @@
 {"id":"design: failure slice must own error reporting","path":"skills/design/references/finalize-step5-failures.md","kind":"contains","needle":"## /design auto error reporting"}
 {"id":"design: finalize-step5 must own rc2 and unexpected non-zero abort guidance","path":"skills/design/references/finalize-step5-failures.md","kind":"contains","needle":"When `_publish_rc=2` or an unexpected non-zero value outside `{0,1,3,4}` appears, abort after best-effort `scripts/larch.sh design stage-terminal-state` staging as `failed-publish-tail`."}
 {"id":"design: finalize-step5 must own rc5 abort guidance","path":"skills/design/references/finalize-step5-failures.md","kind":"contains","needle":"This includes `_publish_rc=5`."}
-{"id":"design: Step 5b.5 generation failure must use bounded warning logging","path":"skills/design/references/finalize-step5.md","kind":"contains","needle":"Log only a bounded generation warning through `design_diagram_log.write_bounded_diagram_failure_log`."}
+{"id":"design: Step 5b.5 generation failure must use bounded warning logging","path":"skills/design/references/finalize-step5.md","kind":"contains","needle":"Log only a bounded generation warning through `crates/larch-core/src/report/diagram_log.rs::write_bounded_diagram_failure_log`."}
 {"id":"design: Step 5b.5 warning authority must be limited to generation failures","path":"skills/design/references/finalize-step5.md","kind":"contains","needle":"Step 5b.5 must not warn or log sanitizer rejection."}
 {"id":"design: Step 5c docs must pin invariant refusal warning","path":"skills/design/references/finalize-step5.md","kind":"contains","needle":"**⚠ 5c: publish refused: missing architectural-invariant-assessment.md; return to Gate C to persist the architectural-invariant assessment before publish.**"}
 {"id":"design: Step 5c docs must pin invariant return path","path":"skills/design/references/finalize-step5.md","kind":"contains","needle":"Return: Step 4b (`resume@4b`) → `scripts/larch.sh architectural-invariants present-note --repo-root \"$REPO_ROOT\"` → `scripts/larch.sh architectural-invariants persist-design-assessment --repo-root \"$REPO_ROOT\" --design-tmpdir \"$DESIGN_TMPDIR\"` (clean, sidecar, or no-flags branch as appropriate) → `design-step5c.sh --fresh-attempt`"}
@@ -928,7 +917,6 @@
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"**Initial state seeder contract.**","id":"ported _structure_implement_specialized.py:103 [77264a46ae]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"implementing with main agent.**","id":"ported _structure_implement_specialized.py:103 [7846927f02]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"**Architectural knowledge on Claude fallback**","id":"ported _structure_implement_specialized.py:103 [7fec6549af]"}
-{"path":"skills/implement/SKILL.md","kind":"absent","needle":"\"$HOME/.cache/larch/sessions/implement-run-$PPID.sh\" skills/implement/scripts/step-8-python-guard.sh","id":"ported _structure_implement_specialized.py:103 [801d8624d4]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"write-initial-state-keys:begin","id":"ported _structure_implement_specialized.py:103 [88d1d9587e]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"The `larch-tokens-&lt;slug&gt;.jsonl` token ledger","id":"ported _structure_implement_specialized.py:103 [8b302bc4d2]"}
 {"path":"skills/implement/SKILL.md","kind":"absent","needle":"step-5-entry.md","id":"ported _structure_implement_specialized.py:103 [8ca8958258]"}
@@ -1516,10 +1504,6 @@
 {"path":"skills/implement/scripts/step-8-oos-checkpoint.sh","kind":"path_exists","id":"ported _structure_implement_specialized.py:295 [a173912c0d]"}
 {"path":"skills/implement/scripts/step-8-oos-checkpoint.sh","kind":"contains","needle":"scripts/larch.sh","id":"ported _structure_implement_specialized.py:94 [45710c8ec6]"}
 {"path":"skills/implement/scripts/step-8-oos-checkpoint.sh","kind":"contains","needle":"implement step-8-oos-checkpoint","id":"ported _structure_implement_specialized.py:94 [db724020c5]"}
-{"path":"skills/implement/scripts/step-8-python-guard.md","kind":"path_exists","id":"ported _structure_implement_specialized.py:296 [f8cce86b7f]"}
-{"path":"skills/implement/scripts/step-8-python-guard.sh","kind":"absent","needle":"sys.version_info","id":"ported _structure_implement_specialized.py:103 [abc946c085]"}
-{"path":"skills/implement/scripts/step-8-python-guard.sh","kind":"path_exists","id":"ported _structure_implement_specialized.py:295 [6f90ab58e4]"}
-{"path":"skills/implement/scripts/step-8-python-guard.sh","kind":"contains","needle":"implement step-8-python-guard \"$@\"","id":"ported _structure_implement_specialized.py:94 [7c2861dc6f]"}
 {"path":"skills/implement/scripts/step-8-seed-initial.md","kind":"path_exists","id":"ported _structure_implement_specialized.py:296 [596cb6fde5]"}
 {"path":"skills/implement/scripts/step-8-seed-initial.sh","kind":"path_exists","id":"ported _structure_implement_specialized.py:295 [935f18343f]"}
 {"path":"skills/implement/scripts/step-8-seed-initial.sh","kind":"contains","needle":"implement step-8-seed-initial \"$@\"","id":"ported _structure_implement_specialized.py:94 [4c56fa7f3d]"}

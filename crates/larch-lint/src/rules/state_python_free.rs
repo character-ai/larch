@@ -10,7 +10,7 @@ use toml::{Value, map::Map};
 
 use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput};
 
-use super::python_boundary::{check_python_registry, check_retired_entrypoints};
+use super::python_boundary::check_python_registry;
 
 const NAME: &str = "state-python-free";
 const DESCRIPTION: &str =
@@ -97,19 +97,11 @@ impl Rule for StatePythonFreeRule {
         }
 
         let mut findings = Vec::new();
-        let targets = check_registry_rows(&scoped, &mut findings);
+        check_registry_rows(&scoped, &mut findings);
         check_python_registry(
             repository,
             &|domain, verb| scoped.iter().any(|table| selector(table) == (domain, verb)),
             &|domain, verb| format!("completed #7677 command remains registered in Python: {domain} {verb}"),
-            &mut findings,
-        )?;
-        check_retired_entrypoints(
-            repository,
-            &targets,
-            &|module, function| {
-                format!("superseded #7677 Python implementation remains: {module}.{function}")
-            },
             &mut findings,
         )?;
         check_retired_surface(repository, &mut findings);
@@ -122,7 +114,7 @@ impl Rule for StatePythonFreeRule {
 fn check_registry_rows(
     scoped: &[&RegistryTable],
     findings: &mut Vec<Finding>,
-) -> Vec<(String, String)> {
+) {
     if scoped.len() != EXPECTED_COMMAND_COUNT {
         findings.push(registry_finding(format!(
             "#7677 command ledger count drift: expected {EXPECTED_COMMAND_COUNT}, found {}",
@@ -130,21 +122,13 @@ fn check_registry_rows(
         )));
     }
     let mut selectors = BTreeSet::new();
-    let mut targets = Vec::new();
     for table in scoped {
         let (domain, verb) = selector(table);
         let selector = format!("{domain} {verb}");
         if !selectors.insert(selector.clone()) {
             findings.push(registry_finding(format!("duplicate #7677 command row: {selector}")));
         }
-        let complete = [
-            ("owner", "rust"),
-            ("implementation_parity", "complete"),
-            ("consumer_cutover", "complete"),
-            ("python_removal", "complete"),
-        ]
-        .into_iter()
-        .all(|(key, expected)| table_text(table, key) == expected);
+        let complete = table_text(table, "owner") == "rust";
         if !complete {
             findings.push(registry_finding(format!(
                 "non-final #7677 command row: {selector}"
@@ -156,17 +140,7 @@ fn check_registry_rows(
                 "#7677 command must name an executable migration leaf: {selector}"
             )));
         }
-        let module = table_text(table, "python_module");
-        let function = table_text(table, "python_function");
-        if module.is_empty() || function.is_empty() {
-            findings.push(registry_finding(format!(
-                "#7677 command lost its retired Python target: {selector}"
-            )));
-        } else {
-            targets.push((module.to_owned(), function.to_owned()));
-        }
     }
-    targets
 }
 
 fn check_retired_surface(repository: &Repository, findings: &mut Vec<Finding>) {

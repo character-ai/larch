@@ -108,7 +108,7 @@ jobs:
         # `lint-local`. If a dedicated job is removed, drop its hook
         # name from SKIP to restore CI coverage. Issue #1034.
         env:
-          SKIP: agnix,shellcheck,gitleaks,agent-lint,cargo-fmt,cargo-clippy,larch-lint,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths,lint-retired-scripts
+          SKIP: agnix,shellcheck,gitleaks,agent-lint,cargo-fmt,cargo-clippy,larch-lint,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths
         run: |
           set -euo pipefail
           log="$(mktemp)"
@@ -171,7 +171,7 @@ jobs:
         # (gitleaks, agnix, shellcheck, agent-lint, and Rust
         # hooks covered by rust-gate) are skipped here.
         env:
-          SKIP: agnix,shellcheck,gitleaks,markdownlint,jsonlint,agent-lint,actionlint,cargo-fmt,cargo-clippy,larch-lint,check-topology-rule-paths,lint-retired-scripts
+          SKIP: agnix,shellcheck,gitleaks,markdownlint,jsonlint,agent-lint,actionlint,cargo-fmt,cargo-clippy,larch-lint,check-topology-rule-paths
         run: make lint-only
       - name: Pipe SIGPIPE safety lint
         run: bash scripts/test-pipe-sigpipe-safety.sh

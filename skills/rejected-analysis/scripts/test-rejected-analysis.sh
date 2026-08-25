@@ -8,8 +8,6 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 SKILL="$ROOT/skills/rejected-analysis/SKILL.md"
 WRAPPER="$ROOT/skills/rejected-analysis/scripts/rejected-analysis.sh"
-CLI="$ROOT/python/larch/cli.py"
-PYTHON_CORE="$ROOT/python/larch/issue/rejected_analysis.py"
 RUST_CORE="$ROOT/crates/larch-core/src/rejected_analysis.rs"
 
 PASS=0
@@ -76,21 +74,17 @@ contains_file "$WRAPPER" 'exec "$ROOT/scripts/larch.sh" rejected-analysis prepar
 contains_file "$WRAPPER" 'exec "$ROOT/scripts/larch.sh" rejected-analysis ingest-verdict' 'wrapper delegates ingest to Rust'
 contains_file "$WRAPPER" 'exec "$ROOT/scripts/larch.sh" rejected-analysis finalize' 'wrapper delegates finalize to Rust'
 contains_file "$WRAPPER" 'exec "$ROOT/scripts/larch.sh" rejected-analysis record' 'wrapper delegates record to Rust'
-not_contains_file "$CLI" '("rejected-analysis", "prepare")' 'prepare removed from Python registration'
-not_contains_file "$CLI" '("rejected-analysis", "ingest-verdict")' 'ingest removed from Python registration'
-not_contains_file "$CLI" '("rejected-analysis", "finalize")' 'finalize removed from Python registration'
-not_contains_file "$CLI" '("rejected-analysis", "record")' 'record removed from Python registration'
 contains_file "$RUST_CORE" 'fn finding_hash' 'Rust core owns the frozen finding hash'
 contains_file "$RUST_CORE" 'pub fn prepare_artifacts' 'Rust core owns preparation artifacts'
 contains_file "$RUST_CORE" 'pub fn ingest_artifact' 'Rust core owns verdict ingestion'
 contains_file "$RUST_CORE" 'pub fn finalize_artifacts' 'Rust core owns finalization artifacts'
 contains_file "$RUST_CORE" 'pub fn record_plan' 'Rust core owns recording decisions'
-if [ ! -e "$PYTHON_CORE" ]; then
+if [ -z "$(git -C "$ROOT" ls-files 'python/**')" ]; then
     PASS=$((PASS + 1))
-    printf '  ok: superseded Python rejected_analysis module removed\n'
+    printf '  ok: superseded Python runtime removed\n'
 else
     FAIL=$((FAIL + 1))
-    printf '  FAIL: superseded Python rejected_analysis module still present\n' >&2
+    printf '  FAIL: superseded Python runtime still present\n' >&2
 fi
 
 printf '== wrapper behavior ==\n'

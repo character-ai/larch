@@ -6,7 +6,7 @@ This repo **is** the larch Claude Code plugin. Edits ship to consumers. Start wi
 
 The plugin ships the repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, `scripts/`, `.claude-plugin/`. Everything else is supplementary.
 
-`python/` holds the empty dispatcher boundary and temporary removal inputs for issue #8903. Use `scripts/larch.sh ship pr` for the live driver and `scripts/larch.sh report-tokens analyze` for `/report-tokens`. See `python/README.md`.
+Use `scripts/larch.sh ship pr` for the live driver and `scripts/larch.sh report-tokens analyze` for `/report-tokens`.
 
 ## Load Semantics
 
@@ -42,7 +42,6 @@ The plugin ships the repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, 
 - `.claude/skills/release/scripts/classify-bump.md`: release classification rules
 - `skills/shared/subskill-invocation.md`; `skills/shared/skill-design-principles.md`; `skills/shared/reviewer-templates.md`: shared skill and reviewer authorities
 - `SECURITY.md`: public security policy and high-level trust overview; `docs/security/README.md`: document taxonomy, ownership, and runtime packaging contract; `docs/security/supply-chain-credentials-and-services.md`: release, credential, transport, and service security contracts; `docs/security/workflow-trust-and-mutations.md`: workflow trust, mutation, and private-finding contracts; `docs/security/artifacts-redaction-and-publication.md`: artifact classification, redaction, diagnostics, scanning, retention, and publication contracts
-- `docs/python-migration.md`: sh-to-py playbook, decision log, manifest, and `lint-retired-scripts`
 - `crates/larch-core/src/debate/protocol.rs` (with its inline `cargo test -p larch-core debate` tests), `docs/debate-protocol.md`: debate protocol implementation, executable contract, and normative document
 
 ## Output Style
@@ -57,7 +56,7 @@ The plugin ships the repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, 
 ## Conventions
 
 - Follow recent commit history style.
-- New larch scripts are Python by default. Put new logic in `python/` behind `python3 python/cli.py`. Residual Bash is limited to `scripts/residual-bash-paths.txt`: hooks, bash-targeting linters, thin delegation wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when needed, and harnesses. Do not add terminal shared Bash libraries, stray includes, or non-thin utilities. Migration and voluntary ports must repoint consumers to direct `cli.py` calls per [docs/python-migration.md](docs/python-migration.md) **No shims**.
+- New larch command logic is Rust by default and public callers route through `scripts/larch.sh`. Keep residual Bash limited to `scripts/residual-bash-paths.txt`: hooks, bash-targeting linters, thin delegation wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when needed, and harnesses.
 - Local Rust validation is changed-path targeted Clippy through `make rust-check` or the pre-commit hook. It uses default features with incremental compilation and dev/test debug information disabled. CI, not normal implementation work, owns all-target/all-feature builds, tests, policy, and coverage.
 - Single-runner invariant: run only one `/implement` per repo. Dirty-tree guards in `scripts/larch.sh agent launch-review --tool cursor` and `scripts/larch.sh agent launch-review --tool codex` detect pollution but do not serialize runners.
 - Single-`/design` invariant: one `/design` per repo for workflow/`gh` hygiene. PID-keyed symlinks isolate per Claude PID, not per repo.

@@ -10,7 +10,6 @@ SKILL="$REPO_ROOT/skills/implement/SKILL.md"
 PREFLIGHT_AUDIT_REF="$REPO_ROOT/skills/implement/references/preflight-plan-audit.md"
 FORCE_MODE_REF="$REPO_ROOT/skills/implement/references/force-mode.md"
 PREFLIGHT_HELPER="$REPO_ROOT/crates/larch-cli/src/implement_preflight_commands.rs"
-PREFLIGHT_HELPER_TEST="$REPO_ROOT/crates/larch-cli/tests/implement_admission_migrated_parity.rs"
 PLAN_GRAMMAR="$REPO_ROOT/crates/larch-core/src/design/plan_grammar.rs"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
@@ -36,7 +35,6 @@ ordered_before() {
 [[ -f "$PREFLIGHT_AUDIT_REF" ]] || fail "missing preflight-plan-audit.md"
 [[ -f "$FORCE_MODE_REF" ]] || fail "missing force-mode.md"
 [[ -f "$PREFLIGHT_HELPER" ]] || fail "missing implement_preflight_commands.rs"
-[[ -f "$PREFLIGHT_HELPER_TEST" ]] || fail "missing implement_admission_migrated_parity.rs"
 
 contains "$SKILL" 'references/preflight-plan-audit.md' "missing preflight audit mandatory-read pointer"
 contains "$SKILL" 'references/force-mode.md' "missing force-mode mandatory-read pointer"
@@ -96,7 +94,7 @@ contains "$SKILL" '`--force` / `-f` and `--merge` are **compatible**' "missing f
 contains "$SKILL" '**⚠ --force and --draft are mutually exclusive. Aborting.**' "missing force/draft mutex"
 contains "$SKILL" '`--force` and `-f` both set `force_requested=true`' "missing -f alias parse rule"
 contains "$SKILL" '`--force` / `-f` and `--draft` together' "missing -f draft mutex wording"
-contains "$PREFLIGHT_HELPER_TEST" 'test_preflight_force_short_flag_missing_plan_refuses_without_fallback' "helper test missing -f coverage"
+contains "$PREFLIGHT_HELPER" 'const FLAGS: [&str; 2] = ["--force", "-f"];' "helper missing -f coverage"
 contains "$PREFLIGHT_AUDIT_REF" '## Clarify-request flow after `AUDIT=refuse`' "missing clarify refusal flow heading"
 contains "$PREFLIGHT_AUDIT_REF" 'STATE=ambiguous' "missing clarify ambiguous-state guard"
 contains "$PREFLIGHT_AUDIT_REF" 'STATE=awaiting-response' "missing clarify awaiting-response guard"

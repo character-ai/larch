@@ -509,11 +509,9 @@ mod tests {
 
     /// Pin the launcher bytes for an underscore-bearing plugin root.
     ///
-    /// `install-statusline` has no parity matrix case: the frozen Python
-    /// reference in `fixtures/rust-parity/progress_reference.py` deliberately
-    /// omits the verb because the launcher body changed by design at the #8084
-    /// cutover, so a byte comparison would only prove the fixture and this
-    /// renderer agree. This golden is the coverage that would have caught the
+    /// `install-statusline` has no legacy byte-comparison case because the
+    /// launcher body changed by design at the #8084 cutover. This golden is the
+    /// coverage that would have caught the
     /// #8155 divergence, where `_` was missing from the shell-safe set and
     /// every operator with an underscore in their plugin root or home
     /// directory got a needlessly single-quoted launcher.

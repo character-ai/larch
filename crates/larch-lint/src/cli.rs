@@ -132,20 +132,16 @@ enum Command {
     },
     /// List registered rules in name order.
     Rules,
-    /// Maintain or report the Python-to-Rust command ownership ledger.
+    /// Maintain or report the Rust command registry.
     #[command(name = "command-registry", subcommand)]
     Registry(CommandRegistryCommand),
 }
 
 #[derive(Clone, Debug, Subcommand)]
 enum CommandRegistryCommand {
-    /// Refresh Python command metadata and production caller inventory.
-    Sync {
-        /// Roadmap planning issue assigned only to newly discovered commands.
-        #[arg(long, value_name = "NUMBER", value_parser = clap::value_parser!(u64).range(1..))]
-        planning_issue: u64,
-    },
-    /// Render migration progress for the Chief migration issue.
+    /// Refresh the production caller inventory.
+    Sync,
+    /// Render the command registry summary.
     Report,
     /// Compare issue command evidence with registry migration ownership.
     Audit {
@@ -223,10 +219,8 @@ fn execute_command_registry(
         Err(exit) => return exit,
     };
     let result = match command {
-        CommandRegistryCommand::Sync { planning_issue } => {
-            crate::sync_command_registry(&repository, planning_issue)
-                .and_then(|summary| write_command_output(stdout, &summary))
-        }
+        CommandRegistryCommand::Sync => crate::sync_command_registry(&repository)
+            .and_then(|summary| write_command_output(stdout, &summary)),
         CommandRegistryCommand::Report => crate::render_command_progress(&repository)
             .and_then(|report| write_command_output(stdout, &report)),
         CommandRegistryCommand::Audit { input } => {
@@ -305,7 +299,7 @@ fn execute_named(
     execute(
         &repository,
         std::iter::once(rule),
-        name == "retired-scripts",
+        false,
         None,
         stdout,
         stderr,

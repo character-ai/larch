@@ -4,7 +4,7 @@
 name: im
 description: "Use when implementing a feature with auto-merge. Shortcut for /implement --merge."
 argument-hint: "<arguments>"
-allowed-tools: Bash(python3:*), Skill, Read
+allowed-tools: Bash(*scripts/larch.sh:*), Skill, Read
 ---
 
 **MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `im`.**

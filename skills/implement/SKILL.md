@@ -314,7 +314,7 @@ This matrix is authoritative for Step 2. After parsing dispatcher stdout in 2.1 
 
 <!-- step:2 dispatch — coder selection -->
 
-Regression coverage for this dispatcher surface lives in `crates/larch-cli/tests/implement_step2_dispatch_parity.rs` and the inline Rust command tests. The launcher and dispatcher contract is `skills/implement/references/step2-dispatch.md`.
+Regression coverage for this dispatcher surface lives in the inline tests in `crates/larch-cli/src/implement_step2_commands.rs`. The launcher and dispatcher contract is `skills/implement/references/step2-dispatch.md`.
 
 **2.1 — First dispatch invocation**:
 
@@ -495,7 +495,7 @@ The reference owns Claude-subagent self-review dispatch (`larch:claude-self-revi
 
 Nested review token-context propagation through `review-and-fix CLI` is pinned by `${CLAUDE_PLUGIN_ROOT}/crates/larch-cli/tests/review_and_fix_commands.rs` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
-The Step 5 adapter contract — bgjob start stdout, live-registry rejoin, canonical review and resume classification, atomic merge publication, and absence of detach sidecars — is pinned by `${CLAUDE_PLUGIN_ROOT}/python/tests/implement/test_implement_shell_scripts.py` (Step 5 wrapper-shape nodes), the Rust adapter tests and command owners, and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-step-5-review.md`.
+The Step 5 adapter contract — bgjob start stdout, live-registry rejoin, canonical review and resume classification, atomic merge publication, and absence of detach sidecars — is pinned by the inline tests in `${CLAUDE_PLUGIN_ROOT}/crates/larch-cli/src/implement_review_commands.rs` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-step-5-review.md`.
 
 > **Continue after bgjob `DONE`.** Follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/bgjob-wait.md`. On `DONE` with `BGJOB_RC=0` and required Step 5 review KVs in `$IMPLEMENT_TMPDIR/bgjob/implement-step5-review.result.env`: if the result env carries a valid `STEP5_REVIEW_STATUS=stall` envelope with required KVs, route through the Step 5 stall branch before any generic non-zero `BGJOB_RC` failure gate so `STALL_TRACKING` and Step 18 seeding are preserved. Treat `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, any other non-zero `BGJOB_RC` without that envelope, or missing required KVs as the existing Step 5 failure/stall branch.
 
@@ -636,7 +636,7 @@ Treat the final `DONE` stdout and `$IMPLEMENT_TMPDIR/bgjob/implement-step7a.resu
 <!-- step:8+ — Ship PR State Machine -->
 ## Step 8+ — Ship PR State Machine
 
-Steps 8-14 are driven by the **Rust ship dispatcher** behind `step-8-ship.sh`. The wrapper enters through `scripts/larch.sh`; the Rust parent composes the shared bgjob adapter, and its child rehydrates state, runs the Python 3.11 dependency guard and advisory phantom probe, invokes Rust `ship pr` in process, and writes ship outcome KVs directly to the bgjob merge-result env.
+Steps 8-14 are driven by the **Rust ship dispatcher** behind `step-8-ship.sh`. The wrapper enters through `scripts/larch.sh`; the Rust parent composes the shared bgjob adapter, and its child rehydrates state, runs the advisory phantom probe, invokes Rust `ship pr` in process, and writes ship outcome KVs directly to the bgjob merge-result env.
 
 Run `"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh ship pre-driver` before reading the Step 8+ matrix. The pre-driver recomputes plan coverage and refuses to ship when a required scope disposition is missing, stale, or invalid. It emits `NEXT_ACTION=halt-scope-disposition` for a readable missing/stale disposition; malformed or tampered artifacts stay Tool Failure.
 **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-exit-matrix.md` completely.
@@ -683,7 +683,7 @@ Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WA
 "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh bgjob wait --step implement-step8-ship --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
 ```
 
-Regression coverage: `crates/larch-cli/tests/implement_ship_parity.rs`, the clean-install selector matrix, the Step 8 shell-wrapper structure tests, and `skills/implement/scripts/step-8-ship.md`.
+Regression coverage: the inline tests in `crates/larch-cli/src/ship_pr_commands.rs`, the clean-install selector matrix, the Step 8 shell-wrapper structure tests, and `skills/implement/scripts/step-8-ship.md`.
 
 **Post-driver branch skeleton** (details live in `ship-pr-exit-matrix.md` `## Branch semantics`):
 
@@ -848,7 +848,7 @@ Branch by the composite `NEXT_ACTION`:
 - **`stall-recovery`**: **MANDATORY: READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/stall-recovery.md`, then execute its 9-sub-step active-stall procedure. During active recovery before `CLEARED=true`, do not run the standalone `--phase logs-flush` fence. After successful recovery (`CLEARED=true`), run the standalone `step-18.sh --phase logs-flush` fence. Proceed without re-running `scripts/larch.sh implement step-18-gate-logs-flush` after terminal recovery completes.
 - Missing `NEXT_ACTION`: treat as Tool Failure.
 
-Step 18a surface under `${CLAUDE_PLUGIN_ROOT}`: `scripts/larch.sh stall-recovery` owns every command, including the contract lint. Other contracts: `python/stall-recovery-report.md`, `scripts/resolve-upstream-larch-repo.sh`, `scripts/file-failure-report-cross-repo.sh`, `skills/implement/scripts/step-18.sh`, `skills/implement/scripts/step-18.md`, and `crates/larch-cli/tests/implement_terminal_parity.rs` (Step 18 nodes). Terminal title-prefix handling happens in Step 19 cleanup.
+Step 18a surface under `${CLAUDE_PLUGIN_ROOT}`: `scripts/larch.sh stall-recovery` owns every command, including the contract lint. Other contracts: `docs/stall-recovery-report.md`, `scripts/resolve-upstream-larch-repo.sh`, `scripts/file-failure-report-cross-repo.sh`, `skills/implement/scripts/step-18.sh`, `skills/implement/scripts/step-18.md`, and the Step 18 tests in `crates/larch-cli/src/implement_terminal_commands.rs`. Terminal title-prefix handling happens in Step 19 cleanup.
 
 **Escalation recording owners.** Prompt-side call sites record before Main Claude edits for Step 3 lint `main-agent-required`, Step 5 self-review lint `main-agent-required`, Step 5 `main-agent-vote-required`, Step 5 MAV/check lint `main-agent-required`, Step 6 lint `main-agent-required`, Step 8+ Rust ship-pr CI handoffs, Step 18a `step2-impl`, and Step 18a `step8-shippr` code-editing repairs, but only when the ship driver emitted `ledger_ready=true` or Main Claude is editing code. Pure reship such as `transient-infra` records nothing. Parse exact `LINT_FIX_LEDGER_*`, `STEP5_REVIEW_LEDGER_*`, and ship driver JSON `ledger_ready` / `ledger_site` / `ledger_trigger` / `ledger_step` / `ledger_phase` / `ledger_dispatcher` / `ledger_exit_code` / `ledger_failure_detail_log` fields. For each prompt-side call, pass the literal absolute `IMPLEMENT_TMPDIR` parsed from Step 0 bootstrap output; do not expand `$IMPLEMENT_TMPDIR` in a later Bash invocation. Do not duplicate records owned by `review-and-fix step5` or child scripts. Preserve protected-path and submodule warning strings before Main Claude edits or terminal no-recovery routing.
 

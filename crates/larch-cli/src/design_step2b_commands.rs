@@ -1,9 +1,7 @@
 //! Rust owner for the `/design` drafting and post-plan verbs (#8583).
 //!
-//! Atomically replaces the Python registrations for `design step2b-drafter`,
-//! `design step2b-postplan`, `design postplan-emit`, and `design step3b-entry`.
-//! The frozen Python reference lives under
-//! `fixtures/rust-parity/design_step2b_frozen/`.
+//! Owns `design step2b-drafter`, `design step2b-postplan`, `design
+//! postplan-emit`, and `design step3b-entry`.
 //!
 //! This owner reuses the wrapper library that `design_step0_commands.rs` (#8578)
 //! ports — `parse_wrapper_args`/`WrapperNs`, `load_wrapper_env`,

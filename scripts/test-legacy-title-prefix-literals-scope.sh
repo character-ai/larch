@@ -22,7 +22,6 @@ ALLOW=(
   crates/larch-core/tests/issue_wire.rs
   crates/larch-cli/src/admission_commands.rs
   crates/larch-cli/src/combine_issues_commands.rs
-  fixtures/rust-parity/issue_support_frozen/title_match.py
   scripts/test-legacy-title-prefix-literals-scope.sh
   skills/combine-issues/SKILL.md
   skills/deps/SKILL.md

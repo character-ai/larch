@@ -16,7 +16,7 @@ use predicates::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
 
-const ROOT_HELP: &str = include_str!("../../../fixtures/rust-parity/root-help.golden.txt");
+const ROOT_HELP: &str = include_str!("fixtures/root-help.golden.txt");
 
 const EXAMPLE_HELP: &str = "\
 Non-production commands that exercise dispatcher wiring
@@ -41,7 +41,7 @@ Commands:
   all               Run every registered rule
   rule              Run one registered rule
   rules             List registered rules in name order
-  command-registry  Maintain or report the Python-to-Rust command ownership ledger
+  command-registry  Maintain or report the Rust command registry
   help              Print this message or the help of the given subcommand(s)
 
 Options:
@@ -283,20 +283,14 @@ fn command_registry_repository() -> tempfile::TempDir {
     fs::create_dir_all(root.join("crates/larch-lint/data")).expect("create registry parent");
     fs::write(
         root.join("crates/larch-lint/data/command-registry.toml"),
-        "schema_version = 2\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\npython_module = \"fixture\"\npython_function = \"main\"\nmachine_stdout = false\nowner = \"python\"\nimplementation_parity = \"pending\"\nconsumer_cutover = \"pending\"\npython_removal = \"pending\"\nplanning_issue = 7661\nmigration_issue = 7661\n",
+        "schema_version = 3\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\nmachine_stdout = false\nowner = \"rust\"\nplanning_issue = 7661\nmigration_issue = 7661\nclean_install_test = \"clean-install-fixture-run\"\n",
     )
     .expect("write command registry");
-    fs::create_dir_all(root.join("python/larch")).expect("create Python registry parent");
-    fs::write(
-        root.join("python/larch/cli.py"),
-        "_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n}\n",
-    )
-    .expect("write Python registry");
     fs::create_dir_all(root.join("hooks")).expect("create hooks parent");
     fs::write(root.join("hooks/hooks.json"), "{\"hooks\": {}}\n").expect("write hooks");
-    fs::create_dir_all(root.join("crates/larch-cli/tests")).expect("create parity parent");
+    fs::create_dir_all(root.join("crates/larch-cli/tests")).expect("create test parent");
     fs::write(
-        root.join("crates/larch-cli/tests/parity.rs"),
+        root.join("crates/larch-cli/tests/clean_install.rs"),
         "const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[CleanInstallCase::new(\"clean-install-fixture-run\", \"fixture\", \"run\")];\n",
     )
     .expect("write clean-install fixture");

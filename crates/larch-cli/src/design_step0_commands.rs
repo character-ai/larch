@@ -1,11 +1,9 @@
 //! Rust owner for the nine `/design` Step 0 wrapper verbs (#8578).
 //!
-//! Atomically replaces the Python registrations for `design step0-parse`,
-//! `design step0-session`, `design step0-route`, `design step0-init`,
-//! `design step0-clarify-hard-halt`, `design step0-abort-cleanup`,
-//! `design step0-ap-continue`, `design step0c`, and `design settle-next-action`.
-//! The frozen Python reference lives under
-//! `fixtures/rust-parity/design_step0_frozen/`.
+//! Owns `design step0-parse`, `design step0-session`, `design step0-route`,
+//! `design step0-init`, `design step0-clarify-hard-halt`, `design
+//! step0-abort-cleanup`, `design step0-ap-continue`, `design step0c`, and
+//! `design settle-next-action`.
 //!
 //! The router-owning sibling `design_commands.rs` (#8577) is the exact style
 //! template: each public verb takes `&[OsString]`, returns [`ExitCode`], and

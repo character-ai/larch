@@ -254,16 +254,6 @@ pub fn pre_driver(arguments: &[OsString]) -> ExitCode {
     }
     let tmpdir = PathBuf::from(raw);
     rehydrate_session(&tmpdir);
-    let guard_cwd = env::current_dir().unwrap_or_else(|_| tmpdir.clone());
-    let guard = run_larch(
-        &guard_cwd,
-        &["implement".into(), "step-8-python-guard".into()],
-    );
-    let guard_rc = forward_child_to_stderr(&guard);
-    if guard_rc != 0 {
-        emit_kv("NEXT_ACTION", "stall");
-        return ExitCode::from(4);
-    }
     let Some(repo_root) = resolve_repo_root(&tmpdir) else {
         emit_kv("NEXT_ACTION", "halt-seed");
         return ExitCode::from(2);
@@ -1233,4 +1223,75 @@ fn write_private(path: &Path, text: &str, root: &Path) -> Result<(), String> {
 
 fn safe_line(value: &str) -> String {
     value.replace(['\r', '\n'], " ").trim().to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pre_fix_context(tmpdir: &Path, state: &str) -> PreFixContext {
+        let state_path = tmpdir.join(SHIP_STATE);
+        fs::write(&state_path, state).expect("ship state");
+        PreFixContext {
+            state_path,
+            state: read_kv(&tmpdir.join(SHIP_STATE)),
+            cwd: tmpdir.to_owned(),
+        }
+    }
+
+    #[test]
+    fn pre_fix_closed_pr_skips_every_git_mutation_but_writes_proof() {
+        let root = tempfile::tempdir().expect("temporary root");
+        let context = pre_fix_context(
+            root.path(),
+            "PHASE=checks\nBRANCH_NAME=feature/pre-fix\nRUN_ID=run-8\nREPO=owner/repo\nPR_CLOSED=true\n",
+        );
+
+        assert_eq!(run_pre_fix_rebase(root.path(), &context), ExitCode::SUCCESS);
+        assert_eq!(
+            fs::read_to_string(root.path().join(PRE_FIX_SENTINEL)).expect("proof"),
+            "PRE_FIX_REBASE_OK=true\n"
+        );
+    }
+
+    #[test]
+    fn pre_fix_conflict_handoff_precedes_the_closed_pr_skip() {
+        let root = tempfile::tempdir().expect("temporary root");
+        let context = pre_fix_context(
+            root.path(),
+            "PHASE=checks\nBRANCH_NAME=feature/pre-fix\nRUN_ID=run-8\nREPO=owner/repo\nPR_CLOSED=true\nCI_FIX_REBASE_PENDING=true\nCI_FIX_REBASE_PENDING_HEAD=abc\nRESUME_PHASE=ship-pr-rrr-phase14\nCALLER_KIND=ship_pr_pre_push\nCONFLICT_FILES=src/lib.rs\nEXIT_CODE=4\nBAIL_REASON=stale\nBAIL_NEEDS_USER_INPUT=true\nFAILED_RUN_ID=77\nBAIL_FAILURE_DETAIL_LOG=/tmp/stale\n",
+        );
+        fs::write(
+            root.path().join(HANDOFF_ENV),
+            "legacy note\nKEEP=first\nKEEP=second\nNEXT_ACTION=stale\n",
+        )
+        .expect("handoff");
+
+        assert_eq!(run_pre_fix_rebase(root.path(), &context), ExitCode::SUCCESS);
+        let state = fs::read_to_string(root.path().join(SHIP_STATE)).expect("state");
+        assert!(state.contains("PHASE=rebase\n"));
+        assert!(state.contains("CONFLICT_FILES=src/lib.rs\n"));
+        assert!(state.contains("CI_FIX_REBASE_PENDING=false\n"));
+        assert!(state.contains("CI_FIX_REBASE_PENDING_HEAD=\n"));
+        let handoff = fs::read_to_string(root.path().join(HANDOFF_ENV)).expect("handoff");
+        assert!(handoff.lines().any(|line| line == "KEEP=first"));
+        assert!(!handoff.lines().any(|line| line == "KEEP=second"));
+        assert!(
+            handoff
+                .lines()
+                .any(|line| line == "NEXT_ACTION=conflict-fix")
+        );
+        for stale in [
+            "EXIT_CODE=",
+            "BAIL_REASON=",
+            "BAIL_NEEDS_USER_INPUT=",
+            "FAILED_RUN_ID=",
+            "BAIL_FAILURE_DETAIL_LOG=",
+        ] {
+            assert!(
+                !state.lines().any(|line| line.starts_with(stale)),
+                "{state}"
+            );
+        }
+    }
 }

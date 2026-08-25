@@ -356,8 +356,7 @@ enum Domain {
     #[command(subcommand, name = "plan-receipt")]
     PlanReceipt(PlanReceiptCommand),
     /// Inspect the installed larch and external tool health.
-    #[command(subcommand)]
-    Status(StatusCommand),
+    Status(StatusArguments),
     /// One named `larch:<marker>` issue-body block.
     #[command(subcommand, name = "named-block")]
     NamedBlock(NamedBlockCommand),
@@ -1200,9 +1199,6 @@ enum ImplementCommand {
     /// Launch or run the Step 7a pre-ship checkpoint and code-flow diagram.
     #[command(name = "step-7a", disable_help_flag = true)]
     Step7a(RawCompatibilityArguments),
-    /// Refuse the still-Python ship engine when host Python is older than 3.11.
-    #[command(name = "step-8-python-guard", disable_help_flag = true)]
-    Step8PythonGuard(RawCompatibilityArguments),
     /// Reconstruct and create the initial durable ship state.
     #[command(name = "step-8-seed-initial", disable_help_flag = true)]
     Step8SeedInitial(RawCompatibilityArguments),
@@ -2387,6 +2383,12 @@ enum StatusCommand {
     Check(RawCompatibilityArguments),
 }
 
+#[derive(Args)]
+struct StatusArguments {
+    #[command(subcommand)]
+    command: Option<StatusCommand>,
+}
+
 #[derive(Subcommand)]
 enum ExampleCommand {
     /// Print a message through the core library.
@@ -3264,9 +3266,6 @@ fn run(
             ImplementCommand::Step7a(arguments) => {
                 implement_review_commands::step7a(&arguments.arguments)
             }
-            ImplementCommand::Step8PythonGuard(arguments) => {
-                implement_ship_commands::step8_python_guard(&arguments.arguments)
-            }
             ImplementCommand::Step8SeedInitial(arguments) => {
                 implement_ship_commands::step8_seed_initial(&arguments.arguments)
             }
@@ -3895,9 +3894,10 @@ fn run(
         Domain::RunLog(RunLogCommand::CleanupImplementLogs(arguments)) => Ok(
             run_log_cleanup_commands::cleanup_implement_logs(&arguments.arguments),
         ),
-        Domain::Status(StatusCommand::Check(arguments)) => {
-            Ok(status_commands::check(&arguments.arguments))
-        }
+        Domain::Status(StatusArguments {
+            command: Some(StatusCommand::Check(arguments)),
+        }) => Ok(status_commands::check(&arguments.arguments)),
+        Domain::Status(StatusArguments { command: None }) => Ok(status_commands::check(&[])),
         Domain::RunLog(RunLogCommand::Publish(arguments)) => {
             Ok(run_log_publication_commands::publish(&arguments.arguments))
         }

@@ -189,7 +189,7 @@ exclude = [
   # skills/design/SKILL.md and skills/implement/SKILL.md. These excludes
   # replace reachability-only anchors until zhupanov/agent-lint#106 ships
   # and larch bumps agent-lint. Detection is intentionally degraded for
-  # these paths; make lint-retired-scripts remains a partial backstop.
+  # these paths.
   # Remove this block after that agent-lint upgrade restores real reachability.
   "skills/design/scripts/design-clarify.sh",
   "skills/design/scripts/design-clarify.md",

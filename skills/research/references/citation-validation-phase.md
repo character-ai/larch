@@ -2,7 +2,7 @@
 
 **Consumer**: `/research` Step 2.5 — loaded via the `MANDATORY: READ ENTIRE FILE` directive at Step 2.5 entry in SKILL.md.
 
-**Contract**: citation-credibility check. Runs unconditionally on every `/research` invocation that produced a `research-report.txt`, executing between Step 2 (validation) and Step 2.6 (critique loop). The phase reads the validated synthesis at `$RESEARCH_TMPDIR/research-report.txt`, extracts cited provenance (file:line, URL, DOI), validates each unique URL and DOI in parallel under SSRF guards implemented in `python/research.py` (stdlib HTTPS only, no proxy environment variables, no normal URL redirects, RFC1918/IPv6 link-local/RFC6598 hostname pre-rejection including carrier-grade NAT `100.64.0.0/10`, DNS resolved-IP private-range check, connection pinning to the checked public IP, and global budget cancellation of in-flight fetch workers), classifies domain credibility heuristically (advisory only — never flips PASS to FAIL), validates DOIs syntactically and via `HEAD https://doi.org/<doi>` under the same SSRF rules, spot-checks file:line existence + line-range against `git rev-parse --show-toplevel` with `realpath` canonical-path containment check, and writes a 3-state per-claim ledger (`PASS` / `FAIL` / `UNKNOWN` with reason classifier on `UNKNOWN`) to `$RESEARCH_TMPDIR/citation-validation.md` (sidecar). Step 3 splices the sidecar as a `## Citation Validation` section into `research-report-final.md` after the standard report block. **Fail-soft**: per-claim failures surface as warnings only; the validator script always exits 0 on validation paths (exit 2 only for argument/flag errors); Step 3 is never blocked.
+**Contract**: citation-credibility check. Runs unconditionally on every `/research` invocation that produced a `research-report.txt`, executing between Step 2 (validation) and Step 2.6 (critique loop). The phase reads the validated synthesis at `$RESEARCH_TMPDIR/research-report.txt`, extracts cited provenance (file:line, URL, DOI), validates each unique URL and DOI in parallel under the SSRF guards implemented in `crates/larch-cli/src/research_commands.rs` (HTTPS only, no proxy environment variables, no normal URL redirects, RFC1918/IPv6 link-local/RFC6598 hostname pre-rejection including carrier-grade NAT `100.64.0.0/10`, DNS resolved-IP private-range check, connection pinning to the checked public IP, and global budget cancellation of in-flight fetch workers), classifies domain credibility heuristically (advisory only — never flips PASS to FAIL), validates DOIs syntactically and via `HEAD https://doi.org/<doi>` under the same SSRF rules, spot-checks file:line existence + line-range against `git rev-parse --show-toplevel` with `realpath` canonical-path containment check, and writes a 3-state per-claim ledger (`PASS` / `FAIL` / `UNKNOWN` with reason classifier on `UNKNOWN`) to `$RESEARCH_TMPDIR/citation-validation.md` (sidecar). Step 3 splices the sidecar as a `## Citation Validation` section into `research-report-final.md` after the standard report block. **Fail-soft**: per-claim failures surface as warnings only; the validator command always exits 0 on validation paths (exit 2 only for argument/flag errors); Step 3 is never blocked.
 
 **When to load**: once Step 2.5 is about to execute. Do NOT load during Step 0, Step 1, Step 2, Step 2.5, Step 3, or Step 4. SKILL.md emits the Step 2.5 entry breadcrumb; this file does NOT emit it — it owns body content only.
 
@@ -24,7 +24,7 @@ The empty-synthesis path is reachable when Step 1 inline-fallback synthesis fail
 
 ## 2.5.2 — Invoke the validator
 
-Invoke the Python validator (it owns argv, SSRF, DNS, TLS, regex, and sidecar contracts):
+Invoke the Rust validator (it owns argv, SSRF, DNS, TLS, regex, and sidecar contracts):
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" research validate-citations \
@@ -33,13 +33,13 @@ Invoke the Python validator (it owns argv, SSRF, DNS, TLS, regex, and sidecar co
   --tmpdir "$RESEARCH_TMPDIR"
 ```
 
-The Python command writes the sidecar to the path passed via `--output` and exits 0 on validation paths. Usage and bad flags exit 2; degraded argument cases still write a minimally-formed sidecar and `SUMMARY=PASS=0 FAIL=0 UNKNOWN=0 TOTAL=0` so Step 3's splice consumer has a sidecar to read.
+The Rust command writes the sidecar to the path passed via `--output` and exits 0 on validation paths. Usage and bad flags exit 2; degraded argument cases still write a minimally-formed sidecar and `SUMMARY=PASS=0 FAIL=0 UNKNOWN=0 TOTAL=0` so Step 3's splice consumer has a sidecar to read.
 
-See `python/research.py` for the full contract: argv, exit codes, sidecar schema, SSRF defenses, regex tiers, idempotency rerun semantics, bounded DNS, stdlib HTTPS fetching, no proxy environment use, redirect handling, TLS verification, connection pinning, and budget cancellation.
+See `crates/larch-cli/src/research_commands.rs` and `crates/larch-cli/src/research_commands/citations.rs` for the full contract: argv, exit codes, sidecar schema, SSRF defenses, regex tiers, idempotency rerun semantics, bounded DNS, HTTPS fetching, no proxy environment use, redirect handling, TLS verification, connection pinning, and budget cancellation.
 
 ## 2.5.3 — Sidecar schema
 
-The sidecar is an operator-readable Markdown document. The single source of truth lives in `python/research.py`; the structural shape is:
+The sidecar is an operator-readable Markdown document. The single source of truth lives in `crates/larch-cli/src/research_commands/citations.rs`; the structural shape is:
 
 ```markdown
 ## Citation Validation
@@ -65,7 +65,7 @@ The sidecar is an operator-readable Markdown document. The single source of trut
 </details>
 ```
 
-`Status` is one of `PASS` / `FAIL` / `UNKNOWN`. `Reason` is empty on `PASS` and a short token on `FAIL` / `UNKNOWN` per the reason vocabulary in `python/research.py` (`network-error`, `timeout`, `head-not-supported`, `redirect-not-followed`, `ssrf-private-host`, `ssrf-private-resolved`, `git-root-unavailable`, `file-not-found`, `line-out-of-range`, `doi-syntax`, `doi-unresolved`, and related file-line tokens). URL and DOI claims are deduplicated — a single fetch produces one ledger row. The `Cited by` column is reserved for a future enhancement that will list every claim-index reference (`claim-<N>` matching the synthesis-walk index); v1 of the validator emits an empty `Cited by` cell while preserving the 1:1 fetch-to-row contract. Operators inspecting the sidecar can grep the synthesis directly for now.
+`Status` is one of `PASS` / `FAIL` / `UNKNOWN`. `Reason` is empty on `PASS` and a short token on `FAIL` / `UNKNOWN` per the reason vocabulary in `crates/larch-cli/src/research_commands.rs` (`network-error`, `timeout`, `head-not-supported`, `redirect-not-followed`, `ssrf-private-host`, `ssrf-private-resolved`, `git-root-unavailable`, `file-not-found`, `line-out-of-range`, `doi-syntax`, `doi-unresolved`, and related file-line tokens). URL and DOI claims are deduplicated — a single fetch produces one ledger row. The `Cited by` column is reserved for a future enhancement that will list every claim-index reference (`claim-<N>` matching the synthesis-walk index); v1 of the validator emits an empty `Cited by` cell while preserving the 1:1 fetch-to-row contract. Operators inspecting the sidecar can grep the synthesis directly for now.
 
 ## 2.5.4 — Idempotency rerun
 
@@ -101,7 +101,7 @@ The splice happens BEFORE `cat`-ing the report for user-visible output, so the f
 Per the design discussion on issue #516 DECISION_1 (resolved via the plan-review panel's 2-1 sidecar vote, user-confirmed at Step 3.5 round 2), Step 2.5 is a separate phase that writes a sidecar — NOT a 6th reviewer added to Step 2's validation panel. Phase separation:
 
 1. Keeps Step 2's voting machinery focused on the synthesis content and accept/reject votes; citation validation has no vote — it is mechanical.
-2. Lets the validator be deterministic Python with no LLM call, costing zero measurable Claude tokens (parallel to Step 0.5's classifier).
+2. Lets the validator be deterministic Rust with no LLM call, costing zero measurable Claude tokens (parallel to Step 0.5's classifier).
 3. Keeps the validator failure mode local — a transient network failure during URL HEAD-fetch surfaces as `UNKNOWN(network-error)` rows in the sidecar, NOT as a vote-skewing reviewer fallback.
 
 ## Failure modes and fail-soft posture
@@ -115,7 +115,7 @@ The validator script always exits 0 on validation paths; exit 2 only for argumen
 | DNS resolves to a private IP range | `FAIL(ssrf-private-resolved)` |
 | Multi-answer DNS where ANY answer is private (rebinding defense) | `FAIL(ssrf-private-resolved)` |
 | HEAD returns 4xx/5xx that does not indicate non-support (e.g., 404, 410) | `FAIL(head-not-found)` for 404/410; `FAIL(head-server-error)` for ≥500 |
-| HEAD returns 403/405/501 | `UNKNOWN(head-not-supported)` (some servers reject HEAD; an optional constrained GET retry MAY upgrade to PASS — see `python/research.py`) |
+| HEAD returns 403/405/501 | `UNKNOWN(head-not-supported)` (some servers reject HEAD; an optional constrained GET retry MAY upgrade to PASS — see `crates/larch-cli/src/research_commands.rs`) |
 | HEAD 2xx response inside per-fetch timeout window | `PASS` |
 | HEAD 3xx response inside per-fetch timeout window | `UNKNOWN(redirect-not-followed)` (redirect destination not fetched; `--max-redirs 0`) |
 | HEAD response after timeout (per-claim or overall budget) | `UNKNOWN(timeout)` |
@@ -130,9 +130,9 @@ The `UNKNOWN` bucket is deliberately broad: every transient or environment-depen
 
 ## Budget and network contract
 
-When the overall validator budget elapses (`--budget-seconds`, default 300), in-flight URL and DOI work is canceled where possible and every claim without a result is backfilled as `UNKNOWN(timeout)`. The command still writes the sidecar, emits exactly one trailing `SUMMARY=...` line, and exits 0 on validation paths. `python/test_research.py` covers this through injected fetcher seams instead of real sleeps or network calls.
+When the overall validator budget elapses (`--budget-seconds`, default 300), in-flight URL and DOI work is canceled where possible and every claim without a result is backfilled as `UNKNOWN(timeout)`. The command still writes the sidecar, emits exactly one trailing `SUMMARY=...` line, and exits 0 on validation paths. Inline tests in `crates/larch-cli/src/research_commands.rs` cover this through injected fetcher seams instead of real sleeps or network calls.
 
-The Python HTTPS implementation uses stdlib networking with default CA verification. It does not honor proxy environment variables, does not follow normal URL redirects, treats DOI redirects as success, fails closed on private host literals and private resolved IPs, preserves the original hostname for TLS SNI and hostname verification, preserves the original `Host` header, and connects to the checked public IP when pinning is available.
+The Rust HTTPS implementation uses default CA verification. It does not honor proxy environment variables, does not follow normal URL redirects, treats DOI redirects as success, fails closed on private host literals and private resolved IPs, preserves the original hostname for TLS SNI and hostname verification, preserves the original `Host` header, and connects to the checked public IP when pinning is available.
 
 ## Domain-credibility heuristic (advisory only)
 

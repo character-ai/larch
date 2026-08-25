@@ -401,16 +401,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: lint-retired-scripts
-        name: Lint references to retired script paths
-        entry: cargo run --quiet --locked --package larch-cli -- lint rule retired-scripts
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [manual]
-
-  - repo: local
-    hooks:
       - id: agnix
         name: Lint AI agent configuration files
         entry: agnix . --strict

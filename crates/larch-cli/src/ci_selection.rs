@@ -779,8 +779,6 @@ fn global_input_trigger(path: &str) -> Option<&'static str> {
         "deny.toml" => Some("global-input:dependency-policy"),
         ".github/workflows/ci.yaml"
         | ".github/actions/rust-coverage/action.yaml"
-        | "python/cli.py"
-        | "python/larch/cli.py"
         | "crates/larch-cli/src/ci_policy_candidate_commands.rs" => {
             Some("global-input:rust-ci-workflow")
         }

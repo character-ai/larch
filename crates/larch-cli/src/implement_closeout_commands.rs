@@ -348,7 +348,7 @@ fn record_step16_failure(context: &CloseoutContext) {
     append_failure(
         context,
         "Step 16 — rejected findings",
-        "python/closeout.py step_16",
+        "scripts/larch.sh implement step-16",
         INTERNAL_ERROR,
         "Tool Failures",
         &log,
@@ -642,7 +642,7 @@ pub fn step_16_17(arguments: &[OsString]) -> ExitCode {
             append_failure(
                 &context,
                 "Step 17 — final report",
-                "python/closeout.py step_17",
+                "scripts/larch.sh implement step-17",
                 INTERNAL_ERROR,
                 "Tool Failures",
                 &step17_log,

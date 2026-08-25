@@ -11,8 +11,7 @@ Pins the split between `scripts/larch.sh implement preflight` and the main-agent
 - `skills/implement/SKILL.md`
 - `skills/implement/references/preflight-plan-audit.md`
 - `skills/implement/references/force-mode.md`
-- `crates/larch-cli/src/implement_preflight_commands.rs`
-- `crates/larch-cli/tests/implement_admission_migrated_parity.rs`
+- `crates/larch-cli/src/implement_preflight_commands.rs`, including its inline tests
 
 ## Invariants
 

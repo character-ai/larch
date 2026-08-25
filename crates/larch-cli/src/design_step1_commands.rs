@@ -1,9 +1,7 @@
 //! Rust owner for the five `/design` step1 and step-log verbs (#8579).
 //!
-//! Atomically replaces the Python registrations for `design driver`,
-//! `design step1d5`, `design step1d7`, `design step1e-reentry`, and
-//! `plan step1-log`. The frozen Python reference lives under
-//! `fixtures/rust-parity/design_step1_frozen/`.
+//! Owns `design driver`, `design step1d5`, `design step1d7`, `design
+//! step1e-reentry`, and `plan step1-log`.
 //!
 //! The immediately-preceding sibling `design_step0_commands.rs` (#8578) already
 //! ports the wrapper library these verbs need; this owner reuses its

@@ -46,7 +46,7 @@ fn rejects_pending_or_non_leaf_command_ownership() {
     prepare(&repository);
     let stale = REGISTRY
         .replace("migration_issue = 8068", "migration_issue = 7677")
-        .replacen("owner = \"rust\"", "owner = \"python\"", 1);
+        .replacen("owner = \"rust\"", "owner = \"retired\"", 1);
     repository.write(
         "crates/larch-lint/data/command-registry.toml",
         stale.as_bytes(),
@@ -89,9 +89,6 @@ fn rejects_python_dispatch_implementations_and_retired_tests() {
         .code(1)
         .stdout(predicate::str::contains(
             "completed #7677 command remains registered in Python",
-        ))
-        .stdout(predicate::str::contains(
-            "superseded #7677 Python implementation remains",
         ))
         .stdout(predicate::str::contains(
             "superseded #7677 Python module returned",

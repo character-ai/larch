@@ -63,7 +63,7 @@ fn alias_generate_matches_the_legacy_yaml_contract() {
 name: q
 description: "Alias for /implement --foo \"bar\" (created by /alias)"
 argument-hint: "<arguments>"
-allowed-tools: Bash(python3:*), Read, Skill
+allowed-tools: Bash(*scripts/larch.sh:*), Read, Skill
 ---
 
 **MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `q`.**
@@ -110,7 +110,7 @@ fn alias_generate_without_flags_or_version_is_a_byte_golden() {
 name: q
 description: "Alias for /research (created by /alias)"
 argument-hint: "<arguments>"
-allowed-tools: Bash(python3:*), Read, Skill
+allowed-tools: Bash(*scripts/larch.sh:*), Read, Skill
 ---
 
 **MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `q`.**

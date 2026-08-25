@@ -5,31 +5,10 @@ use std::fmt::Write as _;
 use predicates::prelude::*;
 use support::TempRepo;
 
-const COMMANDS: [(&str, &str, u64, u64, &str, &str); 3] = [
-    (
-        "issue",
-        "state",
-        8167,
-        7682,
-        "larch.issue.issue_query",
-        "issue_state_main",
-    ),
-    (
-        "oos",
-        "file",
-        8179,
-        7680,
-        "larch.issue.oos_filer",
-        "cmd_file",
-    ),
-    (
-        "audit-runs",
-        "title",
-        8189,
-        7682,
-        "larch.issue.audit_runs",
-        "title_main",
-    ),
+const COMMANDS: [(&str, &str, u64, u64); 3] = [
+    ("issue", "state", 8167, 7682),
+    ("oos", "file", 8179, 7680),
+    ("audit-runs", "title", 8189, 7682),
 ];
 
 const HANDOFFS: [(&str, &str, u64); 2] = [
@@ -38,22 +17,16 @@ const HANDOFFS: [(&str, &str, u64); 2] = [
 ];
 
 fn registry() -> String {
-    let mut output = String::from("schema_version = 2\n");
-    for (domain, verb, migration_issue, planning_issue, python_module, python_function) in COMMANDS
-    {
+    let mut output = String::from("schema_version = 3\n");
+    for (domain, verb, migration_issue, planning_issue) in COMMANDS {
         let _ = write!(
             output,
             r#"
 [[commands]]
 domain = "{domain}"
 verb = "{verb}"
-python_module = "{python_module}"
-python_function = "{python_function}"
 machine_stdout = false
 owner = "rust"
-implementation_parity = "complete"
-consumer_cutover = "complete"
-python_removal = "complete"
 planning_issue = {planning_issue}
 migration_issue = {migration_issue}
 "#,
@@ -66,14 +39,10 @@ migration_issue = {migration_issue}
 [[commands]]
 domain = "{domain}"
 verb = "{verb}"
-python_module = "larch.issue.handoff"
-python_function = "main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
 planning_issue = {planning_issue}
+migration_issue = 9000
 "#,
         );
     }
@@ -148,10 +117,10 @@ fn rejects_non_final_rows_handoff_owner_drift_and_unclosed_rows() {
     let repository = TempRepo::new();
     prepare(&repository);
     let drifted = format!(
-        "{}\n[[commands]]\ndomain = \"unowned\"\nverb = \"issue-surface\"\nplanning_issue = 7682\n",
+        "{}\n[[commands]]\ndomain = \"unowned\"\nverb = \"issue-surface\"\nmachine_stdout = false\nowner = \"rust\"\nplanning_issue = 7682\nmigration_issue = 9000\n",
         registry()
     )
-    .replacen("owner = \"rust\"", "owner = \"python\"", 1)
+    .replacen("owner = \"rust\"", "owner = \"retired\"", 1)
     .replacen("migration_issue = 8167", "migration_issue = 8168", 1)
     .replacen("planning_issue = 7680", "planning_issue = 7682", 1)
     .replacen("planning_issue = 7685", "planning_issue = 7682", 1);
@@ -209,7 +178,7 @@ fn rejects_restored_issue_module() {
 }
 
 #[test]
-fn rejects_restored_tracking_github_behavior_and_bypass_callers() {
+fn rejects_restored_tracking_module_and_cli_bypass_callers() {
     let repository = TempRepo::new();
     prepare(&repository);
     repository.write(
@@ -227,10 +196,7 @@ fn rejects_restored_tracking_github_behavior_and_bypass_callers() {
         .assert()
         .failure()
         .stdout(predicate::str::contains(
-            "python-command-equivalent-still-owned tracking-issue *: python/larch/issue/tracking_issue.py",
-        ))
-        .stdout(predicate::str::contains(
-            "python-command-equivalent-still-owned tracking-issue *: python/larch/state/bootstrap.py",
+            "python/larch/issue/tracking_issue.py:1: retired issue-domain Python module returned",
         ))
         .stdout(predicate::str::contains(
             "production caller routes a retired tracking command through python/cli.py",
@@ -238,7 +204,7 @@ fn rejects_restored_tracking_github_behavior_and_bypass_callers() {
 }
 
 #[test]
-fn rejects_restored_execution_issue_module_and_import_callers() {
+fn rejects_restored_execution_issue_module_and_wrapper_behavior() {
     let repository = TempRepo::new();
     prepare(&repository);
     repository.write(
@@ -261,9 +227,6 @@ fn rejects_restored_execution_issue_module_and_import_callers() {
         .failure()
         .stdout(predicate::str::contains(
             "superseded Python execution-issues behavior returned",
-        ))
-        .stdout(predicate::str::contains(
-            "python-command-equivalent-still-owned execution-issues *: python/larch/implement/dispatch.py",
         ))
         .stdout(predicate::str::contains(
             "superseded Bash execution-issues refresh behavior returned",
@@ -309,7 +272,7 @@ def renamed_mutation(*, issue_number: int) -> None:
 }
 
 #[test]
-fn rejects_command_behavior_hidden_under_a_pure_tracking_name() {
+fn rejects_restored_tracking_module_regardless_of_function_name() {
     let repository = TempRepo::new();
     prepare(&repository);
     repository.write(
@@ -328,6 +291,6 @@ def link_pr_closes(*, body: str, issue_number: int) -> str:
         .assert()
         .failure()
         .stdout(predicate::str::contains(
-            "python-command-equivalent-still-owned tracking-issue *: python/larch/issue/tracking_issue.py",
+            "python/larch/issue/tracking_issue.py:1: retired issue-domain Python module returned",
         ));
 }

@@ -106,8 +106,6 @@ Produce a single-item list where item 1 is:
 - `ITEM_1_TITLE`: if `EXPLICIT_TITLE` is set, use it directly (trimmed; truncated to 80 chars with `…` on overflow; hard-cut at 80 if no whitespace in the first 80 chars). Otherwise, derived from `DESCRIPTION` (first non-empty line, trimmed; same truncation rules).
 - `ITEM_1_BODY_FILE`: write `DESCRIPTION` verbatim to `$ISSUE_TMPDIR/bodies/item-1-body.txt` (preserving newlines; no trailing-newline injection), and set `ITEM_1_BODY_FILE` to that absolute path.
 
-Structural regression coverage for the `--body-file` + trailing title semantics lives in `${CLAUDE_PLUGIN_ROOT}/python/tests/issue/test_issue_create.py`. The harness pins the two-source branching text, the `EXPLICIT_TITLE` variable, the Step 3 two-branch rule, and the backward-compatible derive-from-first-line path.
-
 ### Batch mode
 
 Invoke the parser:
@@ -120,7 +118,7 @@ Invoke the parser:
 
 On zero exit: parse the stdout for `ITEMS_TOTAL=<N>` and per-item `ITEM_<i>_TITLE`, `ITEM_<i>_BODY_FILE` (absolute path to a plain-text body file under `$ISSUE_TMPDIR/bodies/`), optional `ITEM_<i>_REVIEWER`, `ITEM_<i>_PHASE`, `ITEM_<i>_VOTE_TALLY`, and `ITEM_<i>_MALFORMED=true` for items that cannot be emitted cleanly — either a title without a body, or (issue #138) an incomplete OOS item whose body was terminated by an ambiguous boundary heading with no structured-field close. The latter shape emits `ITEM_<i>_BODY_FILE` alongside `ITEM_<i>_MALFORMED=true`, but per the rule below malformed items never reach Phase 1/2 or create — the description is written to the body file at `$ISSUE_TMPDIR/bodies/item-<i>-body.txt` and survives there as a diagnostic surface until Step 9 cleanup. Title-only MALFORMED items have no `ITEM_<i>_BODY_FILE` line and no body file.
 
-Parser regression coverage lives in `crates/larch-core/tests/issue_input.rs` and the `issue-parse-input-*` parity goldens under `fixtures/rust-parity/goldens/`. It covers baseline / boundary / issues #129 / #131 / #132 / #138, plus the argument scanner and the materialized body files.
+Parser regression coverage lives in `crates/larch-core/tests/issue_input.rs` and the inline Rust tests in `crates/larch-cli/src/issue_input_commands.rs`. It covers baseline / boundary / issues #129 / #131 / #132 / #138, plus the argument scanner and the materialized body files.
 
 **Authoring caution (generic fallback)**: in batch-mode files using the generic `### <title>` + body fallback, unfenced body content must not start a line with `###` followed by a space — that three-hash sequence with a leading space is the item-boundary separator. Balanced fenced code blocks, using backticks or tildes, may contain byte-exact `###` payload headings. Unclosed fences do not protect later `###` boundaries. Use `####` or deeper for unfenced subsections within body sections, or use a different markup convention (lists, bold leaders) for sub-items. OOS-formatted input files do not have this constraint because the OOS-specific absorption rules disambiguate `### <subheading>` inside an OOS Description; the constraint applies only to the generic fallback path. Use `--dry-run` to preview a parse before creating; the stderr breadcrumb (`▶ parse-input: …`) emitted on every successful parse also shows the item count.
 
@@ -256,10 +254,6 @@ Worked examples (per the formula):
 The allocator's regression coverage lives in `crates/larch-core/tests/issue_input.rs` and the `issue-allocate-candidates-*` parity goldens. It pins the floor formula at boundary, partial-floor + Pass-B interaction, tie-breaks, union-credit semantics, `kind=both` first-class behavior, defensive-default drops, the N>30 stderr warning, empty-stdin / N=0 paths, and the stdout-shape invariant.
 
 Note on Phase 2 fetch drops: the per-item floor guarantees a candidate **enters** the union, NOT that its body is **successfully fetched** in Step 5. `FETCH_STATUS_<N>=failed` rows are dropped from Phase 2 reasoning per the existing contract — "floor ⇒ deep coverage" is best-effort, not a guarantee.
-
-The Step 4E/Step 5 gating logic and intra-batch dependency decoupling are pinned by `${CLAUDE_PLUGIN_ROOT}/python/tests/issue/test_issue_create.py`. The harness asserts presence of the `N_NON_MALFORMED >= 2` gate, conditional fetch skip, empty-CANDIDATES verdict guidance, no-external-refs validation rule, FETCH_STATUS scope narrowing, and absence of the old unconditional short-circuit clause.
-
-The `--blocked-by-issue` flag surface, Step 4 probe, Step 5 merge/carve-out, and Step 6 cached-id application path are pinned by `${CLAUDE_PLUGIN_ROOT}/python/tests/issue/test_issue_create.py`.
 
 <!-- step:5 — Phase 2: Body+Comments Semantic Filter -->
 

@@ -1,10 +1,4 @@
-//! Command-boundary contract for the paths no parity golden can record.
-//!
-//! Differential parity against the frozen Python owner lives in
-//! `tests/parity.rs`. These assertions cover the three refusals where the
-//! retired Python owner exited on an uncaught traceback, whose absolute paths
-//! and line numbers make a byte-exact golden impossible, plus the bounded
-//! `--width` this leaf added so an absurd width cannot exhaust memory.
+//! Command-boundary contract for rendering refusals and bounded widths.
 
 use std::{fs, process::Command};
 

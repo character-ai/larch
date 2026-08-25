@@ -8,9 +8,7 @@ use crate::{
     Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput, command_registry,
 };
 
-use super::python_boundary::{
-    RegistryCommand, check_python_registry, check_retired_entrypoints,
-};
+use super::python_boundary::{RegistryCommand, check_python_registry};
 
 const NAME: &str = "agent-python-free";
 const DESCRIPTION: &str =
@@ -169,23 +167,6 @@ impl Rule for AgentPythonFreeRule {
             },
             &|domain, verb| {
                 format!("retired vendor-agent command remains registered in Python: {domain} {verb}")
-            },
-            &mut findings,
-        )?;
-        let targets = scoped
-            .iter()
-            .filter_map(|command| {
-                Some((
-                    command.text("python_module")?.to_owned(),
-                    command.text("python_function")?.to_owned(),
-                ))
-            })
-            .collect::<Vec<_>>();
-        check_retired_entrypoints(
-            repository,
-            &targets,
-            &|module, function| {
-                format!("retired vendor-agent Python entry point returned: {module}.{function}")
             },
             &mut findings,
         )?;

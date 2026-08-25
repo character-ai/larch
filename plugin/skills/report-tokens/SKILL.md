@@ -16,7 +16,7 @@ Analyze token costs from synchronized larch run logs for the selected skill (`--
 
 For `--skill=implement`, reports carry no workflow dimension and graph/per-day trend output aggregates all runs into one `All runs` series/table set. For `--skill=design` and `--skill=debate`, one aggregate report is generated. Debate run logs may record no vendor token legs; the report prices what is present and otherwise surfaces the existing empty-report gap. The filed issue intentionally omits raw per-issue JSON and actual-spend reconciliation unless `LARCH_REPORT_TOKENS_POST_ACTUAL_SPEND=1` is set.
 
-Rate overrides: set environment variables documented in `docs/configuration-and-permissions.md` before invoking. See `docs/python-migration.md` for the migration playbook.
+Rate overrides: set environment variables documented in `docs/configuration-and-permissions.md` before invoking.
 
 ## Flags
 

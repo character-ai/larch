@@ -27,4 +27,4 @@ Normal continuation requires `BGJOB_RC=0`, `STEP5_REVIEW_STATUS=complete`, and t
 
 ## Edit-in-sync
 
-Update `skills/implement/SKILL.md`, `skills/implement/references/step5-review-branches.md`, `make test-implement-structure`, `python/tests/implement/test_implement_shell_scripts.py` (Step 5 wrapper-shape nodes), and the Rust Step 5 tests when this contract or argv changes.
+Update `skills/implement/SKILL.md`, `skills/implement/references/step5-review-branches.md`, `make test-implement-structure`, and the inline tests in `crates/larch-cli/src/implement_review_commands.rs` when this contract or argv changes.

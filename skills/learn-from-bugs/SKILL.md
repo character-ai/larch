@@ -42,7 +42,7 @@ The scan marker is schema v2. It carries an ordered `proposals` array; each reco
 
 Use these canonical targets:
 
-- `lint`: `registration:<lint-name>` for an exact `python/larch/cli.py` lint registration, or `module:<repo-relative-python-path>`.
+- `lint`: `registration:<lint-name>` for an exact Rust lint rule registration, or `module:<repo-relative-python-path>`.
 - `invariant`: `<repo-relative-markdown-path>#<exact-invariant-id-or-visible-heading>`.
 - `guideline`: `<repo-relative-markdown-path>#<exact-guideline-id-or-visible-heading>`.
 - `hook`: `hook:<exact-normalized-command-path-or-matcher-token>` from `hooks/hooks.json`.

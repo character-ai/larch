@@ -15,7 +15,7 @@ This is the surviving `/implement` Step 2 dispatch contract after the atomic Rus
 **Invariants**:
 - Implementer-coder set: `{claude} ∪ external_tools`. `claude` is the implementer-only fallback path, never an external tool. The `TOOL=` envelope-line contract on external implementer paths continues to mean external implementer only.
 - Cursor binary gate: `--cursor-binary-found true|false|""` is accepted. Empty and missing values fall back to `CURSOR_BINARY_FOUND` from session env or a fresh executable check. `--cursor-present` remains compatibility-only and must not block a selected Cursor coder when the binary exists.
-- `--coder` is required. `/implement` Step 0 resolves the omitted operator flag in `python/bootstrap.py phase_coder_select`, and the Step 2 adapter forwards that explicit value to `scripts/larch.sh implement run-dispatch`. A direct dispatcher call without `--coder` exits 2 before git resolution.
+- `--coder` is required. `/implement` Step 0 resolves the omitted operator flag in `crates/larch-cli/src/implement_bootstrap_continuation.rs::phase_coder`, and the Step 2 adapter forwards that explicit value to `scripts/larch.sh implement run-dispatch`. A direct dispatcher call without `--coder` exits 2 before git resolution.
 - Stdout is KV-only — `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `SCOUT_CODER_MANIFEST`, `SCOUT_CODER_STATUS`, `ORCHESTRATOR_EDIT_AUTHORITY`, plus optional advisory KVs `WARN_CODEX_NONZERO_EXIT=true`, `WARN_PLAN_FILES_UNTOUCHED=true`, and `WARN_PLAN_FILES_UNTOUCHED_COUNT=<N>` on documented `STATUS=complete` paths. The launcher's progress chatter is captured to the sidecar log; the implementer transcript is captured to disk; neither leaks to stdout. SKILL.md Step 2's parser is a fixed grammar; the `WARN_*` markers are trailing advisory KVs (like the `PHANTOM_*` probe tail) that Step 2 does not branch on.
 - Spawn-time baseline files are written ONCE on the first invocation under `$TMPDIR_ARG`: `step2-baseline.txt` (HEAD SHA), `step2-spawn-branch.txt` (branch name). All resume invocations reuse them. The baseline SHA anchors the launcher-retry "clean state" guard (post-failure HEAD must equal baseline). There is no fail-closed manifest path equality gate after the dispatcher took over committing. The dispatcher now writes plan-coverage artifacts from the Step 0 materialized plan; below-middle coverage gaps remain warning-only, while missing or malformed coverage on a complete path fails closed and high-band or blocking actionable `todos_left` gaps require a recorded scope disposition. Full-suite validation-only reminders are ignored for this gate. The existing warn-only undeclared-manifest diagnostic still runs when git touched-path probes succeed.
 - **Plan-file coverage diagnostic**: Warn-only gate comparing explicit firm `### NEW:` / `### UPDATED:` / `### REWRITTEN:` headings against working-tree touched paths; emits `WARN_PLAN_FILES_UNTOUCHED=true` and `WARN_PLAN_FILES_UNTOUCHED_COUNT=<N>` when untouched; skips `### MAY_UPDATE:`; still commits on any probe outcome. See the inline Rust Step 2 route tests and `scripts/larch.sh plan scope-paths` for full gate semantics.
@@ -121,7 +121,7 @@ External implementer launches use a fixed 7200-second wall-clock timeout. `skill
 - `skills/implement/prompts/codex-implementer.md` — the system prompt this dispatcher invokes.
 - `skills/implement/prompts/cursor-implementer.md` — the system prompt this dispatcher invokes.
 - `skills/implement/SKILL.md` Step 2 — the caller; any change to the KV envelope must be mirrored in Step 2's parser.
-- `crates/larch-cli/tests/implement_step2_dispatch_parity.rs` and the inline Rust Step 2 command tests: any new outcome or reason token must be exercised.
+- The inline tests in `crates/larch-cli/src/implement_step2_commands.rs`: any new outcome or reason token must be exercised.
 - `scripts/larch.sh plan scope-paths` — shared `## Files to modify/create` scope grammar used by recovery plan-scope alignment.
 - `scripts/larch.sh dirty-tree scope-check` — fail-closed recovery scope verifier for malformed-manifest preservation.
 - `scripts/larch.sh implement recovery-paths` — shared recovery-delta recompute helper used by the dispatcher and Step 2.4 recovery path; `--capture-postlaunch` refreshes the postlaunch porcelain before diffing for orchestrator-owned fallback pathspecs.
@@ -171,7 +171,7 @@ Exception:
   Picking "latest" would be order-sensitive and could replay stale answers, so
   the Q/A loop passes the exact answers file for redispatch only.
 
-Harness: `crates/larch-cli/tests/implement_step2_dispatch_parity.rs` and the inline Rust Step 2 command tests.
+Harness: the inline tests in `crates/larch-cli/src/implement_step2_commands.rs`.
 
 ## Step 4 commit wrapper
 

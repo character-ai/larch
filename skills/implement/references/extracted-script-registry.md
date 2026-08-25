@@ -21,7 +21,6 @@ Prompt-side orchestration steps delegate to these script contracts:
 - `step-5-review.md`
 - `step-5-resume.md` (`"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" implement checks-step5-resume --checks-site step5-review-fixes`; `step-5-resume.sh --record-only` retained for terminal timing)
 - `step-6-entry.md` (`"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" implement step-6-entry`, via `step-6-entry.sh`)
-- `step-8-python-guard.md`
 - `step-8-seed-initial.md`
 - `step-8-ship.md`
 - `step-8-oos-checkpoint.md`

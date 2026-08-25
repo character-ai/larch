@@ -45,7 +45,7 @@ On success, stdout begins with `# Review Fluff Analysis`. If the log root is mis
 
 ## Implementation
 
-The analyzer is Rust-owned: `crates/larch-core/src/fluff_analysis.rs` (extraction, the multi-label semantic classifier, acceptance aggregation, and markdown report rendering) behind the `crates/larch-cli/src/fluff_analysis_commands.rs` CLI shim, reached only through `scripts/larch.sh fluff-analysis analyze`. Parity against the frozen Python reference is proven by `crates/larch-cli/tests/fluff_analysis_parity.rs` (`make test-fluff-analysis`).
+The analyzer is Rust-owned: `crates/larch-core/src/fluff_analysis.rs` (extraction, the multi-label semantic classifier, acceptance aggregation, and markdown report rendering) behind the `crates/larch-cli/src/fluff_analysis_commands.rs` CLI shim, reached only through `scripts/larch.sh fluff-analysis analyze`. The inline command tests run through `make test-fluff-analysis`.
 
 - `scripts/test-fluff-analysis-corpus.sh` (contract: `scripts/test-fluff-analysis-corpus.md`) — optional synchronized-cache smoke for post-version low-value acceptance.
 

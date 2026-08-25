@@ -94,9 +94,8 @@ const COMMANDS: [(&str, &str, u64, Option<&str>); 20] = [
 ];
 
 fn registry() -> String {
-    let mut output = String::from("schema_version = 2\n");
+    let mut output = String::from("schema_version = 3\n");
     for (domain, verb, issue, fixture) in COMMANDS {
-        let (python_module, python_function) = python_target(domain, verb);
         let fixture = fixture
             .map(|value| format!("clean_install_test = \"{value}\"\n"))
             .unwrap_or_default();
@@ -106,47 +105,14 @@ fn registry() -> String {
 [[commands]]
 domain = "{domain}"
 verb = "{verb}"
-python_module = "{python_module}"
-python_function = "{python_function}"
 machine_stdout = false
 owner = "rust"
-implementation_parity = "complete"
-consumer_cutover = "complete"
-python_removal = "complete"
 planning_issue = 7674
 migration_issue = {issue}
 {fixture}"#,
         );
     }
     output
-}
-
-fn python_target(domain: &str, verb: &str) -> (&'static str, &'static str) {
-    match (domain, verb) {
-        ("plugin", "read-version") => ("larch.release.version_bump", "read_plugin_version_main"),
-        ("release", "asset-candidate") => ("larch.release.assets", "candidate_main"),
-        ("release", "asset-run") => ("larch.release.release_finish", "asset_run_main"),
-        ("release", "classify-bump") => ("larch.release.version_bump", "classify_bump_main"),
-        ("release", "collect-assets") => ("larch.release.assets", "collect_main"),
-        ("release", "ensure-policy") => ("larch.release.release_finish", "ensure_policy_main"),
-        ("release", "finish") => ("larch.release.release_finish", "main"),
-        ("release", "package-asset") => ("larch.release.assets", "package_main"),
-        ("release", "plugin-runtime") => ("larch.release.plugin_runtime", "main"),
-        ("release", "prepare") => ("larch.release.release_prepare", "main"),
-        ("release", "promote") => ("larch.release.promote_release", "promote_main"),
-        ("release", "promote-latest") => ("larch.release.promote_release", "promote_latest_main"),
-        ("release", "reconcile-notes") => ("larch.release.release_prepare", "reconcile_notes_main"),
-        ("release", "set-version") => ("larch.release.version_bump", "set_version_main"),
-        ("release", "stage") => ("larch.release.release_finish", "stage_main"),
-        ("release", "validate-assets") => ("larch.release.assets", "validate_main"),
-        ("release", "validate-draft") => ("larch.release.release_finish", "validate_draft_main"),
-        ("upgrade-larch", "release-step7-root") => {
-            ("larch.core.upgrade_larch", "release_step7_root_main")
-        }
-        ("upgrade-larch", "run") => ("larch.core.upgrade_larch", "run_main"),
-        ("upgrade-larch", "sparse-dirs") => ("larch.core.upgrade_larch", "sparse_dirs_main"),
-        _ => panic!("unexpected fixture selector {domain} {verb}"),
-    }
 }
 
 fn prepare(repository: &TempRepo) {
@@ -199,12 +165,7 @@ fn rejects_non_final_missing_and_unapproved_rows() {
     let repository = TempRepo::new();
     prepare(&repository);
     let stale = registry()
-        .replacen("owner = \"rust\"", "owner = \"python\"", 1)
-        .replacen(
-            "python_module = \"larch.release.version_bump\"",
-            "python_module = \"larch.release.redirected\"",
-            1,
-        )
+        .replacen("owner = \"rust\"", "owner = \"retired\"", 1)
         .replace(
             "[[commands]]\ndomain = \"release\"\nverb = \"finish\"",
             "[[commands]]\ndomain = \"release\"\nverb = \"unowned\"",
@@ -220,10 +181,7 @@ fn rejects_non_final_missing_and_unapproved_rows() {
         .assert()
         .code(1)
         .stdout(predicate::str::contains(
-            "non-final release Python-free command row: plugin read-version",
-        ))
-        .stdout(predicate::str::contains(
-            "release retired Python target drift: plugin read-version",
+            "non-final release command row: plugin read-version",
         ))
         .stdout(predicate::str::contains(
             "unapproved release-owned command row: release unowned",

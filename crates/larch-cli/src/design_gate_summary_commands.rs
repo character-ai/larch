@@ -1,11 +1,8 @@
 //! Rust owner for the two `/design` rendering verbs `render-gate` and
 //! `render-final-summary` (#8581).
 //!
-//! Atomically replaces the Python registrations for `design render-gate`
-//! (`larch.design.design_gate_render`) and `design render-final-summary`
-//! (`larch.design.design_summary`). The frozen Python references live under
-//! `fixtures/rust-parity/` and drive the byte-parity harness in
-//! `crates/larch-cli/tests/design_gate_summary_migrated_parity.rs`.
+//! Owns `design render-gate` and `design render-final-summary`. Inline tests
+//! pin their compatibility grammars and rendered bytes.
 //!
 //! `render-gate` is a pure KEY=value renderer that reproduces the Python
 //! `argparse` grammar (prog `cli.py`) byte-for-byte, including its usage and

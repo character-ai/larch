@@ -1,7 +1,6 @@
 # Larch Makefile
 # Thin wrapper around pre-commit. Linter definitions live in .pre-commit-config.yaml.
 
-PYTHON ?= python3
 CARGO_DENY_VERSION ?= 0.20.2
 # `timing harness-mark` is Rust-owned (#8083). The dependency-free
 # `larch-harness-mark` boundary lets developer and CI harnesses start that timer
@@ -13,7 +12,7 @@ CARGO_DENY_VERSION ?= 0.20.2
 # temporary binary moves into place atomically so local parallel harnesses never
 # execute a partial helper. The two values are sampled before that build starts
 # so the timer can emit a cold-or-warm bootstrap diagnostic before the child.
-HARNESS_MARK ?= sh -c 'timer=target/harness-mark/larch-harness-mark; LARCH_HARNESS_BOOTSTRAP_START_NS="$$($(PYTHON) -c "import time; print(time.time_ns())")"; if test ! -x "$$timer" || test Makefile -nt "$$timer" || test crates/larch-harness-mark/src/main.rs -nt "$$timer" || test crates/larch-harness-mark/src/harness_mark.rs -nt "$$timer"; then LARCH_HARNESS_BOOTSTRAP_KIND=cold; else LARCH_HARNESS_BOOTSTRAP_KIND=warm; fi; export LARCH_HARNESS_BOOTSTRAP_START_NS LARCH_HARNESS_BOOTSTRAP_KIND; if test "$$LARCH_HARNESS_BOOTSTRAP_KIND" = cold; then mkdir -p target/harness-mark || exit 1; build_directory=$$(mktemp -d target/harness-mark/.build.XXXXXX) || exit 1; if ! rustc --edition=2024 --crate-name larch_harness_mark crates/larch-harness-mark/src/main.rs -o "$$build_directory/larch-harness-mark"; then rmdir "$$build_directory" || true; exit 1; fi; if ! mv "$$build_directory/larch-harness-mark" "$$timer"; then rmdir "$$build_directory" || true; exit 1; fi; rmdir "$$build_directory" || true; fi; exec "$$timer" "$$@"' --
+HARNESS_MARK ?= sh -c 'timer=target/harness-mark/larch-harness-mark; LARCH_HARNESS_BOOTSTRAP_START_NS="$$(date +%s)000000000"; if test ! -x "$$timer" || test Makefile -nt "$$timer" || test crates/larch-harness-mark/src/main.rs -nt "$$timer" || test crates/larch-harness-mark/src/harness_mark.rs -nt "$$timer"; then LARCH_HARNESS_BOOTSTRAP_KIND=cold; else LARCH_HARNESS_BOOTSTRAP_KIND=warm; fi; export LARCH_HARNESS_BOOTSTRAP_START_NS LARCH_HARNESS_BOOTSTRAP_KIND; if test "$$LARCH_HARNESS_BOOTSTRAP_KIND" = cold; then mkdir -p target/harness-mark || exit 1; build_directory=$$(mktemp -d target/harness-mark/.build.XXXXXX) || exit 1; if ! rustc --edition=2024 --crate-name larch_harness_mark crates/larch-harness-mark/src/main.rs -o "$$build_directory/larch-harness-mark"; then rmdir "$$build_directory" || true; exit 1; fi; if ! mv "$$build_directory/larch-harness-mark" "$$timer"; then rmdir "$$build_directory" || true; exit 1; fi; rmdir "$$build_directory" || true; fi; exec "$$timer" "$$@"' --
 
 .PHONY: lint lint-only test-harnesses test-harnesses-1 test-harnesses-2 shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-pipe-sigpipe-safety test-redact test-scrub-log-secrets test-redact-tmpdir-paths test-append-tool-failure test-append-execution-issue test-collect-agent-results test-blocker test-anti-improvised-wakeup test-audit-runs test-sessionstart test-cleanup-sessionstart test-check-clean-tree test-check-main-sync test-check-scope-reduction-marker test-plan-review-scope-anchor test-persist-retally-step3-env test-lib-scope-anchor-handoff test-check-stale-plugin test-cache-root-validation test-cache-key-discipline test-finalize-sanity-check test-audit-edit-write test-block-submodule test-deny-edit-write test-verify-skill-called test-hook-anti-read-poll test-extinct-notification-stack test-sessionstart-statusline test-hook-stop-fail-close test-classify-bump test-git-push test-lint-no-raw-stderr-after-quiet-init test-lint-readability-preamble test-anti-halt test-orchestrator-scope-sync test-alias-structure test-design-structure test-decompose-panel-dispatch test-decompose-aggregator test-decompose-file-issues test-design-driver test-design-clarify test-design-publish test-design-postplan-emit test-invoke-plan-validator test-file-design-oos test-emit-plan test-gate-b-dedup-plan test-trailer-helpers test-emit-design-plan-preview test-check-plan-size test-parse-plan-commands test-validate-plan-commands test-step3-review-cap test-run-step3-review test-plan-review-loop test-tally-plan-review test-finalize-plan test-step0b-router-flag-recovery test-brainstorm-prompts test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-implement-rebase-macro test-phantom-probe-with-warn test-implement-step2-routing test-implement-structure test-implement-step8-exit3-first-fixer test-oos-disposition-gate test-step-8-oos-checkpoint test-plan-adequacy-audit test-implement-preflight test-implement-positional-issue test-implement-fence-shape test-architectural-guidelines-step test-implement-timing-rehydration test-implement-cleanup-roundtrip test-implement-relevant-checks-anti-halt test-implement-anti-halt test-step2-dispatch test-refresh-run-logs  test-run-negotiation-round test-launch-claude-subprocess test-launch-claude-review test-dispatch-with-waterfall test-run-external-agent test-run-external-agent-args test-quick-mode-docs-sync test-implement-bootstrap test-implement-bootstrap-invoke test-implement-finalize test-flush-execution-issues test-post-tracking-issue test-commit-implementation test-review-and-fix-commit-fixes test-generate-code-flow-diagram test-review-and-fix-write-rejected test-step-16-17 test-write-final-report write-final-report-py-harness write-final-report-bash-harness test-step-18b-final-report test-token-cost test-render-cost-line test-implement-cleanup-script test-harness-shards-coverage test-references-headers test-research-structure test-review-structure test-gather-context test-gather-branch-context test-review-core test-dispatch-panel-core test-dispatch-panel-core-dynamic test-dispatch-panel-reuse test-dispatch-panel-limits test-scout-dynamic-archetypes test-dispatch-plan-voters test-collect-findings test-aggregate-findings test-prune-nit-findings test-tally-code-votes test-check-reviewer-failure-threshold test-dispatch-code-voters test-emit-tally test-log-phase test-review-and-fix test-review-and-fix-dispatch test-review-and-fix-convergence test-review-and-fix-parsers test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-larch-log test-capture-session-transcript test-larch-logs-manifest test-larch-logs-batches test-compose-plan-goals-test test-compose-collector-failure-log test-tracking-issue-summary test-tracking-issue-read-sentinel test-compose-review-findings test-token-tally test-token-ledger test-token-report test-timing-ledger test-token-vendor-scrapers test-token-claude-source test-review-and-fix-check-changes test-check-mid-run-dirty-tree test-check-phantom-dirty test-check-reviewers test-degraded-tools-gate test-external-tool-registry test-effort-prose test-lib-design-tmpdir test-get-issue-context eval-research test-wait-for-reviewers test-classify-diff-mode test-analyze test-compute-pr-line-counts test-review-and-fix-step5 test-run-step2-dispatch test-prompt-template-invariants test-verify-run-log-completeness test-design-log-publish test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-pause-skill test-fluff-analysis test-rejected-analysis
 
@@ -25,7 +24,7 @@ HARNESS_MARK ?= sh -c 'timer=target/harness-mark/larch-harness-mark; LARCH_HARNE
 .PHONY: test-git-commit-only
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
 .PHONY: test-auto-fix-plan-commands test-design-step2b-drafter test-gate-b-apply-mode
-.PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope lint-retired-scripts
+.PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope
 .PHONY: agent-sync
 .PHONY: test-hook-deny-run-in-background test-bgjob
 .PHONY: test-step-7a step-7a-bash-harness test-step-8-oos-checkpoint
@@ -105,13 +104,13 @@ test-pipe-sigpipe-safety:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
 
 test-redact:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration redact_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch redact_commands::tests
 
 test-scrub-log-secrets:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration redact_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch redact_commands::tests
 
 test-redact-tmpdir-paths:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration redact_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch redact_commands::tests
 
 test-reviewer-prune:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration review_commands::reviewer_prune
@@ -133,16 +132,16 @@ test-analyze:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch analyze_issues_commands
 
 test-fluff-analysis:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration fluff_analysis_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch fluff_analysis_commands::tests
 
 test-rejected-analysis:
 	$(HARNESS_MARK) --label $@ -- bash skills/rejected-analysis/scripts/test-rejected-analysis.sh
 
 test-difficulty-calibration:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration difficulty_calibration_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration difficulty_commands::
 
 test-voter-calibration:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration voter_calibration_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch voter_calibration_commands::tests
 
 test-fluff-analysis-corpus:
 	$(HARNESS_MARK) --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh
@@ -190,7 +189,7 @@ test-plan-review-scope-anchor:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_review_loop_commands::tests::utility_and_persistence
 
 test-lib-scope-anchor-handoff:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration scope_anchor_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch rendering_commands::tests
 
 test-check-stale-plugin:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-check-stale-plugin.sh
@@ -203,7 +202,7 @@ test-cache-key-discipline:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-cache-key-discipline.sh
 
 test-finalize-sanity-check:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration implement_finalize_parity::cleanup
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch implement_finalize_commands::tests
 
 
 test-audit-edit-write:
@@ -340,19 +339,19 @@ test-pause-skill:
 	$(HARNESS_MARK) --label $@ -- bash skills/pause/scripts/test-pause-skill.sh
 
 test-decompose-panel-dispatch:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration decompose_parity::panel_
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration decompose::panel_
 
 test-decompose-aggregator:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration decompose_parity::aggregate_
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration decompose::aggregate_
 
 test-decompose-file-issues:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration decompose_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration decompose::
 
 test-design-step2b-drafter:
 	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --bin larch design_step2b_commands::
 
 test-design-driver:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration design_step1_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch design_step1_commands::tests
 
 test-design-clarify:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-clarify.sh
@@ -369,14 +368,12 @@ test-read-result-env:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-read-result-env.sh
 
 test-invoke-plan-validator:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_quality_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch plan_quality_commands::tests
 
 test-file-design-oos:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-core --lib design::oos
 	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-cli --bin larch design_oos_commands
 	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-cli --bin larch design_settle_commands
-	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-cli --test integration design_oos_migrated_parity::
-	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-cli --test integration design_settle_migrated_parity::
 
 # Rust-owned design log-publish (#8592); archive selection filter coverage.
 test-design-log-publish:
@@ -392,23 +389,23 @@ test-gate-b-apply-mode:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-gate-b-apply-mode.sh
 
 test-trailer-helpers:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_quality_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch plan_quality_commands::tests
 
 test-emit-design-plan-preview:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_review_loop_commands::tests::preview_and_finalize
 test-check-plan-size:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_quality_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch plan_quality_commands::tests
 
 test-auto-fix-plan-commands:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_quality_coverage::auto_fix
 
 
 test-parse-plan-commands:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_quality_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch plan_quality_commands::tests
 
 
 test-validate-plan-commands:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_quality_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch plan_quality_commands::tests
 
 test-tally-plan-review:
 	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --test integration plan_review_commands::tests::degraded_tally_modes_preserve_the_frozen_contract
@@ -463,7 +460,7 @@ test-finalize-plan:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_review_loop_commands::tests::preview_and_finalize
 
 test-step0b-router-flag-recovery:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration design_router_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch design_commands::tests
 
 test-brainstorm-prompts:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-brainstorm-prompts.sh
@@ -510,7 +507,7 @@ test-plan-adequacy-audit:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-plan-adequacy-audit.sh
 
 test-implement-preflight:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration implement_admission_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration implement_admission::
 
 test-implement-positional-issue:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-positional-issue.sh
@@ -541,7 +538,7 @@ test-run-step2-dispatch:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch implement_step2_commands::commands_tests::run_dispatch
 
 test-step2-dispatch:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration implement_step2_dispatch_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration implement_step2_dispatch::
 
 # test-stall-recovery-report runs the Rust contract-lint test and focused Rust
 # core/adapter suites. The aggregate and Rust aliases are standalone carve-outs;
@@ -610,15 +607,15 @@ test-quick-mode-docs-sync:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-quick-mode-docs-sync.sh --self-test
 
 test-implement-finalize:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration implement_finalize_parity::finalize
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch implement_finalize_commands::tests
 
 test-implement-bootstrap:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch implement_bootstrap_continuation::tests
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration parity::bootstrap_invoke_clean_install_runs_native_plan_coder_and_tail
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration clean_install::bootstrap_invoke_clean_install_runs_native_plan_coder_and_tail
 
 test-implement-bootstrap-invoke:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch bootstrap_commands::tests
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration parity::bootstrap_invoke_stdout_is_pinned_for_fresh_and_resume_paths
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration clean_install::bootstrap_invoke_stdout_is_pinned_for_fresh_and_resume_paths
 
 test-parse-bootstrap-routing-envelope:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch bootstrap_commands::tests
@@ -648,7 +645,7 @@ test-post-tracking-issue:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch post_issue_
 
 test-commit-implementation:
-	$(HARNESS_MARK) --label $@ -- cargo nextest run --locked --package larch-cli --test integration -E 'test(/^implement_commit_route_parity::.*commit_/)'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration implement_commit_route::commit_
 
 test-review-and-fix-commit-fixes:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration review_and_fix_commands::implementation::self_review_snapshot_commits_only_its_delta
@@ -660,7 +657,7 @@ test-review-and-fix-write-rejected:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration review_and_fix_commands::
 
 test-step-16-17:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration implement_closeout_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration final_report::
 
 test-write-final-report: write-final-report-py-harness write-final-report-bash-harness
 
@@ -674,14 +671,11 @@ write-final-report-bash-harness:
 test-token-cost:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration token_commands::cost_and_render_cost_line_preserve_cli_contracts
 
-lint-retired-scripts:
-	cargo run --quiet --locked --package larch-cli -- lint rule retired-scripts
-
 test-render-cost-line:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration token_commands::cost_and_render_cost_line_preserve_cli_contracts
 
 test-implement-cleanup-script:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration implement_finalize_parity::cleanup
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch implement_finalize_commands::tests
 
 test-harness-shards-coverage:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-harness-shards-coverage.sh
@@ -821,7 +815,7 @@ test-larch-logs-batches:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration run_log_entry::
 
 test-compose-plan-goals-test:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_quality_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch plan_quality_commands::tests
 
 test-compose-collector-failure-log:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration agent_commands::compose_collector_failure_log_redacts_and_writes_sections
@@ -891,7 +885,6 @@ test-wait-for-reviewers:
 
 test-classify-diff-mode:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration agent_commands::classify_diff_covers_modes_mixed_changes_and_bad_manifests
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration rendering_migrated_parity::specialist_classifies_a_docs_diff_in_process
 
 test-gather-branch-context:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration agent_commands::gather_branch_context
@@ -949,13 +942,13 @@ setup:
 .PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step-final-summary test-design-step3-review test-design-step3b-tail test-design-step3b-entry test-design-step3-entry test-design-small-session-entries test-design-step0-init test-design-step5c test-design-step6 test-design-step-validator-autofix
 
 test-design-stage-terminal-state:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration design_terminal_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch design_terminal_commands::tests
 
 test-design-failure-report:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration design_terminal_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch design_terminal_commands::tests
 
 test-design-step-final-summary:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration design_terminal_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch design_terminal_commands::tests
 
 test-design-step3-review:
 	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test integration plan_review_loop_commands::tests::normalize
@@ -975,17 +968,17 @@ test-design-small-session-entries:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_review_loop_commands::tests::normalize_and_session_entry
 
 test-design-step0-init:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration design_step0_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch design_step0_commands::tests
 
 test-design-step5c:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step5c.sh
-	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test integration design_settle_migrated_parity::migrated_design_step5c_matches_frozen_python
+	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --bin larch design_finalize_commands::tests
 
 test-design-step6:
-	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test integration design_settle_migrated_parity::migrated_design_step6_matches_frozen_python
+	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --bin larch design_finalize_commands::tests
 
 test-design-step-validator-autofix:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_quality_coverage::validator_autofix
 
 test-design-step1d5:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration design_step1_migrated_parity::
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch design_step1_commands::tests

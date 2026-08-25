@@ -12,7 +12,6 @@ trap 'rm -rf "$TMPROOT"' EXIT
 HARNESS_PLUGIN_ROOT="$TMPROOT/plugin"
 mkdir -p "$HARNESS_PLUGIN_ROOT/scripts"
 cp "$SOURCE_SCRIPT" "$HARNESS_PLUGIN_ROOT/scripts/file-failure-report-cross-repo.sh"
-cp -R "$SCRIPT_DIR/../python" "$HARNESS_PLUGIN_ROOT/"
 cat >"$HARNESS_PLUGIN_ROOT/scripts/larch.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -606,9 +605,6 @@ cp "$SOURCE_SCRIPT" "$fake_root/scripts/file-failure-report-cross-repo.sh"
 chmod +x "$fake_root/scripts/file-failure-report-cross-repo.sh"
 cp "$HARNESS_PLUGIN_ROOT/scripts/larch.sh" "$fake_root/scripts/larch.sh"
 chmod +x "$fake_root/scripts/larch.sh"
-mkdir -p "$fake_root/python"
-cp "$SCRIPT_DIR/../python/cli.py" "$fake_root/python/cli.py"
-cp -R "$SCRIPT_DIR/../python/larch" "$fake_root/python/"
 GH_STUB_CASE='tier-b-sensitive'; export GH_STUB_CASE
 set +e
 PATH="$dir/bin:$PATH" GH_STUB_CASE="$GH_STUB_CASE" GH_STUB_LOG="$dir/gh-validator.log" GH_COMMENT_CAPTURE="$dir/comment-validator.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_ISSUE_MUTATION_DENY="" "$fake_root/scripts/file-failure-report-cross-repo.sh" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md" --mutation-context "$LIVE_CONTEXT" --run-id run-1 --trusted-root "$LIVE_ROOT" >"$dir/out-validator" 2>"$dir/out-validator.err"

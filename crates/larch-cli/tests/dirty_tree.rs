@@ -1,14 +1,10 @@
 //! Differential and contract coverage for the Rust-owned dirty-tree commands.
 
 use std::{
-    ffi::OsString,
     fs,
     path::{Path, PathBuf},
-    process::{Command as ProcessCommand, Output},
+    process::Output,
 };
-
-#[cfg(unix)]
-use std::os::unix::ffi::OsStringExt as _;
 
 use assert_cmd::Command;
 use larch_test_support::{GitFixture, GitFixtureError, GitRepository};
@@ -54,116 +50,6 @@ fn fixture_or_skip(fixture: GitFixture) -> Option<GitRepository> {
             None
         }
         Err(error) => panic!("Git fixture failed: {error}"),
-    }
-}
-
-fn fixture_path(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/rust-parity")
-        .join(name)
-}
-
-fn python_baseline_output(cwd: &Path, baseline: &Path, sidecar: &Path) -> Output {
-    ProcessCommand::new("python3") // lint-subprocess-via-runner: ok frozen test-only Python parity oracle
-        .arg(fixture_path("dirty_tree_reference.py"))
-        .args([
-            "--baseline",
-            text_path(baseline).as_str(),
-            "--sidecar",
-            text_path(sidecar).as_str(),
-            "--cwd",
-            text_path(cwd).as_str(),
-        ])
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .output()
-        .expect("run frozen Python dirty-tree oracle")
-}
-
-fn normalize_workspace_paths(bytes: &[u8], workspace: &Path) -> Vec<u8> {
-    let text = String::from_utf8(bytes.to_vec()).expect("dirty-tree metadata must be UTF-8");
-    let workspace = text_path(workspace);
-    text.replace(&workspace, "<WORKSPACE>").into_bytes()
-}
-
-#[test]
-fn baseline_matches_frozen_python_oracle_for_non_utf8_paths() {
-    #[cfg(not(unix))]
-    {
-        eprintln!("explicit capability skip: raw-byte paths require Unix");
-        return;
-    }
-
-    #[cfg(unix)]
-    {
-        let Some(python_repository) = fixture_or_skip(GitFixture::NonUtf8Path) else {
-            return;
-        };
-        let Some(rust_repository) = fixture_or_skip(GitFixture::NonUtf8Path) else {
-            return;
-        };
-        let tracked = OsString::from_vec(b"non-utf8-\xff".to_vec());
-        let untracked = OsString::from_vec(b"new-untracked-\xfe".to_vec());
-        for repository in [&python_repository, &rust_repository] {
-            fs::write(repository.root().join(&tracked), b"changed\n")
-                .expect("modify raw-byte tracked file");
-            fs::write(repository.root().join(&untracked), b"new\n")
-                .expect("write raw-byte untracked file");
-        }
-
-        let python_baseline = python_repository.workspace_root().join("baseline.z");
-        let python_sidecar = python_repository.workspace_root().join("dirty-tree");
-        let rust_baseline = rust_repository.workspace_root().join("baseline.z");
-        let rust_sidecar = rust_repository.workspace_root().join("dirty-tree");
-        fs::write(&python_baseline, []).expect("write Python baseline");
-        fs::write(&rust_baseline, []).expect("write Rust baseline");
-
-        let python =
-            python_baseline_output(python_repository.root(), &python_baseline, &python_sidecar);
-        let rust = larch_output(
-            rust_repository.root(),
-            &dirty_tree_arguments(
-                "baseline",
-                &[("--baseline", &rust_baseline), ("--sidecar", &rust_sidecar)],
-            ),
-        );
-
-        assert_eq!(rust.status.code(), python.status.code());
-        assert_eq!(
-            normalize_workspace_paths(&rust.stdout, rust_repository.workspace_root()),
-            normalize_workspace_paths(&python.stdout, python_repository.workspace_root()),
-        );
-        assert_eq!(rust.stderr, python.stderr);
-        assert_eq!(
-            normalize_workspace_paths(
-                &fs::read(&rust_sidecar).expect("read Rust sidecar"),
-                rust_repository.workspace_root(),
-            ),
-            normalize_workspace_paths(
-                &fs::read(&python_sidecar).expect("read Python sidecar"),
-                python_repository.workspace_root(),
-            ),
-        );
-        assert_eq!(
-            fs::read(PathBuf::from(format!(
-                "{}.tracked-paths",
-                rust_sidecar.display()
-            )))
-            .expect("read Rust tracked paths"),
-            fs::read(PathBuf::from(format!(
-                "{}.tracked-paths",
-                python_sidecar.display()
-            )))
-            .expect("read Python tracked paths"),
-        );
-        assert_eq!(
-            fs::read(PathBuf::from(format!(
-                "{}.new-untracked-paths",
-                rust_sidecar.display()
-            )))
-            .expect("read Rust untracked paths"),
-            b"new-untracked-\xfe\0",
-        );
     }
 }
 

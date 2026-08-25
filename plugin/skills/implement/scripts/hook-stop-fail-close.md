@@ -24,4 +24,4 @@ IMPLEMENT_TMPDIR=$(CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch
 
 A failed resolver, empty stdout, a missing matching tmpdir, a stale candidate, or `.run-cleaned-up` all allow Stop to proceed.
 
-Edit in sync with `hooks/hooks.json`, `skills/implement/SKILL.md` Steps 6 and 8, `python/session_env.py`, and `scripts/test-implement-anti-halt.sh`.
+Edit in sync with `hooks/hooks.json`, `skills/implement/SKILL.md` Steps 6 and 8, `crates/larch-cli/src/session_lifecycle_commands.rs`, and `scripts/test-implement-anti-halt.sh`.

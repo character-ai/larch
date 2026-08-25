@@ -104,9 +104,6 @@ fn agent_python_free_rejects_restored_python_surfaces_and_runtime_callers() {
         ))
         .stdout(predicate::str::contains(
             "scripts/legacy.sh:2: live runtime or tooling still references the retired Python vendor-agent surface",
-        ))
-        .stdout(predicate::str::contains(
-            "retired vendor-agent Python entry point returned: larch.agents.agents.check_reviewers_main",
         ));
 }
 
