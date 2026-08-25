@@ -22,98 +22,95 @@ fi
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-design-step3b-tail.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 PLUGIN="$TMP/plugin"
-mkdir -p "$PLUGIN/python" "$PLUGIN/scripts" "$PLUGIN/skills/design/scripts"
-ln -s "$ROOT/python/larch" "$PLUGIN/python/larch"
+mkdir -p "$PLUGIN/scripts" "$PLUGIN/skills/design/scripts"
 cp "$SUBJECT" "$PLUGIN/skills/design/scripts/design-step3b-tail.sh"
 chmod +x "$PLUGIN/skills/design/scripts/design-step3b-tail.sh"
-# The wrappers reach the Rust session verbs through the verified bootstrap.
-mkdir -p "$PLUGIN/scripts"
-cat >"$PLUGIN/scripts/larch.sh" <<'LARCH_STUB'
-#!/usr/bin/env bash
-set -uo pipefail
-case "${1:-} ${2:-}" in
-  "session require-plugin-root"|"session validate-design-tmpdir") exit 0 ;;
-esac
-printf '%s\n' "unexpected larch command: $*" >&2
-exit 64
-LARCH_STUB
-chmod +x "$PLUGIN/scripts/larch.sh"
-cat >"$PLUGIN/python/cli.py" <<'PY'
-#!/usr/bin/env python3
-from __future__ import annotations
-
-import os
-import subprocess
-import sys
-from pathlib import Path
-
-args = sys.argv[1:]
-if args[:2] == ["bgjob", "write-merge-result-env"]:
-    destination = Path(args[args.index("--path") + 1])
-    tmpdir = Path(args[args.index("--tmpdir") + 1]).resolve()
-    destination.resolve().relative_to(tmpdir)
-    rows = []
-    for index, value in enumerate(args):
-        if value == "--row":
-            rows.append(tuple(args[index + 1].split("=", 1)))
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(
-        "".join(f"{key}={value}\n" for key, value in rows), encoding="utf-8"
-    )
-    raise SystemExit(0)
-if args[:2] == ["bgjob", "adapt"] and "--resolve-session-env" in args:
-    source = Path(args[args.index("--session-env-path") + 1])
-    print(source.read_text(encoding="utf-8"), end="")
-    raise SystemExit(0)
-if args[:2] == ["bgjob", "adapt"]:
-    step = args[args.index("--step") + 1]
-    tmpdir = Path(args[args.index("--tmpdir") + 1])
-    command = args[args.index("--") + 1:]
-    bgjob = tmpdir / "bgjob"
-    bgjob.mkdir(exist_ok=True)
-    result = bgjob / f"{step}.result.env"
-    if result.is_file():
-        print("BGJOB_STATUS=DONE")
-        print(result.read_text(encoding="utf-8"), end="")
-        raise SystemExit(0)
-    merge = bgjob / f"{step}.merge.env"
-    merge.write_text("", encoding="utf-8")
-    if os.environ.get("TAIL_PAUSE_RACE") == "1":
-        (tmpdir / ".pause-requested").touch()
-    rc = subprocess.call(
-        [*command, "--bgjob-child", "--merge-result-env", str(merge)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    rows = [("BGJOB_RC", str(rc)), ("STEP", step)]
-    if merge.is_file():
-        for line in merge.read_text(encoding="utf-8").splitlines():
-            if "=" in line:
-                rows.append(tuple(line.split("=", 1)))
-    result.write_text("".join(f"{key}={value}\n" for key, value in rows), encoding="utf-8")
-    print(f"BGJOB_STATUS=STARTED STEP={step} PGID=12345")
-    raise SystemExit(0)
-if args[:2] == ["session", "validate-design-tmpdir"]:
-    raise SystemExit(0)
-if args[:2] == ["timing", "mark"]:
-    raise SystemExit(0)
-if args[:2] == ["design", "pause-save"]:
-    design = Path(args[args.index("--design-tmpdir") + 1])
-    (design / ".pause-save-complete").touch()
-    raise SystemExit(0)
-if args[:2] == ["design", "dialectic-gatec"]:
-    raise SystemExit(0)
-if args[:2] == ["plan-review", "preview"]:
-    print("preview")
-    raise SystemExit(0)
-if args[:2] == ["plan-review", "emit-rejected"]:
-    raise SystemExit(0)
-raise SystemExit(2)
-PY
-chmod +x "$PLUGIN/python/cli.py"
 cat >"$PLUGIN/scripts/larch.sh" <<'SH'
 #!/usr/bin/env bash
-exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" "$@"
+set -uo pipefail
+
+option_value() {
+  local needle="$1"
+  shift
+  while [[ $# -gt 1 ]]; do
+    if [[ "$1" == "$needle" ]]; then
+      printf '%s\n' "$2"
+      return 0
+    fi
+    shift
+  done
+  return 1
+}
+
+case "${1:-} ${2:-}" in
+  "session require-plugin-root"|"session validate-design-tmpdir"|"timing mark"|"design dialectic-gatec"|"plan-review emit-rejected")
+    exit 0
+    ;;
+  "plan-review preview")
+    printf 'preview\n'
+    exit 0
+    ;;
+  "design pause-save")
+    design="$(option_value --design-tmpdir "$@")" || exit 2
+    : >"$design/.pause-save-complete"
+    exit 0
+    ;;
+  "bgjob write-merge-result-env")
+    destination="$(option_value --path "$@")" || exit 2
+    tmpdir="$(option_value --tmpdir "$@")" || exit 2
+    case "$destination" in "$tmpdir"/*) ;; *) exit 2 ;; esac
+    mkdir -p "${destination%/*}"
+    : >"$destination"
+    while [[ $# -gt 0 ]]; do
+      if [[ "$1" == "--row" && $# -gt 1 ]]; then
+        printf '%s\n' "$2" >>"$destination"
+        shift 2
+      else
+        shift
+      fi
+    done
+    exit 0
+    ;;
+  "bgjob adapt")
+    if [[ " $* " == *" --resolve-session-env "* ]]; then
+      source_path="$(option_value --session-env-path "$@")" || exit 2
+      cat "$source_path"
+      exit 0
+    fi
+    step="$(option_value --step "$@")" || exit 2
+    tmpdir="$(option_value --tmpdir "$@")" || exit 2
+    args=("$@")
+    command=()
+    for ((index = 0; index < ${#args[@]}; index++)); do
+      if [[ "${args[$index]}" == "--" ]]; then
+        command=("${args[@]:$((index + 1))}")
+        break
+      fi
+    done
+    [[ ${#command[@]} -gt 0 ]] || exit 2
+    bgjob="$tmpdir/bgjob"
+    result="$bgjob/$step.result.env"
+    merge="$bgjob/$step.merge.env"
+    mkdir -p "$bgjob"
+    if [[ -f "$result" && ! -L "$result" ]]; then
+      printf 'BGJOB_STATUS=DONE\n'
+      cat "$result"
+      exit 0
+    fi
+    : >"$merge"
+    [[ "${TAIL_PAUSE_RACE:-}" == "1" ]] && : >"$tmpdir/.pause-requested"
+    "${command[@]}" --bgjob-child --merge-result-env "$merge" >/dev/null 2>&1
+    rc=$?
+    {
+      printf 'BGJOB_RC=%s\nSTEP=%s\n' "$rc" "$step"
+      [[ -f "$merge" && ! -L "$merge" ]] && cat "$merge"
+    } >"$result"
+    printf 'BGJOB_STATUS=STARTED STEP=%s PGID=12345\n' "$step"
+    exit 0
+    ;;
+esac
+printf 'unexpected larch command: %s\n' "$*" >&2
+exit 2
 SH
 chmod +x "$PLUGIN/scripts/larch.sh"
 

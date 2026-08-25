@@ -27,7 +27,7 @@ python3 <<'PY'
 from pathlib import Path
 import sys
 lines=Path('skills/implement/SKILL.md').read_text().splitlines()
-blocked=('session read-key','python3 python/cli.py token','python3 python/cli.py timing','scripts/larch.sh timing report','scripts/larch.sh timing telemetry-mark')
+blocked=('session read-key','scripts/larch.sh timing report','scripts/larch.sh timing telemetry-mark')
 in_fence=False; start=0; errors=[]
 for i,line in enumerate(lines,1):
     if line.lstrip().startswith('```bash'):

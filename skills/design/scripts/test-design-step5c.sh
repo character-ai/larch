@@ -12,110 +12,115 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-design-step5c.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
 FAKE_PLUGIN="$TMP/plugin"
-mkdir -p "$FAKE_PLUGIN/python" "$FAKE_PLUGIN/scripts" "$FAKE_PLUGIN/skills/design/scripts"
-ln -s "$ROOT/python/larch" "$FAKE_PLUGIN/python/larch"
+mkdir -p "$FAKE_PLUGIN/scripts" "$FAKE_PLUGIN/skills/design/scripts"
 cp "$SUBJECT" "$FAKE_PLUGIN/skills/design/scripts/design-step5c.sh"
 chmod +x "$FAKE_PLUGIN/skills/design/scripts/design-step5c.sh"
-# The wrappers reach the Rust session verbs through the verified bootstrap.
-mkdir -p "$FAKE_PLUGIN/scripts"
-cat >"$FAKE_PLUGIN/scripts/larch.sh" <<'LARCH_STUB'
-#!/usr/bin/env bash
-set -uo pipefail
-case "${1:-} ${2:-}" in
-  "session require-plugin-root"|"session validate-design-tmpdir") exit 0 ;;
-esac
-printf '%s\n' "unexpected larch command: $*" >&2
-exit 64
-LARCH_STUB
-chmod +x "$FAKE_PLUGIN/scripts/larch.sh"
-cat >"$FAKE_PLUGIN/python/cli.py" <<'PY'
-#!/usr/bin/env python3
-from __future__ import annotations
-
-import json
-import os
-import subprocess
-import sys
-from pathlib import Path
-
-args = sys.argv[1:]
-if args[:3] == ["session", "validate-design-tmpdir", os.environ.get("DESIGN_TMPDIR", "")]:
-    raise SystemExit(0)
-if args[:2] == ["bgjob", "adapt"] and "--resolve-session-env" in args:
-    source = Path(args[args.index("--session-env-path") + 1])
-    print(source.read_text(encoding="utf-8"), end="")
-    raise SystemExit(0)
-if args[:2] == ["bgjob", "adapt"]:
-    step = args[args.index("--step") + 1]
-    tmpdir = Path(args[args.index("--tmpdir") + 1])
-    merge_env = tmpdir / "bgjob" / f"{step}.merge.env"
-    command = args[args.index("--") + 1 :]
-    result_dir = tmpdir / "bgjob"
-    result_dir.mkdir(exist_ok=True)
-    result_env = result_dir / f"{step}.result.env"
-    if result_env.is_file() and "--replace-completed-result" not in args:
-        print("BGJOB_STATUS=DONE")
-        print(result_env.read_text(encoding="utf-8"), end="")
-        raise SystemExit(0)
-    if "--replace-completed-result" in args:
-        try:
-            result_env.unlink()
-        except FileNotFoundError:
-            pass
-    merge_env.write_text("", encoding="utf-8")
-    rc = subprocess.call(
-        [*command, "--bgjob-child", "--merge-result-env", str(merge_env)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    rows = [("BGJOB_RC", str(rc)), ("BGJOB_ELAPSED_S", "0"), ("STEP", step)]
-    if merge_env.is_file() and not merge_env.is_symlink():
-        for raw in merge_env.read_text(encoding="utf-8").splitlines():
-            if "=" in raw:
-                key, value = raw.split("=", 1)
-                if key not in {"BGJOB_RC", "BGJOB_ELAPSED_S", "STEP"}:
-                    rows.append((key, value))
-    result_env.write_text("".join(f"{key}={value}\n" for key, value in rows), encoding="utf-8")
-    print(f"BGJOB_STATUS=STARTED STEP={step} PGID=12345")
-    raise SystemExit(0)
-if args[:2] == ["bgjob", "wait"]:
-    step = args[args.index("--step") + 1]
-    tmpdir = Path(args[args.index("--tmpdir") + 1])
-    result_env = tmpdir / "bgjob" / f"{step}.result.env"
-    if result_env.is_file() and not result_env.is_symlink():
-        print("BGJOB_STATUS=DONE")
-        print(result_env.read_text(encoding="utf-8"), end="")
-    else:
-        print("BGJOB_STATUS=DEAD")
-    raise SystemExit(0)
-if args[:2] == ["design", "step5c"]:
-    log = os.environ.get("DESIGN_STEP5C_STUB_LOG")
-    if log:
-        Path(log).write_text(json.dumps(args) + "\n", encoding="utf-8")
-    design_tmpdir = Path(os.environ["DESIGN_TMPDIR"])
-    refusal = os.environ.get("DESIGN_STEP5C_STUB_REFUSAL", "")
-    publish_rc = "4" if refusal else "0"
-    plan_write_ok = "false" if refusal else "true"
-    publish_ok = "false" if refusal else "true"
-    status = (
-        f"PLAN_WRITE_OK={plan_write_ok}\nPUBLISH_OK={publish_ok}\nPUBLISH_RC={publish_rc}\n"
-        "VALIDATE_STATUS=ok\nFINAL_SUMMARY_PATH=/tmp/final-summary.md\n"
-        f"CLEANUP_ELIGIBLE={'false' if refusal else 'true'}\n"
-        f"PUBLISH_REFUSE_REASON={refusal}\n"
-    )
-    (design_tmpdir / ".design-step5c-status.env").write_text(
-        status,
-        encoding="utf-8",
-    )
-    if args[-3:-1] == ["--bgjob-child", "--merge-result-env"]:
-        Path(args[-1]).write_text(status, encoding="utf-8")
-    raise SystemExit(int(os.environ.get("DESIGN_STEP5C_STUB_RC", "0")))
-raise SystemExit(2)
-PY
-chmod +x "$FAKE_PLUGIN/python/cli.py"
 cat >"$FAKE_PLUGIN/scripts/larch.sh" <<'SH'
 #!/usr/bin/env bash
-exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" "$@"
+set -uo pipefail
+
+option_value() {
+  local needle="$1"
+  shift
+  while [[ $# -gt 1 ]]; do
+    if [[ "$1" == "$needle" ]]; then
+      printf '%s\n' "$2"
+      return 0
+    fi
+    shift
+  done
+  return 1
+}
+
+case "${1:-} ${2:-}" in
+  "session require-plugin-root"|"session validate-design-tmpdir")
+    exit 0
+    ;;
+  "bgjob adapt")
+    if [[ " $* " == *" --resolve-session-env "* ]]; then
+      source_path="$(option_value --session-env-path "$@")" || exit 2
+      cat "$source_path"
+      exit 0
+    fi
+    step="$(option_value --step "$@")" || exit 2
+    tmpdir="$(option_value --tmpdir "$@")" || exit 2
+    args=("$@")
+    command=()
+    replace=false
+    for ((index = 0; index < ${#args[@]}; index++)); do
+      [[ "${args[$index]}" == "--replace-completed-result" ]] && replace=true
+      if [[ "${args[$index]}" == "--" ]]; then
+        command=("${args[@]:$((index + 1))}")
+        break
+      fi
+    done
+    [[ ${#command[@]} -gt 0 ]] || exit 2
+    result_dir="$tmpdir/bgjob"
+    result="$result_dir/$step.result.env"
+    merge="$result_dir/$step.merge.env"
+    mkdir -p "$result_dir"
+    if [[ -f "$result" && ! -L "$result" && "$replace" == false ]]; then
+      printf 'BGJOB_STATUS=DONE\n'
+      cat "$result"
+      exit 0
+    fi
+    [[ "$replace" == true ]] && rm -f "$result"
+    : >"$merge"
+    "${command[@]}" --bgjob-child --merge-result-env "$merge" >/dev/null 2>&1
+    rc=$?
+    {
+      printf 'BGJOB_RC=%s\nBGJOB_ELAPSED_S=0\nSTEP=%s\n' "$rc" "$step"
+      if [[ -f "$merge" && ! -L "$merge" ]]; then
+        while IFS= read -r row; do
+          case "$row" in BGJOB_RC=*|BGJOB_ELAPSED_S=*|STEP=*) ;; *=*) printf '%s\n' "$row" ;; esac
+        done <"$merge"
+      fi
+    } >"$result"
+    printf 'BGJOB_STATUS=STARTED STEP=%s PGID=12345\n' "$step"
+    exit 0
+    ;;
+  "bgjob wait")
+    step="$(option_value --step "$@")" || exit 2
+    tmpdir="$(option_value --tmpdir "$@")" || exit 2
+    result="$tmpdir/bgjob/$step.result.env"
+    if [[ -f "$result" && ! -L "$result" ]]; then
+      printf 'BGJOB_STATUS=DONE\n'
+      cat "$result"
+    else
+      printf 'BGJOB_STATUS=DEAD\n'
+    fi
+    exit 0
+    ;;
+  "design step5c")
+    [[ -n "${DESIGN_STEP5C_STUB_LOG:-}" ]] && printf '%s\n' "$@" >"$DESIGN_STEP5C_STUB_LOG"
+    refusal="${DESIGN_STEP5C_STUB_REFUSAL:-}"
+    if [[ -n "$refusal" ]]; then
+      plan_write_ok=false
+      publish_ok=false
+      publish_rc=4
+      cleanup_eligible=false
+    else
+      plan_write_ok=true
+      publish_ok=true
+      publish_rc=0
+      cleanup_eligible=true
+    fi
+    status_file="${DESIGN_TMPDIR:?}/.design-step5c-status.env"
+    {
+      printf 'PLAN_WRITE_OK=%s\n' "$plan_write_ok"
+      printf 'PUBLISH_OK=%s\n' "$publish_ok"
+      printf 'PUBLISH_RC=%s\n' "$publish_rc"
+      printf 'VALIDATE_STATUS=ok\nFINAL_SUMMARY_PATH=/tmp/final-summary.md\n'
+      printf 'CLEANUP_ELIGIBLE=%s\n' "$cleanup_eligible"
+      printf 'PUBLISH_REFUSE_REASON=%s\n' "$refusal"
+    } >"$status_file"
+    merge="$(option_value --merge-result-env "$@" || true)"
+    [[ -n "$merge" ]] && cp "$status_file" "$merge"
+    exit "${DESIGN_STEP5C_STUB_RC:-0}"
+    ;;
+esac
+printf 'unexpected larch command: %s\n' "$*" >&2
+exit 2
 SH
 chmod +x "$FAKE_PLUGIN/scripts/larch.sh"
 
@@ -127,7 +132,7 @@ export DESIGN_TMPDIR=$D
 export CLAUDE_PLUGIN_ROOT=$FAKE_PLUGIN
 ENV
 
-LOG="$TMP/argv.json"
+LOG="$TMP/argv.txt"
 out=$(CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" DESIGN_TMPDIR="$D" DESIGN_STEP5C_STUB_LOG="$LOG" LARCH_BGJOB_REGISTRY_ROOT="$TMP/registry" \
   "$FAKE_PLUGIN/skills/design/scripts/design-step5c.sh" \
   --session-env-path "$TMP/source-env.sh" --claude-pid $$ --skip-validate -- --public value)
@@ -135,29 +140,17 @@ case "$out" in
   BGJOB_STATUS=STARTED\ STEP=design-step5c\ PGID=*) ;;
   *) fail "wrapper stdout must be exactly bgjob STARTED line, got: $out" ;;
 esac
-python3 - "$LOG" "$TMP/source-env.sh" "$$" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-args = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-expected_prefix = [
-    "design",
-    "step5c",
-    "--session-env-path",
-    sys.argv[2],
-    "--claude-pid",
-    sys.argv[3],
-]
-if (
-    args[:6] != expected_prefix
-    or "--skip-validate" not in args
-    or args[-5:-3] != ["--public", "value"]
-    or args[-3:-1] != ["--bgjob-child", "--merge-result-env"]
-):
-    print(f"FAIL: wrapper argv mismatch: {args!r}", file=sys.stderr)
-    raise SystemExit(1)
-PY
+[[ "$(sed -n '1p' "$LOG")" == design ]] || fail 'wrapper argv must start with design'
+[[ "$(sed -n '2p' "$LOG")" == step5c ]] || fail 'wrapper argv must select step5c'
+[[ "$(sed -n '3p' "$LOG")" == --session-env-path ]] || fail 'wrapper argv must pass the session env flag'
+[[ "$(sed -n '4p' "$LOG")" == "$TMP/source-env.sh" ]] || fail 'wrapper argv must pass the session env path'
+[[ "$(sed -n '5p' "$LOG")" == --claude-pid ]] || fail 'wrapper argv must pass the Claude PID flag'
+[[ "$(sed -n '6p' "$LOG")" == "$$" ]] || fail 'wrapper argv must pass the Claude PID'
+grep -Fxq -- '--skip-validate' "$LOG" || fail 'wrapper argv must retain --skip-validate'
+tail -n 5 "$LOG" | sed -n '1p' | grep -Fxq -- '--public' || fail 'wrapper argv must retain public option'
+tail -n 5 "$LOG" | sed -n '2p' | grep -Fxq 'value' || fail 'wrapper argv must retain public value'
+tail -n 5 "$LOG" | sed -n '3p' | grep -Fxq -- '--bgjob-child' || fail 'wrapper argv must append bgjob child flag'
+tail -n 5 "$LOG" | sed -n '4p' | grep -Fxq -- '--merge-result-env' || fail 'wrapper argv must append merge result flag'
 pass 'wrapper launches bgjob adapt and child delegates to scripts/larch.sh design step5c'
 
 grep -Fxq 'PLAN_WRITE_OK=true' "$D/bgjob/design-step5c.result.env" || fail 'bgjob result env must merge Step 5c status rows'

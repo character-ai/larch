@@ -17,7 +17,7 @@ assert_not_contains() { local n=$1 h=$2 l=$3; if printf '%s' "$h" | grep -Fq -- 
 helper_text=$(cat "$HELPER")
 assert_contains 'scripts/larch.sh' "$helper_text" 'static: enters through verified bootstrap'
 assert_contains 'implement step-8-oos-checkpoint "$@"' "$helper_text" 'static: delegates to Rust checkpoint router'
-assert_not_contains 'python/cli.py' "$helper_text" 'static: Python checkpoint owner is retired'
+assert_not_contains 'python3' "$helper_text" 'static: Python checkpoint owner is retired'
 assert_not_contains 'oos disposition-checkpoint' "$helper_text" 'static: no direct disposition-checkpoint call'
 
 if [ "$FAIL" -eq 0 ]; then

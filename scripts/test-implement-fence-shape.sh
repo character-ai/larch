@@ -29,7 +29,6 @@ for idx, line in enumerate(lines, 1):
 errors = []
 old_count = 0
 new_count = 0
-saw_py_launcher = False
 
 CANONICAL_GUARD = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"'
 ROOT_FALLBACK_PREFIX = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -x "$IMPLEMENT_TMPDIR/larch-run.sh" ] && CLAUDE_PLUGIN_ROOT=$("$IMPLEMENT_TMPDIR/larch-run.sh" --print-plugin-root'
@@ -66,7 +65,7 @@ def old_target_kind(cmd):
         return 'structured-invocation'
     if 'larch.sh' in cmd and 'implement preflight' in cmd:
         return 'preflight-helper'
-    if ('python/cli.py' in cmd or 'larch.sh' in cmd) and 'plan-block read' in cmd:
+    if 'larch.sh' in cmd and 'plan-block read' in cmd:
         return 'preflight-plan-direct'
     if 'skills/implement/scripts/step-0-bootstrap.sh' in cmd and '--mode initial' in cmd:
         return 'step-0-initial'
@@ -137,7 +136,6 @@ def validate_preflight_helper(start, end, body, commands, cmd):
         errors.append(f'fence {start}-{end}: preflight-helper must not use parameter-expansion force argv')
 
 def validate_new(start, end, body):
-    global saw_py_launcher
     physical = nonblank_lines(body)
     if len(physical) != 1:
         errors.append(f'fence {start}-{end}: new-shape fence must have exactly one nonblank physical line, found {len(physical)}')
@@ -165,10 +163,8 @@ def validate_new(start, end, body):
     target = tokens[1]
     if target.startswith('/') or '..' in target:
         errors.append(f'fence {start}-{end}: launcher target must be repo-relative without ..: {target}')
-    if not (target.endswith('.sh') or target.endswith('.py')):
-        errors.append(f'fence {start}-{end}: launcher target must be a .sh or .py path: {target}')
-    if target.endswith('.py'):
-        saw_py_launcher = True
+    if not target.endswith('.sh'):
+        errors.append(f'fence {start}-{end}: launcher target must be a .sh path: {target}')
     best_effort_timing = stripped == '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true'
     if re.search(r'(^|[\s;])(\|\||&&|;|\bif\s|\bwhile\s|\buntil\s|\bcase\s)', stripped) and not best_effort_timing:
         errors.append(f'fence {start}-{end}: inline shell control logic is not allowed: {stripped}')
@@ -179,13 +175,13 @@ for start, end, body in fences:
     body_text = '\n'.join(raw for _, raw in body)
     if '8-pre-ship' in body_text and 'step-8-ship.sh' not in body_text:
         errors.append(f'fence {start}-{end}: standalone orchestrator 8-pre-ship fence is forbidden')
-    if 'python/cli.py ship seed-initial-state' in body_text:
+    if 'ship seed-initial-state' in body_text:
         errors.append(f'fence {start}-{end}: Step 8 seed fences must delegate to step-8-seed-initial.sh')
     for _, raw in body:
         if 'session read-key' in raw:
             errors.append(f'fence {start}-{end}: inline session read-key is not allowed')
             break
-    if ('python/cli.py' in body_text or 'larch.sh' in body_text) and 'plan-block read' in body_text:
+    if 'larch.sh' in body_text and 'plan-block read' in body_text:
         errors.append(f'fence {start}-{end}: direct Preflight plan-block read call is forbidden')
     if 'gh issue view' in body_text:
         errors.append(f'fence {start}-{end}: direct Preflight gh issue view call is forbidden')
@@ -256,24 +252,6 @@ except ValueError as exc:
 resume_text = Path('skills/implement/references/bootstrap-recovery.md').read_text()
 if 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume' not in resume_text:
     errors.append('bootstrap-recovery resume fence must prefix step-0-bootstrap.sh with LARCH_CLAUDE_PID="$PPID"')
-
-if saw_py_launcher:
-    bootstrap = Path('crates/larch-cli/src/bootstrap_commands.rs').read_text()
-    required = 'trap _larch_cleanup_active_leg EXIT INT TERM'
-    forbidden_exec = '*.py) exec python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;'
-    forbidden = '*.py) exec "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;'
-    if required not in bootstrap:
-        errors.append('larch-run.sh template must trap active-leg cleanup for .py targets')
-    if 'export LARCH_ACTIVE_LEG_OWNER_TOKEN="$_larch_active_leg_owner_token"' not in bootstrap:
-        errors.append('larch-run.sh template must export active-leg owner token before .py target')
-    if 'implement kill-active-leg --owner-token "$_larch_active_leg_owner_token" --implement-tmpdir' not in bootstrap:
-        errors.append('larch-run.sh template must forward owner token to implement kill-active-leg')
-    if 'kill-active-leg --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>/dev/null' in bootstrap:
-        errors.append('larch-run.sh template must not silence kill-active-leg stderr')
-    if forbidden_exec in bootstrap:
-        errors.append('larch-run.sh template must not exec .py targets (outer fence needs trap cleanup)')
-    if forbidden in bootstrap:
-        errors.append('larch-run.sh template must not bare-exec .py targets')
 
 if errors:
     print('\n'.join(errors), file=sys.stderr)
