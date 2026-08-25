@@ -47,6 +47,7 @@ const DIRECT_FILES: &[&str] = &[
     "scripts/cleanup-sessionstart.sh",
     "scripts/deny-edit-write.sh",
     "scripts/dry-runnable-scripts.tsv",
+    "scripts/external-tool-registry.md",
     "scripts/file-failure-report-cross-repo.sh",
     "scripts/generators.tsv",
     "scripts/hook-anti-read-poll.sh",

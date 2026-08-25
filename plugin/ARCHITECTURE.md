@@ -134,11 +134,14 @@ work:
   non-atomic final rows for the #7675 commands. Every live row names its final
   Rust owner and exact implementation leaf.
 - Product child processes use the `ExternalProcessRunner` core port. Its closed
-  enum permits typed Claude, Codex, Cursor, Git, the fixed GitHub credential
-  lookup, and #7670 larch bootstrap or self-check operations. Larch program
+  enum permits typed vendor agents, a checksum-pinned scanner, installed-Git
+  compatibility operations, the fixed GitHub credential lookup, fixed host
+  utilities, and #7670 larch bootstrap or self-check operations. Larch program
   paths derive from validated plugin roots. The adapter accepts argument arrays
   only, rebuilds child environments from an allowlist, bounds output, and owns
-  cancellation, timeout, termination, and reap.
+  cancellation, timeout, termination, and reap. The complete executable list
+  and every reason-bearing direct-spawn exception live in
+  [`scripts/external-tool-registry.md`](scripts/external-tool-registry.md).
   Repository-only lint bootstrap calls stay confined to `larch-lint`, are
   reachable only through the `lint` domain, and require reason-bearing lint
   suppressions.
