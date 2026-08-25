@@ -1686,13 +1686,7 @@ mod loop_implementation {
 
     fn text(parsed: &ParsedCommandLine, name: &str) -> String { parsed.value(name).map_or_else(String::new, |v| v.to_string_lossy().into_owned()) }
     fn root(raw: &str, program: &str) -> Result<PathBuf, ExitCode> {
-        let path = Path::new(raw);
-        if !path.is_dir() { eprintln!("{program}: DESIGN_TMPDIR required"); return Err(ExitCode::from(2)); }
-        if path.is_symlink() { eprintln!("{program}: design-tmpdir must not be a symlink"); return Err(ExitCode::from(2)); }
-        if let Err(message) = validate_design_tmpdir(raw, env::var_os("TMPDIR").as_deref(), &cleanup_cache_sessions_root(env::var_os("XDG_CACHE_HOME").as_deref(), env::var_os("HOME").as_deref())) {
-            eprintln!("{program}: {message}"); return Err(ExitCode::from(2));
-        }
-        fs::canonicalize(path).map_err(|error| { eprintln!("{program}: {error}"); ExitCode::from(2) })
+        crate::plan_review_step3_review::resolve_design_dir(raw, program)
     }
     fn root_quiet(raw:&str)->Option<PathBuf>{let path=Path::new(raw);if !path.is_dir()||path.is_symlink(){return None;}validate_design_tmpdir(raw,env::var_os("TMPDIR").as_deref(),&cleanup_cache_sessions_root(env::var_os("XDG_CACHE_HOME").as_deref(),env::var_os("HOME").as_deref())).ok()?;fs::canonicalize(path).ok()}
     fn write(root: &Path, path: &Path, body: &str) -> Result<(), String> {
@@ -2245,19 +2239,7 @@ mod implementation {
         fs::canonicalize(path).map_err(|error| error.to_string())
     }
     fn command_root(raw: &str, program: &str) -> Result<PathBuf, ExitCode> {
-        let path = Path::new(raw);
-        if !path.is_dir() {
-            eprintln!("{program}: DESIGN_TMPDIR required");
-            return Err(ExitCode::from(2));
-        }
-        if path.is_symlink() {
-            eprintln!("{program}: design-tmpdir must not be a symlink");
-            return Err(ExitCode::from(2));
-        }
-        design_root(raw, true).map_err(|message| {
-            eprintln!("{program}: {message}");
-            ExitCode::from(2)
-        })
+        crate::plan_review_step3_review::resolve_design_dir(raw, program)
     }
     fn write(root: &Path, path: &Path, text: &str) -> Result<(), String> {
         if let Some(parent) = path.parent() {

@@ -15,7 +15,8 @@ use std::{
 use clap::Subcommand;
 use larch_adapters::validate_design_tmpdir;
 use larch_core::{
-    ChildEnvironment, ProcessOutput, cleanup_cache_sessions_root, private_atomic_write,
+    ChildEnvironment, ProcessOutput, cleanup_cache_sessions_root, parse_allowlisted_env_line,
+    private_atomic_write,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -494,17 +495,22 @@ fn resolve_session_env(parsed: &mut Step3ReviewArgs) -> Result<(), ExitCode> {
     Ok(())
 }
 
+const SESSION_ENV_KEYS: &[&str] = &[
+    "DESIGN_TMPDIR",
+    "ISSUE_NUMBER",
+    "REPO",
+    "CLAUDE_PLUGIN_ROOT",
+];
+
 fn apply_export_rows(bytes: &[u8], parsed: &mut Step3ReviewArgs) {
     let text = String::from_utf8_lossy(bytes);
     for line in text.lines() {
-        let Some(rest) = line.trim().strip_prefix("export ") else {
+        let Some((key, value)) =
+            parse_allowlisted_env_line(line, SESSION_ENV_KEYS, None, true)
+        else {
             continue;
         };
-        let Some((key, raw)) = rest.split_once('=') else {
-            continue;
-        };
-        let value = unquote(raw);
-        match key {
+        match key.as_str() {
             "DESIGN_TMPDIR" => parsed.design_tmpdir = value,
             "ISSUE_NUMBER" => parsed.issue_number = value,
             "REPO" => parsed.repo = value,
@@ -512,16 +518,6 @@ fn apply_export_rows(bytes: &[u8], parsed: &mut Step3ReviewArgs) {
             _ => {}
         }
     }
-}
-
-fn unquote(value: &str) -> String {
-    if value.len() >= 2 && value.starts_with('\'') && value.ends_with('\'') {
-        return value[1..value.len() - 1].replace("'\\''", "'");
-    }
-    if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') {
-        return value[1..value.len() - 1].to_owned();
-    }
-    value.to_owned()
 }
 
 fn resolve_parsed_design_dir(parsed: &Step3ReviewArgs) -> Result<PathBuf, ExitCode> {
@@ -537,7 +533,8 @@ fn resolve_parsed_design_dir(parsed: &Step3ReviewArgs) -> Result<PathBuf, ExitCo
     resolve_design_dir(&raw, PROG)
 }
 
-fn resolve_design_dir(raw: &str, program: &str) -> Result<PathBuf, ExitCode> {
+/// Canonicalize an existing, non-symlink `DESIGN_TMPDIR` for plan-review verbs.
+pub fn resolve_design_dir(raw: &str, program: &str) -> Result<PathBuf, ExitCode> {
     let path = Path::new(raw);
     if !path.is_dir() {
         eprintln!("{program}: DESIGN_TMPDIR required");
