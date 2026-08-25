@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "render-specialist-prompt.sh: invalid arguments\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

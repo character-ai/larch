@@ -1,0 +1,30 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/.completed/step-4b": {
+      "text": ""
+    },
+    "design/.completed/step-5b": {
+      "text": ""
+    },
+    "design/.keep": {
+      "text": ""
+    },
+    "design/oos-filing-prepare.env": {
+      "text": "FILE_DESIGN_OOS_STATUS=skip-no-items\nSTEP5B_STATUS=skip-no-items\nOOS_PREP_RC=0\nOOS_ISSUE_STDOUT_PATH=<SANDBOX>/design/oos-issue.stdout.txt\nNEXT_ACTION=skip-pipeline\nOOS_SKIP_BREADCRUMB=⏩ 5b: oos filing; no accepted-OOS items\n"
+    },
+    "design/oos-filing-prepare.stderr.log": {
+      "text": ""
+    },
+    "design/timing-ledger.tsv": {
+      "text": "v1\tmark\t1787000000\tdesign\tdesign Step 5 — finalize\t-\t-\t-\t-\t-\t-\t-\t-\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "FILE_DESIGN_OOS_STATUS=skip-no-items\nSTEP5B_STATUS=skip-no-items\nOOS_PREP_RC=0\nOOS_ISSUE_STDOUT_PATH=<SANDBOX>/design/oos-issue.stdout.txt\nNEXT_ACTION=skip-pipeline\nOOS_SKIP_BREADCRUMB=⏩ 5b: oos filing; no accepted-OOS items\n"
+  }
+}

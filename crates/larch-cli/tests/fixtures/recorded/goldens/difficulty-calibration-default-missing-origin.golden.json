@@ -1,0 +1,24 @@
+{
+  "exit_code": 2,
+  "files": {
+    ".git/HEAD": {
+      "text": "ref: refs/heads/main\n"
+    },
+    ".git/config": {
+      "text": "[core]\nrepositoryformatversion = 0\nbare = false\n"
+    },
+    ".git/objects/info/.keep": {
+      "text": ""
+    },
+    ".git/refs/heads/.keep": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR: local remote.origin.url is missing; configure an origin repository remote\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

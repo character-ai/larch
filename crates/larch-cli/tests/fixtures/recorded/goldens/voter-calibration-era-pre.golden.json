@@ -1,0 +1,45 @@
+{
+  "exit_code": 0,
+  "files": {
+    "logs-era/design/run-invalid-started-at-bad-date/manifest.json": {
+      "text": "{\"started_at\": \"not-a-date\"}\n"
+    },
+    "logs-era/design/run-invalid-started-at-bad-date/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\nFINDING\tR\taccepted\tYES\t\tmajor\t\t\tinvalid-bad-date-voter\tNO\t\tminor\t\t\tinvalid-bad-date-peer\tYES\t\tnit\t\t\tinvalid-bad-date-third\tmajor\n"
+    },
+    "logs-era/design/run-invalid-started-at-empty-manifest/manifest.json": {
+      "text": "{}\n"
+    },
+    "logs-era/design/run-invalid-started-at-empty-manifest/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\nFINDING\tR\taccepted\tYES\t\tmajor\t\t\tinvalid-empty-manifest-voter\tNO\t\tminor\t\t\tinvalid-empty-manifest-peer\tYES\t\tnit\t\t\tinvalid-empty-manifest-third\tmajor\n"
+    },
+    "logs-era/design/run-invalid-started-at-empty-string/manifest.json": {
+      "text": "{\"started_at\": \"\"}\n"
+    },
+    "logs-era/design/run-invalid-started-at-empty-string/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\nFINDING\tR\taccepted\tYES\t\tmajor\t\t\tinvalid-empty-string-voter\tNO\t\tminor\t\t\tinvalid-empty-string-peer\tYES\t\tnit\t\t\tinvalid-empty-string-third\tmajor\n"
+    },
+    "logs-era/design/run-missing-started-at/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\nFINDING\tR\taccepted\tYES\t\tmajor\t\t\tmissing-era-voter\tNO\t\tminor\t\t\tmissing-era-peer\tYES\t\tnit\t\t\tmissing-era-third\tmajor\n"
+    },
+    "logs-era/design/run-post-era/manifest.json": {
+      "text": "{\"started_at\": \"2026-06-26T00:00:00Z\"}\n"
+    },
+    "logs-era/design/run-post-era/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\nFINDING\tR\taccepted\tYES\t\tmajor\t\t\tpost-era-voter\tNO\t\tminor\t\t\tpost-era-peer\tYES\t\tnit\t\t\tpost-era-third\tmajor\n"
+    },
+    "logs-era/design/run-pre-era/manifest.json": {
+      "text": "{\"started_at\": \"2026-06-25T12:00:00Z\"}\n"
+    },
+    "logs-era/design/run-pre-era/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\nFINDING\tR\taccepted\tYES\t\tmajor\t\t\tpre-era-voter\tNO\t\tminor\t\t\tpre-era-peer\tYES\t\tnit\t\t\tpre-era-third\tmajor\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "# Voter Calibration Report\n\n## Era Boundary\n\n- Log root: `<SANDBOX>/logs-era`\n- Boundary source: `explicit-date`\n- Boundary timestamp: `2026-06-26T00:00:00Z`\n- Resolved repo: `n/a`\n- Classification TSV files discovered: 6\n- Runs excluded for missing or invalid `started_at`: 4\n- Runs before the boundary are pre-incentive. Runs at or after it are post-incentive.\n\n## Pre-incentive era\n\n- Classification TSV files scanned: 1\n- Malformed or unsupported TSV files skipped: 0\n- Malformed data rows dropped: 0\n- Ineligible panels excluded: 0\n- Qualifying accepted/rejected panels: 1\n\n## Agreement Table\n\n| Panel | Voter | Eligible | Agree | Disagree | Missing | Agreement | Outlier |\n|---|---|---:|---:|---:|---:|---:|---|\n| design | pre-era-peer | 1 | 0 | 1 | 0 | 0.000 | true |\n| design | pre-era-third | 1 | 1 | 0 | 0 | 1.000 | false |\n| design | pre-era-voter | 1 | 1 | 0 | 0 | 1.000 | false |\n\n## Voter Severity Scoreboard\n\n| Panel | Voter | YES Votes | Major | Minor | Nit | Missing Severity | High Rate | Calibration Score | Uncalibrated |\n|---|---|---:|---:|---:|---:|---:|---:|---:|---|\n| design | pre-era-peer | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |\n| design | pre-era-third | 1 | 0 | 0 | 1 | 0 | 0.000 | 1.000 | false |\n| design | pre-era-voter | 1 | 1 | 0 | 0 | 0 | 1.000 | 0.000 | true |\n\n\n## Per-voter False-negative YES Rate\n\n| Panel | Voter | YES Votes | Neutral YES | Rejected YES | False-negative YES | False-negative YES Rate |\n|---|---|---:|---:|---:|---:|---:|\n| design | pre-era-peer | 0 | 0 | 0 | 0 | n/a |\n| design | pre-era-third | 1 | 0 | 0 | 0 | 0.000 |\n| design | pre-era-voter | 1 | 0 | 0 | 0 | 0.000 |\n| global | pre-era-peer | 0 | 0 | 0 | 0 | n/a |\n| global | pre-era-third | 1 | 0 | 0 | 0 | 0.000 |\n| global | pre-era-voter | 1 | 0 | 0 | 0 | 0.000 |\n\n## Notes\n\n- Era segmentation is diagnostic only.\n- Empty, missing, and `JUDGE_ERROR` voter cells count as missing, not disagreement.\n- Severity calibration counts only YES votes with valid severity buckets.\n"
+  }
+}

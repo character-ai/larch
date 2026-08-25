@@ -1,0 +1,30 @@
+{
+  "exit_code": 1,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    },
+    "design/oos-accepted-design.md": {
+      "text": "### OOS_1: one\na\n- **Filed URL**: https://github.com/acme/repo/issues/101\n### OOS_2: two\nb\n"
+    },
+    "design/oos-combined.md": {
+      "text": "### OOS_1: one\na\n\n### OOS_2: two\nb\n"
+    },
+    "design/oos-design-filing-order.txt": {
+      "text": "1\n2\n"
+    },
+    "design/oos-issue.stdout.txt": {
+      "text": "ISSUE_1_URL=https://github.com/acme/repo/issues/101\nISSUE_2_FAILED=true\nISSUES_FAILED=1\n"
+    },
+    "design/oos-issues-created.partial.md": {
+      "text": "OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/101\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "FILE_DESIGN_OOS_STATUS=annotate-partial-failed\n"
+  }
+}

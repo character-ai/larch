@@ -1,0 +1,30 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    },
+    "design/oos-accepted-design.md": {
+      "text": "### OOS_7: follow-up\n- **Focus area**: architecture\n- **Filed URL**: https://github.com/acme/repo/issues/101\n"
+    },
+    "design/oos-combined.md": {
+      "text": "### OOS_1: follow-up\n- **Focus area**: architecture\n"
+    },
+    "design/oos-design-filing-order.txt": {
+      "text": "7\n"
+    },
+    "design/oos-issue.stdout.txt": {
+      "text": "ISSUE_URL=https://github.com/acme/repo/issues/101\nISSUES_FAILED=0\n"
+    },
+    "design/oos-issues-created.md": {
+      "text": "OOS_FILE_MAP\t7\thttps://github.com/acme/repo/issues/101\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "FILE_DESIGN_OOS_STATUS=annotate-complete\n"
+  }
+}

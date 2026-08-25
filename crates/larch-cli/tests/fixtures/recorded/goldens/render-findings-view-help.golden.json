@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: cli.py render findings-view [-h] run_dir [view]\n\npositional arguments:\n  run_dir\n  view\n\noptions:\n  -h, --help  show this help message and exit\n"
+  }
+}

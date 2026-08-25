@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "design-stage-terminal-state.sh: unknown option: --nope\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

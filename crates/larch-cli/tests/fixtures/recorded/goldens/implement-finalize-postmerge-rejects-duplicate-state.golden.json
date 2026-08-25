@@ -1,0 +1,18 @@
+{
+  "exit_code": 2,
+  "files": {
+    "session/bail": {
+      "text": ""
+    },
+    "session/finalize-state.sh": {
+      "text": "DRAFT=false\nDRAFT=true\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "implement-finalize: duplicate state-file key: DRAFT\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

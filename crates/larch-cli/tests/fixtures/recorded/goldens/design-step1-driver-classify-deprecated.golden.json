@@ -1,0 +1,18 @@
+{
+  "exit_code": 2,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    },
+    "design/actions.txt": {
+      "text": "ACTION=CLASSIFY\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "STEP_FAILED=CLASSIFY REASON=deprecated-action\n"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    },
+    "design/design-failure-terminal-report.env": {
+      "text": "STALL_RECOVERY_REPORT_STATUS=filed\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "DESIGN_FAILURE_REPORT_DECISION=skip\nDESIGN_FAILURE_REPORT_REASON=terminal-sentinel-present\n"
+  }
+}

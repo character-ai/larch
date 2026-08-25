@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: voter-calibration analyze [-h] [--log-root LOG_ROOT] [--min-votes MIN_VOTES] [--outlier-threshold OUTLIER_THRESHOLD] [--high-severity-threshold HIGH_SEVERITY_THRESHOLD] [--out OUT] [--era {all,pre,post}] [--era-since-date ERA_SINCE_DATE] [--realized-outcomes] [--repo REPO] [--filed-issue-details-json FILED_ISSUE_DETAILS_JSON]\nvoter-calibration analyze: error: argument --outlier-threshold: invalid float value: 'zz'\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

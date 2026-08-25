@@ -1,0 +1,42 @@
+{
+  "exit_code": 0,
+  "files": {
+    "logs/design/run-a/manifest.json": {
+      "text": "{\"started_at\": \"2026-06-25T12:00:00Z\"}\n"
+    },
+    "logs/design/run-a/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\nFINDING_1\tR\taccepted\tYES\t\tmajor\t\t\tClaude\tYES\t\tuncertain\t\t\tCodex\tNO\t\tnit\t\t\tCursor\tmajor\nFINDING_2\tR\tneutral\tYES\t\tmajor\t\t\tClaude\tNO\t\tnit\t\t\tCodex\t\t\t\t\t\tCursor\tminor\n"
+    },
+    "logs/design/run-b/manifest.json": {
+      "text": "{\"started_at\": \"2026-06-25T13:00:00Z\"}\n"
+    },
+    "logs/design/run-b/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\nFINDING_3\tR\trejected\tNO\t\tnit\t\t\tClaude\tYES\t\tmajor\t\t\tCodex\tNO\t\tminor\t\t\tCursor\n"
+    },
+    "logs/design/run-corrupt/manifest.json": {
+      "text": "{\"started_at\": \"2026-06-25T14:00:00Z\"}\n"
+    },
+    "logs/design/run-corrupt/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\nFINDING_BAD\tR\tbogus\tYES\t\t\t\t\tClaude\tYES\t\t\t\t\tCodex\tNO\t\t\t\t\tCursor\tmajor\nFINDING_NEUTRAL\tR\tneutral\tYES\t\t\t\t\tClaude\tEXONERATE\t\t\t\t\tCodex\tYES\t\t\t\t\tCursor\tminor\n"
+    },
+    "logs/implement/run-c/manifest.json": {
+      "text": "{\"started_at\": \"2026-06-26T00:00:00Z\"}\n"
+    },
+    "logs/implement/run-c/round-1/findings-classification.tsv": {
+      "text": "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\nFINDING_1\tR\taccepted\tYES\t\tblocker\t\t\tcursor-validity\tNO\t\tmajor\t\t\tcursor-plan-fidelity\tYES\t\tuncertain\t\t\tcursor-pragmatism\n"
+    },
+    "logs/review/run-d/manifest.json": {
+      "text": "{\"started_at\": \"2026-06-26T01:00:00Z\"}\n"
+    },
+    "logs/review/run-d/review-findings-classification-round-1.tsv": {
+      "text": "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\nFINDING_1\tR\taccepted\tNO\t\tblocker\t\t\tYES\t\tmajor\t\t\tYES\t\tmajor\t\t\nFINDING_2\tR\taccepted\tNO\t\tblocker\t\t\tYES\t\tmajor\t\t\tYES\t\tmajor\t\t\nFINDING_3\tR\taccepted\tNO\t\tblocker\t\t\tYES\t\tmajor\t\t\tYES\t\tmajor\t\t\nFINDING_4\tR\taccepted\tNO\t\tblocker\t\t\tYES\t\tmajor\t\t\tYES\t\tminor\t\t\nFINDING_9\tR\taccepted\tYES\t\tmajor\t\t\t\t\t\t\t\t\t\t\t\t\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "# Voter Calibration Report\n\n## Era Boundary Unavailable\n\n- Era segmentation needs an incentive boundary timestamp.\n- Log root: `<SANDBOX>/logs`\n- Boundary source attempted: `gh-issue-closedAt`\n- Resolved repo: `n/a`\n- Reason: `repo_unresolved`\n- Pass `--era-since-date YYYY-MM-DD` to choose a manual UTC midnight cutoff.\n- This report is diagnostic only.\n"
+  }
+}

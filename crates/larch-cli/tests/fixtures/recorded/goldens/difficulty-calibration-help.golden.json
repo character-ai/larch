@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: difficulty-calibration analyze [-h] [--log-root LOG_ROOT] [--out OUT]\n\noptions:\n  -h, --help           show this help message and exit\n  --log-root LOG_ROOT  offline fixture corpus override; default synchronizes\n                       the current repository cache\n  --out OUT\n"
+  }
+}

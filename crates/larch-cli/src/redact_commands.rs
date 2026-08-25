@@ -24,8 +24,7 @@ use std::{
     process::ExitCode,
 };
 
-const STREAMING_PEM_WARNING: &str =
-    "WARN: python3 python/cli.py redact secrets: unterminated PEM block (streaming)";
+const STREAMING_PEM_WARNING: &str = "WARN: redact secrets: unterminated PEM block (streaming)";
 
 pub fn secrets(arguments: &[OsString]) -> ExitCode {
     let mut streaming = false;
@@ -106,7 +105,7 @@ pub fn scrub_log_secrets(arguments: &[OsString]) -> ExitCode {
     };
     if !directory.exists() {
         eprintln!(
-            "python3 python/cli.py redact scrub-log-secrets: directory not found: {}",
+            "redact scrub-log-secrets: directory not found: {}",
             directory.display()
         );
         return ExitCode::from(2);
@@ -165,7 +164,7 @@ fn parse_log_directory(arguments: &[OsString]) -> Result<PathBuf, ExitCode> {
         if matches!(argument.to_str(), Some("--dir" | "--log-root" | "--path")) {
             let Some(value) = arguments.get(index + 1) else {
                 eprintln!(
-                    "python3 python/cli.py redact scrub-log-secrets: {} requires a value",
+                    "redact scrub-log-secrets: {} requires a value",
                     argument.to_string_lossy()
                 );
                 return Err(ExitCode::from(2));
@@ -174,7 +173,7 @@ fn parse_log_directory(arguments: &[OsString]) -> Result<PathBuf, ExitCode> {
             index += 2;
         } else if directory.is_some() {
             eprintln!(
-                "python3 python/cli.py redact scrub-log-secrets: unknown option: {}",
+                "redact scrub-log-secrets: unknown option: {}",
                 argument.to_string_lossy()
             );
             return Err(ExitCode::from(2));
@@ -186,7 +185,7 @@ fn parse_log_directory(arguments: &[OsString]) -> Result<PathBuf, ExitCode> {
     directory
         .filter(|path| !path.as_os_str().is_empty())
         .ok_or_else(|| {
-            eprintln!("python3 python/cli.py redact scrub-log-secrets: directory is required");
+            eprintln!("redact scrub-log-secrets: directory is required");
             ExitCode::from(2)
         })
 }

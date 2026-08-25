@@ -1086,18 +1086,6 @@ fn session_read(path: &Path, key: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Locate `python3` on `PATH` for the default compose command.
-fn python3_executable() -> PathBuf {
-    if let Some(paths) = std::env::var_os("PATH") {
-        for candidate in std::env::split_paths(&paths).map(|dir| dir.join("python3")) {
-            if candidate.is_file() {
-                return candidate;
-            }
-        }
-    }
-    PathBuf::from("python3")
-}
-
 fn apply_child_env(command: &mut Command, plugin_root: &Path, implement_tmpdir: &Path) {
     command.env("CLAUDE_PLUGIN_ROOT", plugin_root);
     command.env("IMPLEMENT_TMPDIR", implement_tmpdir);
@@ -1212,12 +1200,7 @@ fn compose_command(plugin_root: &Path) -> Vec<String> {
     let trimmed = override_value.trim();
     if trimmed.is_empty() {
         vec![
-            python3_executable().display().to_string(),
-            plugin_root
-                .join("python")
-                .join("cli.py")
-                .display()
-                .to_string(),
+            entrypoint(plugin_root).display().to_string(),
             "plan".to_owned(),
             "compose-goals-test".to_owned(),
         ]

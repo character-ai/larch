@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: fluff-analysis analyze [-h] [--log-root LOG_ROOT] [--sessions-dir SESSIONS_DIR] [--include-in-progress] [--inprogress-since INPROGRESS_SINCE] [--cutoff CUTOFF] [--since-version X.Y.Z] [--min-group MIN_GROUP] [--out OUT] [--post-only-tags]\nfluff-analysis analyze: error: argument --since-version: expected X.Y.Z\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

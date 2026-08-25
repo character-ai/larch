@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: cli.py design dialectic-promote-candidates [-h] --design-tmpdir\n                                                  DESIGN_TMPDIR\n                                                  [--raw-dialectic-file RAW_DIALECTIC_FILE]\n\noptions:\n  -h, --help            show this help message and exit\n  --design-tmpdir DESIGN_TMPDIR\n  --raw-dialectic-file RAW_DIALECTIC_FILE\n"
+  }
+}

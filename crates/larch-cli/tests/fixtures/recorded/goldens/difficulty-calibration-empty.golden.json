@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "empty/.keep": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "# Difficulty Calibration\n\n## Corpus Summary\n\n| Skill | Runs | Ratable | Known realized | Unratable | Unknown realized |\n|---|---:|---:|---:|---:|---:|\n| design | 0 | 0 | 0 | 0 | 0 |\n| implement | 0 | 0 | 0 | 0 | 0 |\n| review | 0 | 0 | 0 | 0 | 0 |\n\n## Degraded Inputs\n\n| Counter | Count |\n|---|---:|\n| missing_rejected_sidecar | 1 |\n| missing_skill_roots | 3 |\n\n## Confusion Matrix by Skill\n\n### design\n\n| Applied \\ Realized | TRIVIAL | MODERATE | HARD |\n|---|---:|---:|---:|\n| TRIVIAL | 0 | 0 | 0 |\n| MODERATE | 0 | 0 | 0 |\n| HARD | 0 | 0 | 0 |\n\nDenominator: 0\n\n### implement\n\n| Applied \\ Realized | TRIVIAL | MODERATE | HARD |\n|---|---:|---:|---:|\n| TRIVIAL | 0 | 0 | 0 |\n| MODERATE | 0 | 0 | 0 |\n| HARD | 0 | 0 | 0 |\n\nDenominator: 0\n\n### review\n\n| Applied \\ Realized | TRIVIAL | MODERATE | HARD |\n|---|---:|---:|---:|\n| TRIVIAL | 0 | 0 | 0 |\n| MODERATE | 0 | 0 | 0 |\n| HARD | 0 | 0 | 0 |\n\nDenominator: 0\n\n## Confusion Matrix by Rater\n\nNo ratable runs.\n\n## Under-rating Misses\n\n| Skill | Run | Issue | Applied | Predicted | Realized | Accepted | Panel skipped | False-negative burden | Link |\n|---|---|---:|---|---|---|---:|---|---|---|\n| n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |\n\n## Per-tier Tokens, Cost, and Latency\n\n| Applied tier | Runs | Tokens total | USD | Avg latency seconds |\n|---|---:|---:|---:|---:|\n| TRIVIAL | 0 | n/a | n/a | n/a |\n| MODERATE | 0 | n/a | n/a | n/a |\n| HARD | 0 | n/a | n/a | n/a |\n\n## Audit-run Deltas\n\n| Skill | Run | Month | Pre-audit tier | Peer count | Token delta | Latency delta seconds |\n|---|---|---|---|---:|---:|---:|\n| n/a | n/a | n/a | n/a | 0 | n/a | n/a |\n\n## Escalation Statistics\n\n| Skill | Ratable runs | Escalated runs | Rate |\n|---|---:|---:|---:|\n| design | 0 | 0 | 0.00 |\n| implement | 0 | 0 | 0.00 |\n| review | 0 | 0 | 0.00 |\n\n## Tier-distribution Drift\n\n### By Month\n\n| Month | TRIVIAL | MODERATE | HARD |\n|---|---:|---:|---:|\n| n/a | 0 | 0 | 0 |\n\n### By Rater Model\n\n| Rater model | TRIVIAL | MODERATE | HARD |\n|---|---:|---:|---:|\n| n/a | 0 | 0 | 0 |\n"
+  }
+}

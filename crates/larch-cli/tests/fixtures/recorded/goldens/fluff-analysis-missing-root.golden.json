@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR: log root not found: <SANDBOX>/missing\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "exit_code": 1,
+  "files": {
+    "design/.design-step5c-status.env": {
+      "text": "PLAN_WRITE_OK=\nPUBLISH_OK=\nSTANDALONE_HEAVY_FAILED=true\nSESSION_ID=\nPUBLISH_RC=not-run\nPUBLISH_STDOUT_FALLBACK=false\nCLEANUP_ELIGIBLE=false\nVALIDATE_STATUS=\nVALIDATE_DEFECT_COUNT=\nVALIDATE_SKIPPED_COUNT=\nVALIDATE_UNSAFE_TOKEN_COUNT=\nVALIDATE_MISSING_SCRIPT_COUNT=\nVALIDATE_LOG_FILE=\nFINAL_SUMMARY_PATH=\nPUBLISH_ATTEMPT_ID=\nPUBLISH_RC_SOURCE=\nLATEST_PHASE=\nLOG_PUBLISH_ATTEMPTED=\nLOG_PUBLISH_COMPLETED=\nRENAMED=\nPR_URL=\nRECOVERY_BRANCH=\n"
+    },
+    "design/.keep": {
+      "text": ""
+    },
+    "source-env.sh": {
+      "text": "STANDALONE_HEAVY_FAILED=true\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "**⚠ Step 5c: missing .completed/step-5b: OOS filing incomplete; repair Step 5b before publish**\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "redact scrub-log-secrets: directory not found: <SANDBOX>/missing\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

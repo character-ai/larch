@@ -1,0 +1,27 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    },
+    "design/clarify-loop.failure.log": {
+      "text": "clarify loop hard halt\n"
+    },
+    "design/design-failure-terminal-state.env": {
+      "text": "DESIGN_FAILURE_VERSION=1\nDESIGN_FAILURE_KIND=terminal\nFAILURE_OUTCOME=failed-clarify\nSTALL_STEP=clarify\nPHASE=clarify-loop\nSITE=clarify-loop\nTRIGGER=failed\nBAIL_REASON=clarify-hard-halt\nEXIT_CODE=1\nFAILURE_DETAIL_LOG=<SANDBOX>/design/clarify-loop.failure.log\nSOURCE_SCRIPT=clarify-loop\nSUMMARY_OUTCOME=failed-clarify\nOCCURRED_AT=<TIMESTAMP>\n"
+    },
+    "design/design-stage-terminal-state.stderr.log": {
+      "text": ""
+    },
+    "design/design-stage-terminal-state.stdout.log": {
+      "text": "STAGED=true\nTERMINAL_STATE_FILE=<SANDBOX>/design/design-failure-terminal-state.env\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -264,7 +264,6 @@ exclude = [
   "skills/implement/scripts/cleanup.sh",
   "skills/implement/scripts/step-0-degraded-gate.sh",
   "skills/implement/scripts/step-0-degraded-gate.md",
-  "skills/implement/scripts/step-8-python-guard.md",
   "skills/implement/scripts/step-8-seed-initial.md",
   "skills/implement/scripts/write-final-report.md",
   "skills/implement/scripts/generate-code-flow-diagram.md",

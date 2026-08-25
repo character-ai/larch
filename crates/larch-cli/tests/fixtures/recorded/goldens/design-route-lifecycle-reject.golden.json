@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    ".home/.cache/larch/sessions/design-router-recorded/.design-route-result.env": {
+      "text": "ROUTE=cancel-title-filter\nBRAINSTORM_PREFIX=false\nTITLE_FILTER_REASON=lifecycle\nTITLE_FILTER_MARKER=[IMPLEMENTING]\n"
+    },
+    ".home/.cache/larch/sessions/design-router-recorded/issue-body.txt": {
+      "text": "## Fixture issue\n\nJust prose.\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "ROUTE=cancel-title-filter\nBRAINSTORM_PREFIX=false\nTITLE_FILTER_REASON=lifecycle\nTITLE_FILTER_MARKER=[IMPLEMENTING]\n"
+  }
+}

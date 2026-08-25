@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    ".home/.cache/larch/sessions/step0-parsed-4242.env": {
+      "text": "partition_requested=true\nbrainstorm_requested=true\napprove_requested=false\nskip_approve_requested=false\nno_dedup_requested=false\nlifecycle_parent_context=''\nrun_id=it\\'s-rid\ndifficulty=''\nPOSITIONAL_KIND=issue\nPOSITIONAL_VALUE=123\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "STEP0_PARSED_ENV_PATH=<SANDBOX>/.home/.cache/larch/sessions/step0-parsed-4242.env\nPARTITION_REQUESTED=true\nBRAINSTORM_REQUESTED=true\nAPPROVE_REQUESTED=false\nSKIP_APPROVE_REQUESTED=false\nNO_DEDUP_REQUESTED=false\nRUN_ID=it's-rid\nPOSITIONAL_KIND=issue\nPOSITIONAL_VALUE=123\n"
+  }
+}

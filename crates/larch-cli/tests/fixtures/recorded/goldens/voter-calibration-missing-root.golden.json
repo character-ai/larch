@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "voter-calibration: resolved log root is missing: <SANDBOX>/missing\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

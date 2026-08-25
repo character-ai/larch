@@ -1,0 +1,21 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/composed-plan.md": {
+      "text": "## Plan\n\n### NEW: src/lib.rs\n- Add it.\n\n## Acceptance\n\nSee Testing strategy in plan.\n"
+    },
+    "design/plan-diff-stat.env": {
+      "text": "DIFF_LINES=3\n"
+    },
+    "design/plan.txt": {
+      "text": "### NEW: src/lib.rs\n- Add it.\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "**⚠ Step 5c: composed-plan.md was absent; auto-composed from plan.txt**\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}
