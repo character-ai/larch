@@ -3513,6 +3513,15 @@ clean_install_test = "clean-install-plan-review-preview"
 
 [[commands]]
 domain = "plan-review"
+verb = "resume-state"
+machine_stdout = false
+owner = "rust"
+planning_issue = 7679
+migration_issue = 8930
+clean_install_test = "clean-install-plan-review-resume-state"
+
+[[commands]]
+domain = "plan-review"
 verb = "round-artifact-included"
 machine_stdout = false
 owner = "rust"
@@ -3600,6 +3609,15 @@ owner = "rust"
 planning_issue = 7679
 migration_issue = 8449
 clean_install_test = "clean-install-plan-review-step3-mav"
+
+[[commands]]
+domain = "plan-review"
+verb = "step3-review"
+machine_stdout = true
+owner = "rust"
+planning_issue = 7679
+migration_issue = 8930
+clean_install_test = "clean-install-plan-review-step3-review"
 
 [[commands]]
 domain = "plan-review"
@@ -6354,12 +6372,12 @@ rust = ["design pause-save", "kv get", "plan-review persist-retally-env", "rende
 [[callers]]
 path = "skills/design/scripts/design-step3-review.md"
 kind = "skill"
-rust = ["bgjob adapt"]
+rust = ["bgjob adapt", "plan-review step3-review"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-review.sh"
 kind = "skill"
-rust = ["bgjob adapt", "bgjob write-merge-result-env", "design pause-save", "plan-review normalize-status", "plan-review prelaunch-failure", "plan-review run", "scope-anchor validate", "session require-plugin-root", "session validate-design-tmpdir"]
+rust = ["plan-review step3-review"]
 
 [[callers]]
 path = "skills/design/scripts/design-step35.sh"

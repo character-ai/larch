@@ -221,6 +221,7 @@ impl CleanInstallCase {
             | "clean-install-voting-voter-status-block"
             | "clean-install-plan-review-drift-baseline"
             | "clean-install-plan-review-step3-mav"
+            | "clean-install-plan-review-step3-review"
             | "clean-install-plan-review-step3b-tail"
             // Both prompt renderers preserve the legacy `add_help=False`
             // contract, so the clean-install `--help` token is a usage error.
@@ -1402,6 +1403,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-plan-review-persist-round-start-s", "plan-review", "persist-round-start-s"),
     CleanInstallCase::new("clean-install-plan-review-prelaunch-failure", "plan-review", "prelaunch-failure"),
     CleanInstallCase::new("clean-install-plan-review-preview", "plan-review", "preview"),
+    CleanInstallCase::new("clean-install-plan-review-resume-state", "plan-review", "resume-state"),
     CleanInstallCase::new("clean-install-plan-review-round-artifact-included", "plan-review", "round-artifact-included"),
     CleanInstallCase::new("clean-install-plan-review-round-revise-artifact-excluded", "plan-review", "round-revise-artifact-excluded"),
     CleanInstallCase::new("clean-install-plan-review-round-revise-artifact-included", "plan-review", "round-revise-artifact-included"),
@@ -1412,6 +1414,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-plan-review-step3-entry-state", "plan-review", "step3-entry-state"),
     CleanInstallCase::new("clean-install-plan-review-step3-gate-b-bypass", "plan-review", "step3-gate-b-bypass"),
     CleanInstallCase::new("clean-install-plan-review-step3-mav", "plan-review", "step3-mav"),
+    CleanInstallCase::new("clean-install-plan-review-step3-review", "plan-review", "step3-review"),
     CleanInstallCase::new("clean-install-plan-review-step3-state", "plan-review", "step3-state"),
     CleanInstallCase::new("clean-install-plan-review-step35", "plan-review", "step35"),
     CleanInstallCase::new("clean-install-plan-review-step3b-tail", "plan-review", "step3b-tail"),

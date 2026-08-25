@@ -952,7 +952,7 @@ test-design-step-final-summary:
 
 test-design-step3-review:
 	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test integration plan_review_loop_commands::tests::normalize
-	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3-review.sh
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch plan_review_step3_review::
 
 test-design-step3b-tail:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3b-tail.sh

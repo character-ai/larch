@@ -96,6 +96,9 @@ pub enum PlanReviewCommand {
     /// Record a Gate B bypass unless Step 3.5 is already partial.
     #[command(name = "step3-gate-b-bypass", disable_help_flag = true)]
     Step3GateBBypass(AgentRawArguments),
+    /// Run the Step 3 review parent/child wrapper.
+    #[command(name = "step3-review", disable_help_flag = true)]
+    Step3Review(AgentRawArguments),
     /// Run the existing post-Step-3b tail wrapper.
     #[command(name = "step3b-tail", disable_help_flag = true)]
     Step3bTail(AgentRawArguments),
@@ -120,6 +123,9 @@ pub enum PlanReviewCommand {
     /// Initialize the plan-size drift baseline once.
     #[command(name = "drift-baseline", disable_help_flag = true)]
     DriftBaseline(AgentRawArguments),
+    /// Validate or persist Step 3 resume-state sidecars.
+    #[command(name = "resume-state", subcommand)]
+    ResumeState(crate::plan_review_step3_review::ResumeStateCommand),
     /// Test whether a round artifact belongs in the durable snapshot.
     #[command(name = "round-artifact-included", disable_help_flag = true)]
     RoundArtifactIncluded(AgentRawArguments),
@@ -164,6 +170,7 @@ pub enum PlanReviewCommand {
     Tally(AgentRawArguments),
 }
 /// Dispatch one Rust-owned plan-review command.
+#[allow(clippy::too_many_lines)]
 pub fn run(command: PlanReviewCommand) -> ExitCode {
     match command {
         PlanReviewCommand::WriteLoopIdentity(arguments) => {
@@ -204,6 +211,9 @@ pub fn run(command: PlanReviewCommand) -> ExitCode {
         PlanReviewCommand::Step3GateBBypass(arguments) => {
             loop_implementation::step3_gate_b_bypass(&arguments.arguments)
         }
+        PlanReviewCommand::Step3Review(arguments) => {
+            crate::plan_review_step3_review::step3_review(&arguments.arguments)
+        }
         PlanReviewCommand::Step3bTail(arguments) => {
             loop_implementation::delegate_script("design-step3b-tail.sh", &arguments.arguments)
         }
@@ -225,6 +235,9 @@ pub fn run(command: PlanReviewCommand) -> ExitCode {
         }
         PlanReviewCommand::DriftBaseline(arguments) => {
             loop_implementation::drift_baseline(&arguments.arguments)
+        }
+        PlanReviewCommand::ResumeState(command) => {
+            crate::plan_review_step3_review::resume_state(command)
         }
         PlanReviewCommand::RoundArtifactIncluded(arguments) => {
             loop_implementation::artifact_filter(

@@ -137,16 +137,14 @@ apply_step3_handoff() {
 
 echo "=== design-step3-review.sh contract pins ==="
 STEP3_REVIEW_SH="$REPO_ROOT/skills/design/scripts/design-step3-review.sh"
-grep -Fq 'plan-review normalize-status' "$STEP3_REVIEW_SH" \
-  || fail 'design-step3-review.sh missing normalizer handoff'
-grep -Fq -- "--starting-round \"\$STARTING_ROUND\"" "$STEP3_REVIEW_SH" \
-  || fail 'design-step3-review.sh missing starting-round forwarding'
-# shellcheck disable=SC2016 # Literal script probe checks unexpanded parameter syntax.
-grep -Fq '[ "$STEP3_REVIEW_HAS_RESUME_STATE" = true ] && _adapt_args[${#_adapt_args[@]}]=--replace-completed-result' "$STEP3_REVIEW_SH" \
-  || fail 'design-step3-review.sh must replace only completed results for a planned resume'
-# shellcheck disable=SC2016 # Literal script probe checks unexpanded parameter syntax.
-grep -Fq '"$DESIGN_TMPDIR/.completed/step-3"' "$STEP3_REVIEW_SH" \
-  || fail 'design-step3-review.sh must delegate fresh-only marker clearing to bgjob adapt'
+grep -Fq 'plan-review step3-review' "$STEP3_REVIEW_SH" \
+  || fail 'design-step3-review.sh must delegate to plan-review step3-review'
+grep -Fq 'exec "$PLUGIN_ROOT/scripts/larch.sh"' "$STEP3_REVIEW_SH" \
+  || fail 'design-step3-review.sh must exec the verified larch entrypoint'
+if grep -Fq 'step3_review_validate_resume_state' "$STEP3_REVIEW_SH" \
+  || grep -Fq 'Generated /design wrapper' "$STEP3_REVIEW_SH"; then
+    fail 'design-step3-review.sh must not retain the generated Bash owner'
+fi
 pass 'design-step3-review.sh handoff contract present'
 
 _write_step3_wrapper_inputs() {

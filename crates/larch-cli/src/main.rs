@@ -126,6 +126,7 @@ mod plan_prompt_commands;
 mod plan_quality_commands;
 mod plan_quality_revise_commands;
 mod plan_review_commands;
+mod plan_review_step3_review;
 mod pr_commands;
 mod progress_commands;
 mod push_network;
