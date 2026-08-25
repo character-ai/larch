@@ -45,7 +45,7 @@ use crate::external_agent::{
     cursor_preflight_verdict, hold_vendor_startup_lock, run_bare_vendor,
     run_external_agent_with_auth_retries,
 };
-use crate::python_verb::plugin_root_directory;
+use crate::runtime_entrypoint::plugin_root_directory;
 use crate::runtime_entrypoint::run_verified_larch_with_timeout;
 use crate::scout_commands::filter_manifest_paths;
 
@@ -64,7 +64,7 @@ const NEGOTIATION_TIMEOUT_SECONDS: u64 = MAX_DRAFTER_TIMEOUT_SECONDS;
 const EXIT_TIMEOUT: i32 = 124;
 /// Interval between policy-watch samples while a vendor runs.
 const POLL_INTERVAL: Duration = Duration::from_secs(10);
-/// Bound on the still-Python design helpers this module delegates to.
+/// Bound on isolated design helper commands this module composes.
 const DESIGN_VERB_TIMEOUT: Duration = Duration::from_secs(120);
 /// The one Claude ledger alias that prices as its non-`[1m]` base model.
 const CLAUDE_SONNET_1M_ALIAS: &str = "claude-sonnet-4-6[1m]";
@@ -327,10 +327,10 @@ fn codex_auth() -> CodexEnvAuth {
 }
 
 // ---------------------------------------------------------------------------
-// Still-Python design helpers
+// Design helper composition
 // ---------------------------------------------------------------------------
 
-/// Record one vendor task's wall-clock through the still-Python timing writer.
+/// Record one vendor task's wall-clock through the Rust timing writer.
 fn record_vendor_timing(
     vendor: &str,
     task_kind: &str,
@@ -1622,7 +1622,7 @@ fn confined_stdin(prompt: &Path) -> Result<ConfinedPath, String> {
         .map_err(|error| error.to_string())
 }
 
-/// Record one Claude subprocess's token usage through the still-Python ledger.
+/// Record one Claude subprocess's token usage through the Rust ledger.
 fn record_claude_sub_usage(raw_envelope: &str, label: &str, model: &str) {
     let Some(usage) = serde_json::from_str::<serde_json::Value>(raw_envelope)
         .ok()

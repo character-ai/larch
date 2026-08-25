@@ -1,7 +1,7 @@
 //! `run-log` command boundary.
 
 use crate::argparse_compat::{ParsedCommandLine, parse, parse_with_flags};
-use crate::python_verb::plugin_root_directory;
+use crate::runtime_entrypoint::plugin_root_directory;
 use larch_adapters::git::GixRepository;
 use larch_adapters::run_lifecycle;
 use larch_adapters::run_log_manifest::{ManifestStore, ManifestStoreError, utc_now};

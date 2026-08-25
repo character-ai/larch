@@ -6,7 +6,7 @@
 //! rules and adapter effects explicitly.
 
 use crate::argparse_compat::{ParsedCommandLine, parse, parse_with_flags, write_stdout};
-use crate::python_verb::run_python_verb_best_effort;
+use crate::runtime_entrypoint::run_verified_larch_with_options;
 use larch_adapters::{
     assert_no_symlink_ancestors, assert_no_symlink_path_or_ancestors, create_directories,
     is_allowed_session_tmpdir, is_directory, is_regular_file, lock_session_activity,
@@ -15,13 +15,13 @@ use larch_adapters::{
     safe_output_parent, validate_design_tmpdir, write_confined_file, writer_target_allowed,
 };
 use larch_core::{
-    DIFFICULTY_CHOICES, RESTORE_FINALIZE_KEYS, RUN_FLAG_KEYS, RunParams, WRITE_DESIGN_ENV_KEYS,
-    WRITE_ENV_KEYS, allowed_session_roots, cleanup_cache_sessions_root, design_run_launcher_text,
-    export_line, external_timeout, implement_run_launcher_text, is_bool, is_strict_run_id,
-    is_valid_claude_pid, is_valid_plugin_root_value, is_valid_repo_value, is_valid_run_id,
-    is_valid_session_id, kv_text, parse_bool_arg, plugin_root_env_text, posix_path_display, redact,
-    restore_finalize_default, run_params_json, session_pointer_root, validate_no_newlines,
-    validate_path_arg_value, validate_repo_root_value, validate_writer_keys,
+    ChildEnvironment, DIFFICULTY_CHOICES, RESTORE_FINALIZE_KEYS, RUN_FLAG_KEYS, RunParams,
+    WRITE_DESIGN_ENV_KEYS, WRITE_ENV_KEYS, allowed_session_roots, cleanup_cache_sessions_root,
+    design_run_launcher_text, export_line, external_timeout, implement_run_launcher_text, is_bool,
+    is_strict_run_id, is_valid_claude_pid, is_valid_plugin_root_value, is_valid_repo_value,
+    is_valid_run_id, is_valid_session_id, kv_text, parse_bool_arg, plugin_root_env_text,
+    posix_path_display, redact, restore_finalize_default, run_params_json, session_pointer_root,
+    validate_no_newlines, validate_path_arg_value, validate_repo_root_value, validate_writer_keys,
 };
 use std::{
     env,
@@ -887,13 +887,12 @@ fn validate_restore_tmpdir(supplied: &str, tmpdir: &Path) -> Result<(), String> 
     Ok(())
 }
 
-/// Record the durable bail reason through the still-Python run-log writer.
+/// Record the durable bail reason through the Rust run-log writer.
 ///
 /// Best effort by design, matching the legacy verb: the run-log append is
 /// observability, and a failure must not fail the state restore that preceded
-/// it. This delegation retires when `run-log write` becomes Rust-owned (#7683).
 fn record_bail_reason(tmpdir: &Path, run_id: &str, bail_reason_file: &Path) {
-    run_python_verb_best_effort([
+    let arguments = [
         OsString::from("run-log"),
         OsString::from("write"),
         OsString::from("--log-root"),
@@ -906,7 +905,15 @@ fn record_bail_reason(tmpdir: &Path, run_id: &str, bail_reason_file: &Path) {
         OsString::from("final-bail-reason"),
         OsString::from("--input-file"),
         bail_reason_file.as_os_str().to_os_string(),
-    ]);
+    ];
+    let _ignored = run_verified_larch_with_options(
+        &arguments,
+        &[(
+            ChildEnvironment::ImplementTmpdir,
+            tmpdir.as_os_str().to_owned(),
+        )],
+        Duration::from_secs(120),
+    );
 }
 
 fn write_plugin_root_env(output: &Path, value: &str) -> Result<(), String> {

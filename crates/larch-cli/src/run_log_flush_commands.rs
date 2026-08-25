@@ -19,7 +19,7 @@ use larch_adapters::{
 use crate::{
     argparse_compat::{ParsedCommandLine, parse_with_flags},
     execution_issue_commands::write_execution_issue_records,
-    python_verb::plugin_root_directory,
+    runtime_entrypoint::plugin_root_directory,
     run_log_commands::resolve_log_root,
     run_log_entry_commands::{
         append_execution_issue, effort_level, main_model_for_source, plugin_version, read_lossy,

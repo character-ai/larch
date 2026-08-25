@@ -57,7 +57,7 @@ use crate::{
         checkpoint, conflict_cap, issue_cap_value, materialize, read_state, resolve_design_path,
         state_value, write_conflict_deps,
     },
-    python_verb::plugin_root_directory,
+    runtime_entrypoint::plugin_root_directory,
 };
 
 /// Usage line an unusable `oos file` command line is refused with.

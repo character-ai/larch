@@ -4,16 +4,28 @@ unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDI
 set -euo pipefail
 
 binary="${LARCH_BINARY:?set LARCH_BINARY to the test larch executable}"
-repo_root="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)"
 tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/larch-review-dispatch-panel.XXXXXX")"
 trap 'rm -rf -- "$tmpdir"' EXIT
 
 launcher="$tmpdir/plugin/scripts/larch.sh"
 mkdir -p "$(dirname "$launcher")"
-ln -s "$repo_root/python" "$tmpdir/plugin/python"
 cat >"$launcher" <<'EOF'
 #!/usr/bin/env bash
 set -uo pipefail
+if [[ "$1 $2" == "run-log append-entry" ]]; then
+    shift 2
+    log=
+    entry=
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            --log) shift; log="$1" ;;
+            --entry) shift; entry="$1" ;;
+        esac
+        shift
+    done
+    printf '%s\n' "$entry" >> "$log"
+    exit 0
+fi
 for arg in "$@"; do [[ "${previous:-}" == --output ]] && out="$arg"; previous="$arg"; done
 printf '%s\n' "$*" >> "$(dirname "$out")/launch-argv.log"
 [[ -f "$(dirname "$out")/FAIL-$(basename "$out")" ]] && exit 7
@@ -116,5 +128,21 @@ if run_panel "$tmpdir/reuse" "$tmpdir/reuse.md" false true --dynamic-archetypes 
     printf '%s\n' 'expected an invalid dynamic-archetypes value to fail' >&2
     exit 1
 fi
+
+mkdir -p "$tmpdir/producer-missing" "$tmpdir/implement"
+printf '# plan\n' > "$tmpdir/producer-missing.md"
+output="$(IMPLEMENT_TMPDIR="$tmpdir/implement" run_panel \
+    "$tmpdir/producer-missing" "$tmpdir/producer-missing.md" false true \
+    --dynamic-archetypes 1 --site 'implement Step 5')"
+grep -qx 'SCOUT_STATUS=producer-missing' <<<"$output"
+grep -q 'coder-produced dynamic-archetype manifest missing' \
+    "$tmpdir/implement/execution-issues.md"
+[[ -f "$tmpdir/implement/.producer-scout-warning-logged" ]]
+
+# The sentinel keeps a repeated panel dispatch from duplicating the warning.
+IMPLEMENT_TMPDIR="$tmpdir/implement" run_panel \
+    "$tmpdir/producer-missing" "$tmpdir/producer-missing.md" false true \
+    --dynamic-archetypes 1 --site 'implement Step 5' >/dev/null
+[[ "$(wc -l < "$tmpdir/implement/execution-issues.md")" -eq 1 ]]
 
 printf '%s\n' 'PASS: test-review-dispatch-panel.sh'

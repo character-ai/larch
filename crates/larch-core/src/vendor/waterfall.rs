@@ -47,8 +47,8 @@ impl Error for TierLaunchError {}
 
 /// Build the command arguments after the runtime entrypoint.
 ///
-/// The caller owns the typed runtime program (`scripts/larch.sh` during Rust
-/// ownership, or the temporary Python verb during staged migration).
+/// The caller owns the typed runtime program selected through
+/// `scripts/larch.sh`.
 ///
 /// # Errors
 ///

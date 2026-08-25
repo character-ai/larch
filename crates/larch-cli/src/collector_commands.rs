@@ -40,7 +40,7 @@ use serde_json::Value;
 use crate::agent_commands::{AgentRawArguments, SystemWaitHost, WaitBreadcrumbs};
 use crate::git_commands::is_transient_net;
 use crate::launcher_support::{is_non_empty_file, read_text};
-use crate::python_verb::plugin_root_directory;
+use crate::runtime_entrypoint::plugin_root_directory;
 use crate::waterfall_commands::inherited_child_rows;
 
 const PROG: &str = "collect-results";

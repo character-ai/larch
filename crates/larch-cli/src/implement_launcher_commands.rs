@@ -48,10 +48,10 @@ use crate::{
         record_codex_vendor_usage, run_vendor_launch_execution, scan_flag_arguments,
         valid_model_token, vendor_on_path, vendor_workdir, write_confined, write_preflight_bundle,
     },
-    python_verb::publish_session_environment,
     run_log_entry_commands::{
         FailureRecordRequest, append_execution_issue, record_execution_failure,
     },
+    runtime_entrypoint::publish_session_environment,
 };
 
 /// Codex model every implement difficulty tier pins.
@@ -372,7 +372,7 @@ fn validate_cursor_implement_paths(args: &ImplementArguments) -> Result<(), u8> 
 ///
 /// `/implement` writes the session id and the Claude transcript pointer beside
 /// the run, not into this process's environment, so the launcher reads them and
-/// hands them to the delegated-verb bridge.
+/// hands them to later verified larch children.
 fn hydrate_implement_session_environment() {
     let Some(root) = implement_tmpdir() else {
         return;

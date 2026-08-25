@@ -1,8 +1,8 @@
 //! Rust owners for the `/implement` Step 5-7a review-routing commands:
 //! `step-5-review`, `step-5-resume`, `checks-step5-resume`, `step-6-entry`,
 //! and `step-7a`. The parents launch or rejoin the shared bgjob adapter and the
-//! children delegate the still-Python composites and already-Rust verbs through
-//! the verified `scripts/larch.sh` bootstrap.
+//! children compose isolated Rust commands through the verified
+//! `scripts/larch.sh` bootstrap.
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -30,7 +30,7 @@ use crate::{
     argparse_compat::{choice_error, parse_required_with_help, usage_error},
     implement_child_seam::resolve_plugin_root,
     implement_dispatch_commands::{
-        LaunchIdentity, checks_launch_identity, delegate_python, delegate_verified_larch,
+        LaunchIdentity, checks_launch_identity, delegate_session_larch, delegate_verified_larch,
         ensure_safe_regular_file, format_rows, forward_output, opt_string,
         parse_command_with_tmpdir, prepare_checks_rejoin, publish_child_session,
         publish_identity_child, publish_rows, rehydrate_session, resolve_repo_root_output,
@@ -307,12 +307,18 @@ fn step5_resume_worker(
 /// review round; otherwise `(Some(rc), output)`.
 fn step5_resume_commit_phase() -> (Option<i32>, String) {
     let mut out = String::new();
-    let Ok(commit) = delegate_python([
-        OsString::from("implement"),
-        OsString::from("commit-route"),
-        OsString::from("--site"),
-        OsString::from("step5-resume-handoff"),
-    ]) else {
+    let Ok(cwd) = env::current_dir() else {
+        return (Some(1), String::new());
+    };
+    let Ok(commit) = delegate_session_larch(
+        &cwd,
+        &[
+            OsString::from("implement"),
+            OsString::from("commit-route"),
+            OsString::from("--site"),
+            OsString::from("step5-resume-handoff"),
+        ],
+    ) else {
         return (Some(1), out);
     };
     if !commit.stderr().is_empty() {
@@ -1753,9 +1759,7 @@ fn exit_code(code: i32) -> ExitCode {
 mod tests {
     use super::*;
     use crate::implement_child_seam::declare_plugin_root;
-    use crate::implement_dispatch_commands::{
-        clear_test_hooks, install_test_larch, install_test_python,
-    };
+    use crate::implement_dispatch_commands::{clear_test_hooks, install_test_larch};
     use larch_core::ProcessStatus;
     use larch_test_support::{GitFixture, GitRepository};
     use std::ffi::OsStr;
@@ -2378,7 +2382,7 @@ mod tests {
     fn step5_resume_worker_commit_stall_path() {
         let tmp = TempDir::new().unwrap();
         let _guard = arm_plugin_root(&tmp);
-        install_test_python(|_a| Ok(out(0, "NEXT_ACTION=stall\nCOMMITTED=true\nSHA=abc\n")));
+        install_test_larch(|_c, _r, _a| Ok(out(0, "NEXT_ACTION=stall\nCOMMITTED=true\nSHA=abc\n")));
         let (rc, text) = step5_resume_worker(tmp.path(), "2", "", true);
         assert_eq!(rc, 0);
         assert!(text.contains("NEXT_ACTION=stall"));
@@ -2389,10 +2393,13 @@ mod tests {
     fn step5_resume_worker_continue_path_runs_next_round() {
         let tmp = TempDir::new().unwrap();
         let _guard = arm_plugin_root(&tmp);
-        install_test_python(|_a| Ok(out(0, "NEXT_ACTION=continue\n")));
         install_test_larch(|_c, _r, args| {
-            assert_eq!(arg_at(args, 0), "review-and-fix");
-            Ok(out(0, "ROUND=3\n"))
+            if arg_at(args, 0) == "implement" {
+                Ok(out(0, "NEXT_ACTION=continue\n"))
+            } else {
+                assert_eq!(arg_at(args, 0), "review-and-fix");
+                Ok(out(0, "ROUND=3\n"))
+            }
         });
         let (rc, text) = step5_resume_worker(tmp.path(), "2", "", true);
         assert_eq!(rc, 0);
@@ -2411,7 +2418,7 @@ mod tests {
     fn commit_phase_non_terminal_action_relays_with_next_action() {
         let tmp = TempDir::new().unwrap();
         let _guard = arm_plugin_root(&tmp);
-        install_test_python(|_a| Ok(out(1, "NEXT_ACTION=retry\nERROR=boom\n")));
+        install_test_larch(|_c, _r, _a| Ok(out(1, "NEXT_ACTION=retry\nERROR=boom\n")));
         let (rc, text) = step5_resume_commit_phase();
         assert_eq!(rc, Some(1));
         assert!(text.contains("ERROR=boom"));
@@ -2664,7 +2671,6 @@ mod tests {
     fn resolve_session_repo_root_requires_repo_root_line() {
         let tmp = TempDir::new().unwrap();
         let _guard = arm_plugin_root(&tmp);
-        install_test_python(|_a| Ok(out(0, "OTHER=1\n")));
         assert!(resolve_session_repo_root(tmp.path()).is_err());
     }
 

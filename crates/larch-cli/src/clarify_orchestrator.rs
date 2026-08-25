@@ -29,7 +29,7 @@ use crate::design_step0_commands::{
 };
 use crate::github_repository_resolution::validate_repo_slug;
 use crate::implement_dispatch_commands::{delegate_verified_larch, run_verified_larch_env_in};
-use crate::python_verb::plugin_root_directory;
+use crate::runtime_entrypoint::plugin_root_directory;
 
 /// Environment keys the source-env merge carries into the driver.
 const CLARIFY_ENV_ALLOW: [&str; 5] = [

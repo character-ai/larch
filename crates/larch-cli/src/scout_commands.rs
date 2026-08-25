@@ -41,7 +41,7 @@ use crate::{
     argparse_compat::{ParsedCommandLine, finish_parse, missing, parse_with_flags, usage_error},
     html::{QuoteEscaping, escape_html},
     implement_commands::kv_value,
-    python_verb::plugin_root_directory,
+    runtime_entrypoint::plugin_root_directory,
     runtime_entrypoint::run_verified_larch,
 };
 

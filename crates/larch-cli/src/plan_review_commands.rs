@@ -48,7 +48,7 @@ const STATIC_ARCHETYPES: [&str; 4] = ["arch", "innovation", "pragmatic", "requir
 const PLAN_VOTER_PANEL_ROLE: &str = "senior engineer on a voting panel deciding which proposed plan modifications should be accepted";
 const CODEX_PLAN_REVIEW_MODEL: &str = "gpt-5.6-terra";
 const BALLOT_POINTER: &str = "Read the ballot from this path";
-const PYTHON_TIMEOUT: Duration = Duration::from_secs(900);
+const COMPOSED_COMMAND_TIMEOUT: Duration = Duration::from_secs(900);
 type PanelRows = Vec<Map<String, Value>>;
 type DynamicRenderFailures = Vec<(String, String, i32)>;
 /// Rust-owned plan-review dispatch commands.
@@ -670,13 +670,12 @@ fn render_plan_prompt(
     if body_payload {
         arguments.push("--body-file-payload".into());
     }
-    let output =
-        run_verified_larch_with_timeout(&arguments, PYTHON_TIMEOUT).map_err(|message| {
-            RenderFailure {
-                code: 1,
-                diagnostic: message,
-            }
-        })?;
+    let output = run_verified_larch_with_timeout(&arguments, COMPOSED_COMMAND_TIMEOUT).map_err(
+        |message| RenderFailure {
+            code: 1,
+            diagnostic: message,
+        },
+    )?;
     if !output.status().success() || output.stdout_truncated() {
         let error = output.stderr();
         let diagnostic = error.first().map_or_else(|| output.stdout(), |_| error);
@@ -1353,7 +1352,7 @@ fn run_plan_parse_rate_checks(
     prompts: &VoterPrompts,
     states: &mut [VoterSlotState],
 ) {
-    let plugin_root = crate::python_verb::plugin_root_directory().unwrap_or_default();
+    let plugin_root = crate::runtime_entrypoint::plugin_root_directory().unwrap_or_default();
     for (index, state) in states.iter_mut().enumerate() {
         if matches!(state.status.as_str(), "failed" | "skipped") {
             continue;

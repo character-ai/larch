@@ -1532,7 +1532,7 @@ fn step0c_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
 /// Bridge to the Rust-owned `design stage-terminal-state`, capturing streams to
 /// the two log paths and returning its exit code. #8580 flipped the verb from
 /// Python to Rust and removed its Python registration, so this resolves the
-/// larch entrypoint (preferring `LARCH_BINARY`) instead of `run_python_verb`.
+/// larch entrypoint, preferring `LARCH_BINARY` when supplied.
 pub fn stage_terminal_state_bridge(
     plugin_root: &Path,
     stdout_log: &Path,

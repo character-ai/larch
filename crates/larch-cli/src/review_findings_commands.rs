@@ -34,8 +34,8 @@ use tempfile::NamedTempFile;
 use crate::{
     argparse_compat::{parse, usage_error},
     launcher_support::write_confined_checked,
-    python_verb::plugin_root_directory,
     rendering_commands::validated_review_scope_anchor,
+    runtime_entrypoint::plugin_root_directory,
     runtime_entrypoint::{plugin_root, run_verified_larch},
     waterfall_commands::{dispatch_for_review, parse_dispatch_kv, render_dispatch_report},
 };

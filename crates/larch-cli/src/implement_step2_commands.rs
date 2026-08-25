@@ -54,7 +54,7 @@ use crate::{
     },
     implement_launcher_commands::{CODEX_IMPLEMENT_MODEL, cursor_implement_model},
     implement_preflight_commands::governance_gate_argv,
-    python_verb::publish_session_environment,
+    runtime_entrypoint::publish_session_environment,
 };
 
 const RUN_PROG: &str = "cli.py implement run-dispatch";

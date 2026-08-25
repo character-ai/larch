@@ -44,8 +44,8 @@ use crate::github_repository_resolution::repository_ref;
 use crate::github_service::{ServiceFailure, with_github_service};
 use crate::implement_bootstrap_continuation::resolve_revision_sha;
 use crate::issue_mutation_support::authorization_request;
-use crate::python_verb::plugin_root_directory;
 use crate::run_log_entry_commands::append_execution_issue;
+use crate::runtime_entrypoint::plugin_root_directory;
 
 /// Result-env basename `/design` Step 5c publishes its wire state to.
 const PUBLISH_RESULT_FILE: &str = ".design-publish-result.env";
