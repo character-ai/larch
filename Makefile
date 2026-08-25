@@ -31,8 +31,8 @@ HARNESS_MARK ?= sh -c 'timer=target/harness-mark/larch-harness-mark; LARCH_HARNE
 .PHONY: test-oos-disposition-gate oos-disposition-gate-bash-harness
 .PHONY: test-flush-execution-issues flush-execution-issues-bash-harness
 .PHONY: test-review-dispatch-panel
-.PHONY: test-stall-recovery-report test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3 test-step-18b-final-report
-.PHONY: test-resolve-upstream-larch-repo test-file-failure-report-cross-repo
+.PHONY: test-stall-recovery-report test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3 test-stall-recovery-report-4 test-stall-recovery-report-5 test-step-18b-final-report
+.PHONY: test-resolve-upstream-larch-repo
 .PHONY: test-design-pause-resume
 .PHONY: test-design-step1d5
 .PHONY: test-review-design-step3-loop
@@ -98,7 +98,7 @@ test-harnesses: test-harnesses-1 test-harnesses-2
 
 test-harnesses-1: test-hook-anti-read-poll
 
-test-harnesses-2: test-harness-shards-coverage test-prompt-template-invariants test-file-failure-report-cross-repo test-gate-b-apply-mode test-read-result-env test-sessionstart test-deny-edit-write test-token-vendor-scrapers test-external-tool-registry test-resolve-upstream-larch-repo test-cache-root-validation test-block-submodule test-cache-key-discipline test-architectural-guidelines-step test-references-headers test-extinct-notification-stack test-pipe-sigpipe-safety test-hook-stop-fail-close test-hook-deny-run-in-background test-quick-mode-docs-sync test-check-stale-plugin oos-disposition-gate-bash-harness test-render-cost-line-callsites test-plan-adequacy-audit write-final-report-bash-harness step-7a-bash-harness test-implement-timing-rehydration test-pause-skill flush-execution-issues-bash-harness test-audit-edit-write test-cleanup-sessionstart test-subskill-anchors test-rejected-analysis test-implement-anti-halt test-sessionstart-statusline test-step-8-oos-checkpoint test-design-clarify test-implement-fence-shape test-legacy-title-prefix-literals-scope test-implement-step2-routing test-triage-structure test-anti-halt test-implement-rebase-macro test-research-angle-prompts test-implement-step8-exit3-first-fixer test-orchestrator-scope-sync test-brainstorm-prompts test-synthesis-subagent test-implement-cleanup-roundtrip test-anti-improvised-wakeup test-implement-relevant-checks-anti-halt test-fluff-analysis-corpus test-implement-positional-issue test-effort-prose
+test-harnesses-2: test-harness-shards-coverage test-prompt-template-invariants test-gate-b-apply-mode test-read-result-env test-sessionstart test-deny-edit-write test-token-vendor-scrapers test-external-tool-registry test-resolve-upstream-larch-repo test-cache-root-validation test-block-submodule test-cache-key-discipline test-architectural-guidelines-step test-references-headers test-extinct-notification-stack test-pipe-sigpipe-safety test-hook-stop-fail-close test-hook-deny-run-in-background test-quick-mode-docs-sync test-check-stale-plugin oos-disposition-gate-bash-harness test-render-cost-line-callsites test-plan-adequacy-audit write-final-report-bash-harness step-7a-bash-harness test-implement-timing-rehydration test-pause-skill flush-execution-issues-bash-harness test-audit-edit-write test-cleanup-sessionstart test-subskill-anchors test-rejected-analysis test-implement-anti-halt test-sessionstart-statusline test-step-8-oos-checkpoint test-design-clarify test-implement-fence-shape test-legacy-title-prefix-literals-scope test-implement-step2-routing test-triage-structure test-anti-halt test-implement-rebase-macro test-research-angle-prompts test-implement-step8-exit3-first-fixer test-orchestrator-scope-sync test-brainstorm-prompts test-synthesis-subagent test-implement-cleanup-roundtrip test-anti-improvised-wakeup test-implement-relevant-checks-anti-halt test-fluff-analysis-corpus test-implement-positional-issue test-effort-prose
 
 test-pipe-sigpipe-safety:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
@@ -537,9 +537,10 @@ test-step2-dispatch:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration implement_step2_dispatch::
 
 # test-stall-recovery-report runs the Rust contract-lint test and focused Rust
-# core/adapter suites. The aggregate and Rust aliases are standalone carve-outs;
+# core, adapter, CLI, and integration suites. The aggregate and Rust aliases
+# are standalone carve-outs;
 # see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.
-test-stall-recovery-report: test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3
+test-stall-recovery-report: test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3 test-stall-recovery-report-4 test-stall-recovery-report-5
 
 test-stall-recovery-report-1:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration session_closeout::stall_recovery_lint_uses_the_rust_owned_contract_check
@@ -550,13 +551,14 @@ test-stall-recovery-report-2:
 test-stall-recovery-report-3:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-adapters stall_recovery
 
+test-stall-recovery-report-4:
+	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-cli --bin larch stall_recovery_file_report::tests
+
+test-stall-recovery-report-5:
+	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-cli --test integration stall_recovery_reporting::file_report_honors_the_test_mutation_deny_before_github_setup
+
 test-resolve-upstream-larch-repo:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-resolve-upstream-larch-repo.sh
-
-test-file-failure-report-cross-repo:
-	$(HARNESS_MARK) --label $@ -- bash scripts/test-file-failure-report-cross-repo.sh
-
-
 
 # This Rust-only entry point is a standalone alias, not a test-harnesses
 # prerequisite; see CARVE_OUTS in scripts/test-harness-shards-coverage.sh.

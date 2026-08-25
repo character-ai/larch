@@ -191,6 +191,13 @@ pull-request files operation and aggregates only filenames, additions, and
 deletions. The final-report and launcher consumers call the Rust owners in
 process; external callers continue through `scripts/larch.sh`.
 
+Issue #8928 moved `stall-recovery file-report` to Rust and removed its Bash
+owner. The verb reads one bounded newest-first issue page through the typed
+issue service. It performs issue creation and duplicate comments through
+`IssueMutationOwner`, including authorization, redaction, identity checks, and
+exact read-back. Callers inside the reporting runtime invoke the owner in
+process. External callers enter through `scripts/larch.sh`.
+
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
 ```text
@@ -204,6 +211,8 @@ issue-sub-issues	crates/larch-adapters/src/github/operations.rs	rust	#7682	compl
 issue-creation	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	issue cleanup-failed,issue create-one,issue write-sentinel
 issue-body-blocks	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7680,#7682	complete	complete	complete	named-block write,plan-block read,plan-block write
 issue-reads	crates/larch-adapters/src/github_rest.rs	rust	#7680,#7682,#7685,#8927	complete	complete	complete	design pause-load,design pause-save,gh agnix-issue,issue context,issue fetch-issue-details,issue info,issue list-issues,issue search-implementing,issue state,umbrella prepare
+stall-report-reads	crates/larch-adapters/src/github_rest.rs	rust	#7677,#7680,#8928	complete	complete	complete	stall-recovery file-report
+stall-report-mutations	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7677,#7680,#8928	complete	complete	complete	stall-recovery file-report
 design-issue-read	crates/larch-adapters/src/github/operations.rs	rust	#7680	complete	complete	complete	design step0-route
 issue-backlog-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
 issue-backlog-comments	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues run

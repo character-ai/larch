@@ -2620,6 +2620,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "dedup-tier-a-report",
     ),
     CleanInstallCase::new(
+        "clean-install-stall-recovery-file-report",
+        "stall-recovery",
+        "file-report",
+    ),
+    CleanInstallCase::new(
         "clean-install-stall-recovery-is-larch-dev-clone",
         "stall-recovery",
         "is-larch-dev-clone",

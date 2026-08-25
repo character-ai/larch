@@ -181,6 +181,7 @@ mod ship_recovery_commands;
 mod slack_commands;
 mod slot_binding;
 mod stall_recovery_commands;
+mod stall_recovery_file_report;
 mod stall_recovery_reporting;
 mod state_commands;
 mod status_commands;

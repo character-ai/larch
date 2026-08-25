@@ -1212,6 +1212,67 @@ pub fn tier_b_public_file_is_valid(
     tier_b_public_file_snapshot(&root, &public_file, sensitive_corpus, artifact_prefix).is_some()
 }
 
+/// Read one stable public-file snapshot into owned memory.
+///
+/// Passing a sensitive corpus applies the Tier B policy. Omitting it applies
+/// the Tier A redaction policy. The returned bytes have already passed the
+/// same bounded, no-follow, identity-checked read used by the descriptor
+/// transport boundary.
+#[must_use]
+pub fn snapshot_public_file_contents(
+    source_tmpdir: &Path,
+    public_file: &Path,
+    sensitive_corpus: Option<&Path>,
+    artifact_prefix: &str,
+) -> Option<String> {
+    approved_public_file_payload(
+        source_tmpdir,
+        public_file,
+        sensitive_corpus,
+        artifact_prefix,
+    )
+    .map(|(payload, _corpus)| payload)
+}
+
+/// Validate an in-memory public payload through the shared publication policy.
+///
+/// File-report assembly uses this after its source slices have already become
+/// stable owned snapshots. This keeps Tier B corpus rebuilding and public-text
+/// checks identical to `validate-tier-b-public-file --snapshot-fd` without
+/// reopening a caller-controlled pathname.
+#[must_use]
+pub fn validate_public_snapshot_contents(
+    source_tmpdir: &Path,
+    payload: &str,
+    sensitive_corpus: Option<&Path>,
+    artifact_prefix: &str,
+) -> Option<String> {
+    if !source_tmpdir.is_absolute()
+        || !artifact_prefix_valid(artifact_prefix)
+        || u64::try_from(payload.len()).map_or(true, |length| length > MAX_PUBLIC_FILE_BYTES)
+    {
+        return None;
+    }
+    let root = TemporaryRoot::resolve(Some(source_tmpdir)).ok()?;
+    match sensitive_corpus {
+        None => public_snapshot_is_safe(payload, None).then(|| payload.to_owned()),
+        Some(sensitive_corpus) => {
+            if !sensitive_corpus.is_absolute() {
+                return None;
+            }
+            let sensitive_corpus = canonical_root_spelling(&root, source_tmpdir, sensitive_corpus)?;
+            if !safe_regular_file(&root, &sensitive_corpus, None) {
+                return None;
+            }
+            let corpus =
+                build_effective_sensitive_corpus(&root, &sensitive_corpus, artifact_prefix)?;
+            let approved = public_snapshot_is_safe(payload, Some(&corpus));
+            let _ = fs::remove_file(effective_public_corpus_path(&root, artifact_prefix));
+            approved.then(|| payload.to_owned())
+        }
+    }
+}
+
 /// Snapshot one approved public artifact into a caller-owned unlinked Unix file.
 ///
 /// The caller keeps the descriptor open across its transport command. That

@@ -5125,6 +5125,15 @@ clean_install_test = "clean-install-stall-recovery-dedup-tier-a-report"
 
 [[commands]]
 domain = "stall-recovery"
+verb = "file-report"
+machine_stdout = true
+owner = "rust"
+planning_issue = 7677
+migration_issue = 8928
+clean_install_test = "clean-install-stall-recovery-file-report"
+
+[[commands]]
+domain = "stall-recovery"
 verb = "init-attempts"
 machine_stdout = true
 owner = "rust"
@@ -6150,11 +6159,6 @@ rust = ["bgjob reap", "cleanup run"]
 path = "scripts/external-tool-registry.sh"
 kind = "script"
 rust = ["agent check-reviewers", "agent collect-results", "agent model-args", "agent run-external-agent", "implement step2-dispatch"]
-
-[[callers]]
-path = "scripts/file-failure-report-cross-repo.sh"
-kind = "script"
-rust = ["redact secrets", "session check-live-mutation-auth", "stall-recovery *"]
 
 [[callers]]
 path = "scripts/hook-anti-read-poll.sh"

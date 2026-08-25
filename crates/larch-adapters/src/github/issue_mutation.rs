@@ -7,12 +7,13 @@
 
 use larch_core::{
     CreatedIssue, GitHubCloseReason, GitHubComment, GitHubIssue, GitHubIssueCreate,
-    GitHubIssueEdit, GitHubIssueState, GitHubOperationError, GitHubRepositoryRef, GitHubService,
-    IssueCreateRequest, IssueMutationError, IssueMutationField, IssueMutationRequest,
-    IssueMutationSnapshot, ProcessCancellation, VerifiedIssueMutation, mutation_postcondition,
-    mutation_would_change, redact_issue_create_request, redact_issue_mutation_request,
-    redact_issue_text_outbound, same_mutation_identity, snapshot_is_strictly_newer,
-    validate_issue_mutation_request, verify_authorized_body_change, verify_created_issue,
+    GitHubIssueEdit, GitHubIssueState, GitHubOperationError, GitHubOperationErrorKind,
+    GitHubRepositoryRef, GitHubService, IssueCreateRequest, IssueMutationError, IssueMutationField,
+    IssueMutationRequest, IssueMutationSnapshot, ProcessCancellation, VerifiedIssueMutation,
+    mutation_postcondition, mutation_would_change, redact_issue_create_request,
+    redact_issue_mutation_request, redact_issue_text_outbound, same_mutation_identity,
+    snapshot_is_strictly_newer, validate_issue_mutation_request, verify_authorized_body_change,
+    verify_created_issue,
 };
 
 use super::{
@@ -195,7 +196,12 @@ impl<'service> IssueMutationOwner<'service> {
             .create_issue(&create, cancellation)
             .await
             .map_err(|error| {
-                IssueCreateFailure::without_orphan(IssueMutationError::new("create-failed"))
+                let reason = if error.kind() == GitHubOperationErrorKind::MalformedResponse {
+                    "invalid-read-back"
+                } else {
+                    "create-failed"
+                };
+                IssueCreateFailure::without_orphan(mutation_error_for(reason, &error))
                     .with_detail(error.to_string())
             })?;
         let echoed = verify_created_issue(&created).map_err(|error| IssueCreateFailure {
@@ -250,7 +256,14 @@ impl<'service> IssueMutationOwner<'service> {
             .service
             .create_comment(repository, issue, &redacted, cancellation)
             .await
-            .map_err(|_| IssueMutationError::new("comment-write-failed"))?;
+            .map_err(|error| {
+                let reason = if error.kind() == GitHubOperationErrorKind::MalformedResponse {
+                    "invalid-read-back"
+                } else {
+                    "comment-write-failed"
+                };
+                mutation_error_for(reason, &error)
+            })?;
         let echoed = verify_comment_read_back(written, &redacted, repository, issue, None)?;
         self.read_comment_back(cancellation, repository, issue, echoed.id, &redacted)
             .await
@@ -1451,6 +1464,26 @@ mod tests {
         assert_eq!((created.id, edited.id), (11, 11));
         assert_eq!(create["body"], "note <REDACTED-TOKEN>");
         assert_eq!(requests[2].method, "POST");
+    }
+
+    #[tokio::test]
+    async fn a_malformed_http_refusal_stays_a_comment_write_failure() {
+        let exchanges = vec![response(422, "{}")];
+        let (service, server) = service(exchanges);
+
+        let error = IssueMutationOwner::new(&service)
+            .create_comment(
+                &Cancellation::new(),
+                &operator_authorization(),
+                &repository(),
+                7,
+                "note",
+            )
+            .await
+            .expect_err("an HTTP refusal must not become a success read-back failure");
+
+        assert_eq!(error.reason(), "comment-write-failed");
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
     }
 
     #[tokio::test]

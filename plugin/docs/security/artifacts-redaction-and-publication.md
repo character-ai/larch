@@ -632,25 +632,26 @@ only run-identifier exception is the public `Run ID` field sourced from
 `RUN_ID`, `LARCH_RUN_ID`, or `SESSION_ID` when it is nonempty and limited to
 ASCII letters, digits, `.`, `_`, `:`, and `-`; token-session identifiers remain
 sensitive. Public dedup signatures and comments use only the same bounded
-public fields. The Rust-owned
-`stall-recovery validate-tier-b-public-file` command rebuilds the effective
-sensitive corpus under the validated session root and rejects oversized,
-symlinked, path-bearing, remote-bearing, or corpus-matching public text. The
-cross-repository helper reaches it only through `scripts/larch.sh`. Before
-deduplication, issue creation, or duplicate-comment publication, the helper
-asks that Rust owner for a bounded no-follow snapshot. The owner checks file
-identity before, during, and after the read, then writes a private, unlinked
-descriptor owned by the helper. Marker lookup, the create title, and the
-GitHub transport consume that descriptor through `/dev/fd` rather than
-reopening the caller-provided pathname. Rust also owns descriptor rewinds,
-dedup-response parsing, comment-response URL validation, and the JSON comment
-request envelope. The Rust command owns the complete runtime helper. A source that
-changes while it is snapshotted, or is missing, oversized,
-non-regular, or symlinked, fails closed before any GitHub mutation. Later
-source changes cannot alter the approved transport bytes. A missing validator,
-sensitive corpus, repository resolver, network result, or valid created URL
-falls back to a sanitized local
-report for manual filing. It never falls back to the raw evidence.
+public fields. The Rust-owned `stall-recovery validate-tier-b-public-file`
+command rebuilds the effective sensitive corpus under the validated session
+root and rejects oversized, symlinked, path-bearing, remote-bearing, or
+corpus-matching public text. Its `--snapshot-fd` interface remains the
+publication boundary for external descriptor consumers. It returns a private,
+unlinked descriptor through `/dev/fd`.
+
+The Rust-owned `stall-recovery file-report` verb applies the same validation in
+process before deduplication, issue creation, or duplicate-comment publication.
+It checks file identity before, during, and after each read. Marker lookup,
+create-title derivation, and typed GitHub transport consume the frozen approved
+bytes without reopening the caller-provided pathname. A source that changes
+while it is read, or is missing, oversized, non-regular, or symlinked, fails
+closed before any GitHub mutation. Later source replacement cannot alter the
+approved transport bytes. Typed issue reads enforce the 100-record dedup bound.
+Issue and comment writes pass through `IssueMutationOwner`, which applies the
+live-mutation gate, outbound redaction, identity validation, and exact read-back.
+A missing validator, sensitive corpus, repository resolver, network result, or
+valid created URL falls back to a sanitized local report for manual filing. It
+never falls back to the raw evidence.
 
 The Rust-owned `stall-recovery compose-report`, `chat-print`,
 `dedup-tier-a-report`, and `populate-sensitive-corpus` commands keep their
@@ -679,6 +680,7 @@ defines its implementation checks and the complete egress contract.
 | Concern | Current owners |
 |---------|----------------|
 | Redaction commands | `crates/larch-cli/src/redact_commands.rs` and `crates/larch-core/src/redaction.rs`; typed Git and confined atomic filesystem effects come from `larch-adapters` |
+| Cross-repository failure report publication | `crates/larch-cli/src/stall_recovery_file_report.rs`, `crates/larch-adapters/src/stall_recovery.rs`, `crates/larch-adapters/src/github_rest.rs`, and `crates/larch-adapters/src/github/issue_mutation.rs` |
 | Checksum-pinned scanner | Local Rust command: `crates/larch-cli/src/gitleaks.rs` and `crates/larch-adapters/src/github/release.rs`; CI verifier: `.github/workflows/ci.yaml` |
 | Rust human, machine, breadcrumb, and journal redaction | `crates/larch-core/src/redaction.rs`, `crates/larch-core/src/telemetry.rs`, and `larch_core::SafeText` consumers |
 | Clone-local statusline progress state | Rust owns pointer activation, compare-and-clear, breadcrumb append, stale cleanup, and persisted run-identity parsing in `crates/larch-adapters/src/progress_state.rs` and `crates/larch-cli/src/progress_commands.rs`. |
