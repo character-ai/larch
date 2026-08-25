@@ -1255,11 +1255,6 @@ mod tests {
 
     struct FakeSeam {
         design: PathBuf,
-        snapshot_fail: bool,
-        strip_fail: bool,
-        validate_fail: bool,
-        pause_ok: bool,
-        emit_rejected_framed_ok: bool,
         last_adapt: std::rc::Rc<std::sync::Mutex<Vec<String>>>,
     }
 
@@ -1267,12 +1262,15 @@ mod tests {
         fn new(design: &Path) -> Self {
             Self {
                 design: design.to_path_buf(),
-                snapshot_fail: false,
-                strip_fail: false,
-                validate_fail: false,
-                pause_ok: true,
-                emit_rejected_framed_ok: true,
                 last_adapt: std::rc::Rc::new(std::sync::Mutex::new(Vec::new())),
+            }
+        }
+
+        fn ok() -> ChildOutcome {
+            ChildOutcome {
+                code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
             }
         }
 
@@ -1306,27 +1304,12 @@ mod tests {
                 args.get(1).map(String::as_str),
             );
             match head {
-                (Some("session"), Some("validate-design-tmpdir")) => ChildOutcome {
-                    code: 0,
-                    stdout: String::new(),
-                    stderr: String::new(),
-                },
-                (Some("plan-review"), Some("step3-entry-state"))
-                | (Some("plan-review"), Some("step3-entry-preview"))
+                (Some("session"), Some("validate-design-tmpdir"))
+                | (Some("plan-review"), Some("step3-entry-state" | "step3-entry-preview"))
                 | (Some("design"), Some("dialectic-gatec"))
-                | (Some("timing"), Some("mark")) => ChildOutcome {
-                    code: 0,
-                    stdout: String::new(),
-                    stderr: String::new(),
-                },
+                | (Some("timing"), Some("mark"))
+                | (Some("scope-anchor"), Some("validate")) => Self::ok(),
                 (Some("plan-review"), Some("snapshot-pre-review")) => {
-                    if self.snapshot_fail {
-                        return ChildOutcome {
-                            code: 1,
-                            stdout: String::new(),
-                            stderr: String::new(),
-                        };
-                    }
                     let _ = fs::copy(
                         self.design.join("plan.txt"),
                         self.design.join("plan-before-review.txt"),
@@ -1338,66 +1321,29 @@ mod tests {
                     }
                 }
                 (Some("plan-block"), Some("strip-body")) => {
-                    if self.strip_fail {
-                        return ChildOutcome {
-                            code: 1,
-                            stdout: String::new(),
-                            stderr: String::new(),
-                        };
-                    }
                     let file = flag_value(args, "--file").unwrap_or("");
                     let output = flag_value(args, "--output").unwrap_or("");
                     Self::strip(Path::new(file), Path::new(output));
-                    ChildOutcome {
-                        code: 0,
-                        stdout: String::new(),
-                        stderr: String::new(),
-                    }
+                    Self::ok()
                 }
-                (Some("scope-anchor"), Some("validate")) => ChildOutcome {
-                    code: i32::from(self.validate_fail),
-                    stdout: String::new(),
-                    stderr: String::new(),
-                },
                 (Some("plan-review"), Some("prelaunch-failure")) => ChildOutcome {
                     code: 0,
                     stdout: "STEP3_REVIEW_LOOP_STATUS=panel-init-failed\n".to_owned(),
                     stderr: String::new(),
                 },
                 (Some("design"), Some("pause-save")) => {
-                    if self.pause_ok {
-                        let _ = fs::write(self.design.join(".pause-save-complete"), "");
-                    }
-                    ChildOutcome {
-                        code: i32::from(!self.pause_ok),
-                        stdout: String::new(),
-                        stderr: String::new(),
-                    }
+                    let _ = fs::write(self.design.join(".pause-save-complete"), "");
+                    Self::ok()
                 }
                 (Some("design"), Some("driver")) => {
                     touch(&self.design.join(".completed/finalize"));
-                    ChildOutcome {
-                        code: 0,
-                        stdout: String::new(),
-                        stderr: String::new(),
-                    }
+                    Self::ok()
                 }
-                (Some("plan-review"), Some("emit-rejected")) => {
-                    if args.iter().any(|arg| arg == "--report-framing")
-                        && !self.emit_rejected_framed_ok
-                    {
-                        return ChildOutcome {
-                            code: 1,
-                            stdout: String::new(),
-                            stderr: String::new(),
-                        };
-                    }
-                    ChildOutcome {
-                        code: 0,
-                        stdout: "rejected body\n".to_owned(),
-                        stderr: String::new(),
-                    }
-                }
+                (Some("plan-review"), Some("emit-rejected")) => ChildOutcome {
+                    code: 0,
+                    stdout: "rejected body\n".to_owned(),
+                    stderr: String::new(),
+                },
                 (Some("plan-review"), Some("preview")) => ChildOutcome {
                     code: 0,
                     stdout: "preview\n".to_owned(),
@@ -1714,7 +1660,7 @@ mod tests {
                 .stdout
                 .contains("BGJOB_STATUS=STARTED STEP=design-step4-tail PGID=12345")
         );
-        let adapt = last_adapt.lock().expect("adapt argv");
+        let adapt = last_adapt.lock().expect("adapt argv").clone();
         assert!(
             adapt
                 .windows(2)
