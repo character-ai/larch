@@ -111,7 +111,15 @@ Produce a single-item list where item 1 is:
 Invoke the parser:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue parse-input --input-file "$INPUT_FILE" --output-dir "$ISSUE_TMPDIR/bodies"
+ISSUE_PARSE_OUTPUT="$ISSUE_TMPDIR/parse-output.env"
+PARSE_RC=0
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue parse-input \
+  --input-file "$INPUT_FILE" \
+  --output-dir "$ISSUE_TMPDIR/bodies" \
+  > "$ISSUE_PARSE_OUTPUT" || PARSE_RC=$?
+if [ "$PARSE_RC" -eq 0 ]; then
+  cat "$ISSUE_PARSE_OUTPUT"
+fi
 ```
 
 **Parser exit-status check (MANDATORY)**: after the Bash call, check the parser's exit code. On non-zero (missing flags, missing input, write failure under `set -euo pipefail`), discard any captured stdout as unreliable, emit `**⚠ /issue: issue parse-input failed (exit <N>) — aborting batch-mode run.**` on stderr, run `rm -rf "$ISSUE_TMPDIR"` to clean up any partial body files already written (Step 9 cleanup won't run on this abort path), and exit non-zero. Do NOT proceed to Phase 1/2 or create.
@@ -320,113 +328,25 @@ For each non-malformed new item, the subagent emits exactly one verdict line plu
 
 **Conservatism**: only mark DUPLICATE when near-certain; ambiguous matches tie-break toward CREATE. Same conservatism applies to dep edges — only emit `BLOCKED_BY` / `BLOCKS` when the link is strongly supported by description content (same files, same module surface, explicit "this requires" / "depends on" prose). False negatives (no edge) are preferable to false positives (wrong edge), since blocker links are visible to operators.
 
+Before Step 6 in batch mode, write the final validated result to `$ISSUE_TMPDIR/edges.env` as strict, duplicate-free `KEY=value` rows. Include one `ITEM_<i>_VERDICT=CREATE|DUPLICATE` row for every non-malformed item. For a duplicate, include exactly one of `ITEM_<i>_DUPLICATE_OF=<N>` plus `ITEM_<i>_DUPLICATE_OF_URL=<URL>`, or `ITEM_<i>_DUPLICATE_OF_ITEM=<j>`. Include the final `ITEM_<i>_BLOCKED_BY=` and `ITEM_<i>_BLOCKS=` values when non-empty. When `--blocked-by-issue` passed its probe, also include `BLOCKED_BY_ISSUE=<N>` and `BLOCKED_BY_ISSUE_ID=<ID>`. Skip paths must materialize the same final rows after their documented CREATE defaults and policy-edge augmentation. Do not put titles, bodies, rationale, comments, blank records, carriage returns, or duplicate keys in this file.
+
 <!-- step:6 — Create Surviving Items -->
 
-**Topological order (issue #546)**: instead of iterating in input-file order, build the directed dependency graph over non-duplicate items using:
-- BLOCKED_BY edges: each `ITEM_<i>_BLOCKED_BY=ITEM_<j>` becomes edge `j → i` (j precedes i).
-- DUPLICATE_OF_ITEM synthetic edges: each `ITEM_<i>_VERDICT=DUPLICATE DUPLICATE_OF_ITEM=<j>` becomes synthetic edge `j → i`.
+On every batch path, including a direct jump that skipped Step 5, first materialize `$ISSUE_TMPDIR/edges.env` under the strict final-row contract above. Skip paths synthesize their documented CREATE verdicts, empty edge lists, and any probe-validated policy edge before writing the file. Then invoke the Rust owner once:
 
-Run Kahn's algorithm conceptually: process nodes whose unfulfilled-prerequisite count is 0; when ties exist, break by ascending original input index `i` for deterministic ordering. The result is a per-batch processing order `order[0], order[1], ...` where each `order[k]` is an original input index. The output stdout grammar uses ORIGINAL indices (`ISSUE_<original_i>_*`) regardless of processing order — consumers parse by key match, not stream position.
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue create-batch \
+  --parse-output "$ISSUE_PARSE_OUTPUT" \
+  --edges-file "$ISSUE_TMPDIR/edges.env" \
+  --repo "$REPO" \
+  --operator-invoked
+```
 
-**Live-monitoring UX**: emit a stderr breadcrumb in **input order** (`▶ /issue: creating item <i>/<ITEMS_TOTAL> (topo position <k>)…`) so operators see file-order narrative; machine stdout stays index-keyed.
+Append the parsed `--title-prefix`, every `--label`, and `--dry-run` option when present. A session-backed `/design` or `/implement` caller replaces `--operator-invoked` with the complete `--context-file PATH --run-id ID --trusted-root PATH` authorization group. Capture stdout, preserve the helper's exit status, print stdout once, and parse the final `ISSUES_CREATED`, `ISSUES_FAILED`, and `ISSUES_DEDUPLICATED` rows for Step 7. An input or authorization refusal aborts before mutation. A non-zero result with aggregate rows is a completed partial batch and continues to Step 7.
 
-**Stdout ordering note** (issue #546 plan-review FINDING_11): per-item machine lines (`ISSUE_<i>_*`) are keyed by the original input index `i`. They may appear in topological create order rather than input file order. Consumers parse by key match, not stream position.
+The Rust owner preloads every CREATE body before the first mutation, wraps OOS metadata with the canonical template, applies title and label normalization through `create-one`'s planner, and assigns the authenticated GitHub user. It owns deterministic topological order, cached sibling and policy node ids, duplicate chains, create and edge retries, per-item orphan cleanup, transitive descendant skips, and the established `ISSUE_<i>_*` and aggregate stdout grammar. It emits ASCII `...` breadcrumbs on stderr. Independent siblings continue after a failure. A rolled-back create still counts in `ISSUES_CREATED`; the source and skipped descendants count in `ISSUES_FAILED`. Dry-run emits dependency previews but no issue ids and performs no create, edge, or cleanup mutation.
 
-**Step-5-skip-path policy-edge augmentation** (issue: round-1 native-blocking PR): when `BLOCKED_BY_ISSUE` is set AND Step 5 was skipped (paths: `LIST_STATUS=failed`, allocator failure, empty-CANDIDATES + `N_NON_MALFORMED < 2`), augment every CREATE-verdicted, non-DUPLICATE item's `ITEM_<i>_BLOCKED_BY` with `BLOCKED_BY_ISSUE` immediately before the per-item iteration begins. No additional validation runs; the probe at Step 4-top already authorized the edge. Emit a stderr breadcrumb: `**ℹ /issue: --blocked-by-issue #$BLOCKED_BY_ISSUE applied directly in Step 6 (Step 5 skipped: <reason>).**` where `<reason>` is one of `list-status-failed`, `allocator-failed`, `empty-candidates-single-item`. The existing `issue add-blocked-by` invocation in Step 6 then handles the edge identically to any other `BLOCKED_BY` entry (numeric path, with cached `--blocker-id $BLOCKED_BY_ISSUE_ID`).
-
-Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original index; substitute that as `<i>` in the per-item logic below):
-
-- If `ITEM_<i>_VERDICT=DUPLICATE` with `DUPLICATE_OF=<N>`: emit
-  - `ISSUE_<i>_DUPLICATE=true`
-  - `ISSUE_<i>_DUPLICATE_OF_NUMBER=<N>`
-  - `ISSUE_<i>_DUPLICATE_OF_URL=<url-from-snapshot>`
-  - `ISSUE_<i>_TITLE=<title>`
-  - Increment `ISSUES_DEDUPLICATED`. Do NOT call `issue create-one`.
-
-- If `ITEM_<i>_VERDICT=DUPLICATE` with `DUPLICATE_OF_ITEM=<j>`: resolve `j`'s eventual `ISSUE_<j>_NUMBER` / `ISSUE_<j>_URL` (these will have been emitted already since item `j` is ordered before item `i` in the topological schedule due to the DUPLICATE_OF_ITEM synthetic prerequisite edge `j → i`). Emit:
-  - `ISSUE_<i>_DUPLICATE=true`
-  - `ISSUE_<i>_DUPLICATE_OF_NUMBER=<j's number>`
-  - `ISSUE_<i>_DUPLICATE_OF_URL=<j's url>`
-  - `ISSUE_<i>_TITLE=<title>`
-  - Increment `ISSUES_DEDUPLICATED`.
-
-  If `j` itself resolved to a duplicate (of another issue or earlier item), follow the chain: `i` points at the same ultimate target. (Chains are rare in practice but this rule makes the output deterministic.)
-
-- Else (`CREATE`): for generic items, the parser (batch mode) or Step 3 (single mode) already wrote the raw body to `ITEM_<i>_BODY_FILE` — pass that path directly as `--body-file` to `issue create-one`, no temp-file assembly needed.
-
-  Build `issue create-one` args:
-  ```
-  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue create-one \
-    --title "<item title>" \
-    --body-file "$ITEM_<i>_BODY_FILE" \
-    [--title-prefix "$TITLE_PREFIX"] \
-    [--label L1] [--label L2] … \
-    [--repo "$REPO"] \
-    --assign-authenticated-user \
-    [--dry-run] \
-    [--operator-invoked]  # for direct operator-requested commands
-  ```
-
-  **Authorization**: non-dry-run `issue create-one` requires one of:
-  - `--operator-invoked` — for direct operator-requested commands (`/larch:issue` invocations). Pass this flag for all direct `/issue` calls from skill orchestrators.
-  - `--context-file PATH` — for session-backed `/design` or `/implement` filing; pass `$DESIGN_TMPDIR/source-env.sh` or `$IMPLEMENT_TMPDIR/session-env.sh`. The file must contain `LARCH_LIVE_MUTATION_OK=true`.
-  - `--dry-run` — always authorization-free; no `--operator-invoked` or `--context-file` needed.
-
-  For **OOS batch mode items** (items carrying `ITEM_<i>_REVIEWER/PHASE/VOTE_TALLY`), the raw description file needs to be wrapped in the OOS template before it can be passed to `issue create-one`. Two files are involved: (1) the parser-produced raw body file at `$ITEM_<i>_BODY_FILE`, and (2) an assembled-template file at `$ISSUE_TMPDIR/oos-body-<i>.txt` that contains the wrapped body. Read the raw description via Bash (`cat "$ITEM_<i>_BODY_FILE"`), then compose the OOS body template byte-for-byte identical to the deleted create-oos-issues.sh:149-162 output:
-  ```markdown
-  ## Out-of-Scope Observation
-
-  **Surfaced by**: <reviewer>
-  **Phase**: <phase>
-  **Vote tally**: <vote-tally>
-
-  ## Description
-
-  <raw body — contents of $ITEM_<i>_BODY_FILE>
-
-  ---
-  *This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
-  ```
-  Write that assembled body to `$ISSUE_TMPDIR/oos-body-<i>.txt`, then call `issue create-one --body-file "$ISSUE_TMPDIR/oos-body-<i>.txt"`. (Both files are cleaned up along with `$ISSUE_TMPDIR` at Step 9.)
-
-  Parse `issue create-one` output (all fields come from the helper's stdout):
-  - On `ISSUE_NUMBER=<N>` + `ISSUE_URL=<url>` + `ISSUE_ID=<id>` + `ISSUE_TITLE=<final-title>`: emit
-    - `ISSUE_<i>_NUMBER=<N>`
-    - `ISSUE_<i>_URL=<url>`
-    - `ISSUE_<i>_ID=<id>` — issue #546: internal numeric id captured from the create response. Used as the cached `--blocker-id` for subsequent `issue add-blocked-by` invocations targeting this batch sibling, eliminating an extra `gh api` round-trip per intra-batch edge.
-    - `ISSUE_<i>_TITLE=<final-title>` — taken directly from `ISSUE_TITLE=…` in `issue create-one` output. The helper applies `--title-prefix`, enforces `[OOS]` when the body starts with the OOS template heading and the caller omitted `--title-prefix`, and uses one title-prefix normalization path for case-insensitive deduplication. Do not reimplement title-prefix logic in prompt text.
-    - Increment `ISSUES_CREATED`. Append the created issue to an in-memory snapshot so later intra-run dedup iterations can also reference it if the LLM Phase 2 missed an equivalence.
-
-    **Apply blocker dependencies (issue #546)** — runs immediately after a successful create. For each entry in `ITEM_<i>_BLOCKED_BY=` (post-validation list from Step 5, or Step-5-skip-path augmentation when applicable), invoke `issue add-blocked-by`:
-      - If the entry is `<M>` (existing OPEN issue from snapshot): `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue add-blocked-by --client-issue $N --blocker-issue $M --repo "$REPO" --operator-invoked`. The helper resolves `M → id` via one extra `gh api` lookup.
-      - If the entry equals `BLOCKED_BY_ISSUE`: `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue add-blocked-by --client-issue $N --blocker-issue $BLOCKED_BY_ISSUE --blocker-id $BLOCKED_BY_ISSUE_ID --repo "$REPO" --operator-invoked`. The cached id from the Step 4.0 probe avoids the helper's blocker lookup.
-      - If the entry is `ITEM_<j>` (batch sibling): `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue add-blocked-by --client-issue $N --blocker-issue ${ISSUE_<j>_NUMBER} --blocker-id ${ISSUE_<j>_ID} --repo "$REPO" --operator-invoked`. The cached `ISSUE_<j>_ID` (from `issue create-one` prior output for `j`) avoids the lookup. Topological order guarantees `j` was processed before `i` for any `BLOCKED_BY=ITEM_<j>` edge, so `ISSUE_<j>_ID` is always set at this point.
-
-    Parse the helper's output:
-      - On `BLOCKED_BY_ADDED=true`: increment a per-item `applied` counter. Continue to next entry.
-      - On `BLOCKED_BY_FAILED=true`: see "Dep-link failure recovery" below.
-
-    Then for each entry in `ITEM_<i>_BLOCKS=<M>` (BLOCKS direction — the new issue blocks an existing issue), invoke `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue add-blocked-by --client-issue $M --blocker-issue $N --blocker-id $ISSUE_ID_FROM_CREATE --repo "$REPO" --operator-invoked`. Same parsing.
-
-    **Dep-link failure recovery** (per-item rollback, issue #546): on the first `BLOCKED_BY_FAILED=true` for item `i`:
-      1. Invoke `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue cleanup-failed --issue-number $N --repo "$REPO"` to close the orphan. Parse `CLOSED=true|false`. If `CLOSED=false`, emit on stderr: `**⚠ /issue: orphan close failed for #$N (<url>): <redacted-error>. Manually close.**`.
-      2. Emit `ISSUE_<i>_FAILED=true ISSUE_<i>_TITLE=<input-title> ISSUE_<i>_ERROR=dep-link-failed: <redacted-msg> ISSUE_<i>_BLOCKER_LINKS_APPLIED=<n_applied>`. Increment `ISSUES_FAILED`.
-      3. **Propagate transitive failure**: walk the dependency graph from `i` and find every batch item whose `BLOCKED_BY` (or `DUPLICATE_OF_ITEM`) chain points at `i`, transitively. For each such descendant `d`: emit `ISSUE_<d>_FAILED=true ISSUE_<d>_TITLE=<descendant input title> ISSUE_<d>_ERROR=transitive-failure: parent #$N (item $i) failed dep-wiring`, increment `ISSUES_FAILED`, and SKIP that descendant's create call when its turn comes in the topological order (test for `ISSUE_<d>_FAILED=true` already set before invoking `issue create-one`).
-      4. Do NOT decrement `ISSUES_CREATED` for `i` — the issue WAS created (it just got rolled back); operators inspecting GitHub will see the closed orphan.
-      5. Continue to next non-failed topological node.
-
-    On all dep-edge entries succeeding (or no edges to apply): emit `ISSUE_<i>_BLOCKER_LINKS_APPLIED=<count>`.
-  - On `ISSUE_FAILED=true` + `ISSUE_ERROR=<msg>`: emit
-    - `ISSUE_<i>_FAILED=true`
-    - `ISSUE_<i>_TITLE=<input-title>` (the pre-prefix title from the input item — helper did not apply the prefix on failure)
-    - Append a warning to stderr: `**⚠ /issue: create failed for item <i>: <msg>**`
-    - Increment `ISSUES_FAILED`.
-  - On `DRY_RUN=true` + `ISSUE_TITLE=<final-title>` (when `--dry-run` was passed): emit
-    - `ISSUE_<i>_DRY_RUN=true`
-    - `ISSUE_<i>_TITLE=<final-title>` — from `issue create-one` output's `ISSUE_TITLE=…` line.
-    - **Do NOT emit `ISSUE_<i>_ID`** — dry-run makes no API call so no real id exists (issue #546 plan-review FINDING_1).
-    - **Dep-edge dry-run** (issue #546): emit `ISSUE_<i>_BLOCKED_BY=<list>` and `ISSUE_<i>_BLOCKS=<list>` (post-validation lists from Step 5) along with `ISSUE_<i>_DRY_RUN_DEPS=true` so operators see what blocker links WOULD have been applied. Do NOT call `issue add-blocked-by`. Do NOT call `issue cleanup-failed`.
-    - Increment `ISSUES_CREATED` (conceptually — dry-run counts as a successful create for contract-completeness).
+In single mode, keep the direct `issue create-one` path. Emit the existing duplicate result without a create when Step 5 selected an external duplicate. Otherwise call `create-one` with item 1's title and body file, parsed title prefix and labels, repository, `--assign-authenticated-user`, the applicable authorization form, and `--dry-run` when requested. Translate its result into the established `ISSUE_1_*` rows and counters. Single mode has no cross-item scheduler or sibling state.
 
 ## Dependency Analysis (issue #546)
 
@@ -436,8 +356,8 @@ Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original i
 - **Detection** (Step 4–5): Tier 1 of Phase 1 emits dep-candidate flags per open snapshot row; Phase 2 emits `ITEM_<i>_BLOCKED_BY=<list>` and `ITEM_<i>_BLOCKS=<list>` for each surviving non-duplicate item, with conservative ("near-certain") thresholds.
 - **Validation** (Step 5b): snapshot membership (open-only for deps), intra-batch range, DUPLICATE override + chain-collapse, SCC-based cycle resolution, DUPLICATE_OF_ITEM as topological prerequisite.
 - **Caller-supplied inputs**: `--intra-batch-deps-file` can inject pre-validated sibling edges into Phase 2, and `--blocked-by-issue` can inject a probe-validated existing open issue number as a policy blocker for every newly created batch item. Both inputs feed the same Step 5 validation and Step 6 application machinery as LLM-emitted edges.
-- **Application** (Step 6): each edge is POSTed via `issue add-blocked-by` after the create succeeds. Retry contract: 3 attempts with 10s/30s pre-retry sleeps, for transient transport failures only. A deterministic refusal is never retried: the helper pre-reads the live blocked-by edge set and reports `BLOCKED_BY_ADDED=true` when the edge is already present, so a repeated add converges on the same graph without duplicating an edge. Every applied edge is proven by an exact read-back, and a read-back that disagrees fails immediately rather than retrying. An unavailable dependency API on this host → immediate fail (feature-unavailable).
-- **Failure recovery** (Step 6): on a failed edge for item `i`, `issue cleanup-failed` closes the just-created orphan, `ISSUE_<i>_FAILED=true` is emitted, and **transitive descendants** are marked `ISSUE_<d>_FAILED=true ERROR=transitive-failure` and skipped from creation. Per-item rollback; the run continues with non-failed topological nodes. Final exit non-zero iff `ISSUES_FAILED>0`.
+- **Application** (Step 6): `issue create-batch` applies each edge through the existing typed `add-blocked-by` owner after its create succeeds. That owner keeps the 3-attempt transient retry, idempotent pre-read, exact read-back, and feature-unavailable contracts.
+- **Failure recovery** (Step 6): `issue create-batch` closes a just-created orphan after its first exhausted edge, marks the source and transitive descendants failed, skips descendant creates, and continues independent nodes. Final exit is non-zero exactly when `ISSUES_FAILED>0`.
 - **Out-of-scope**: dependency analysis is bounded to OPEN issues within the newest 100-issue snapshot. Closed issues never carry dep flags. The analysis does NOT walk transitive existing-issue dependency chains; it only emits edges between new items and direct existing/sibling neighbors.
 - **Dry-run** (`--dry-run`): dep edges are computed and emitted as `ISSUE_<i>_BLOCKED_BY=` / `ISSUE_<i>_BLOCKS=` with `ISSUE_<i>_DRY_RUN_DEPS=true`. No API calls fire; no `ISSUE_<i>_ID` is emitted (no real id exists).
 
@@ -445,6 +365,7 @@ Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original i
 
 **Helpers and contracts**:
 
+- `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue create-batch`: owns the complete batch create, dependency, rollback, and counter transaction. Regression coverage: `crates/larch-core/src/issue/batch_create.rs` and `crates/larch-cli/src/issue_batch_create_commands.rs`.
 - `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue add-blocked-by` — applies a single dependency edge with retry/idempotent semantics. Regression coverage: `crates/larch-cli/src/issue_dependency_commands.rs`, `crates/larch-adapters/src/github/operations.rs`, and the `issue-add-blocked-by-*` parity goldens.
 - `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue cleanup-failed` — best-effort orphan close on dep-wiring exhaustion. Regression coverage: `crates/larch-cli/src/issue_create_commands.rs` and the `issue-cleanup-failed-*` parity goldens.
 - `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue create-one`: resolves and verifies the authenticated GitHub assignee when the caller requests it, and captures `ISSUE_ID=<numeric-id>` from the typed create response. Regression coverage: `crates/larch-cli/src/issue_create_commands.rs`, `crates/larch-adapters/src/github/issue_mutation.rs`, and the `issue-create-one-*` parity goldens.
@@ -452,7 +373,7 @@ Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original i
 
 <!-- step:7 — Emit Aggregate Counters and Final Output -->
 
-After iterating all items, emit to **stdout**:
+For single mode, emit to **stdout** after processing item 1. For batch mode, `issue create-batch` already emitted these rows, so do not emit them a second time:
 
 ```
 ISSUES_CREATED=<N>

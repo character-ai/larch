@@ -79,6 +79,7 @@ Forbidden in committed shell scripts:
 - case conversion: `${var^^}` / `${var^}` / `${var,,}` / `${var,}`
 - append-all redirection: `&>>`
 - coprocs: `coproc { ... }` / `coproc NAME { ... }`
+- a bare `$name` expansion followed immediately by a non-ASCII character. Use `${name}…`, not `$name…`; macOS Bash 3.2 can consume a UTF-8 byte as part of the variable name.
 
 Use Bash 3.2 alternatives: newline-delimited temp files, `while IFS= read -r ...`, `case` or `tr`, and `>>file 2>&1`.
 
@@ -96,7 +97,7 @@ rendered="${before}${feature_description}${after}"
 
 This is the canonical `%%` / `##` split pattern for prompt renderers. If global replacement is necessary, pre-escape `&` inside a Bash-version-scoped helper with a comment. Agent-lint G009 enforces this in the residual script inventory.
 
-Run `make agent-lint` after shell-script edits. Suppress fixture tokens only on that line with the G010-compatible `# lint-bash32: ok <reason>` pragma.
+Run `make agent-lint` after shell-script edits. Suppress fixture tokens only on that line with the G010-compatible `# lint-bash32: ok <reason>` pragma. The sibling Rust rule `bash32-nonascii-expansion` scans every tracked shell source and Bash, sh, or shell Markdown fence for the non-ASCII boundary trap. Its narrow line suppression is `# lint-bash32-nonascii-expansion: ok <reason>`.
 
 ## 4. GitHub CLI Body-Like Payloads
 

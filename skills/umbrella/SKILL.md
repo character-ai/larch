@@ -76,14 +76,19 @@ For a still-managed source in prepared-partition mode, validate that the three i
 
 Require `PROPOSAL_PERSISTED=true` and `LEAF_COUNT` between 2 and 30. This helper validates generic batch grammar, bounds, edge indices, duplicate edges, and cycles while reading only contained regular files. Any failure preserves the parent artifacts and stops before leaf filing.
 
-Outside prepared-partition mode, draft a bounded `proposal.json`: common context, deterministic leaf identities, complete leaf bodies, `pending` records, and dependency directions. Persist it before any leaf filing:
+Outside prepared-partition mode, draft only the generic leaf batch at `$UMBRELLA_TMPDIR/drafted-batch.md` and the optional one-based dependency rows at `$UMBRELLA_TMPDIR/drafted-deps.tsv`. Each batch item is `### <title>` followed by its complete leaf-specific body. Do not add `[LEAF OF N]`, the fixed opening, identities, lifecycle state, or proposal JSON. Use an empty dependency file when there are no edges. Then compose and persist all runtime artifacts through the Rust owner before any leaf filing:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella persist-proposal \
-  --proposal "$UMBRELLA_TMPDIR/proposal.json" --output "$UMBRELLA_TMPDIR/proposal.json"
+  --snapshot "$UMBRELLA_TMPDIR/snapshot.json" \
+  --batch-input "$UMBRELLA_TMPDIR/drafted-batch.md" \
+  --deps "$UMBRELLA_TMPDIR/drafted-deps.tsv" \
+  --output "$UMBRELLA_TMPDIR/proposal.json" \
+  --issue-input-output "$UMBRELLA_TMPDIR/issue-input.txt" \
+  --deps-output "$UMBRELLA_TMPDIR/persisted-deps.tsv"
 ```
 
-After persistence, serialize the record's dependency_edges field to `$UMBRELLA_TMPDIR/drafted-deps.tsv`. Map each edge identity to its 1-based position in the exact leaf order used by the `/issue --input-file` batch, then write one `<blocker-index>\t<blocked-index>` row per edge. Use an empty file for no edges; do not invent, omit, or re-order edges outside the persisted record.
+Require `PROPOSAL_PERSISTED=true` and `LEAF_COUNT` between 2 and 30. The composer parses the batch once, adds the exact leaf title prefix and opening, computes content identities, normalizes body bytes to the `/issue` parser contract, validates and copies the edge file, and writes the durable proposal. A caller-drafted compatibility record that uses `--proposal` now names repairable contract failures as `identity-mismatch`, `missing-leaf-prefix`, `missing-leaf-opening`, or `bad-state`.
 
 ## Step 2 — Approval
 
@@ -98,7 +103,7 @@ For each missing identity, persist `in-flight` before calling `/issue`:
   --proposal "$UMBRELLA_TMPDIR/proposal.json" --identity "$IDENTITY"
 ```
 
-Invoke `/issue` via the Skill tool once for all missing leaves, with `--input-file`, `--title-prefix "[LEAF OF $UMBRELLA]"`, `--sentinel-file "$UMBRELLA_TMPDIR/issue.sentinel"`, and an umbrella exclusion. For a standard or adopted source, pass `--intra-batch-deps-file "$UMBRELLA_TMPDIR/drafted-deps.tsv"` when that file is non-empty, and pass `--no-dep-llm`; the persisted edges are authoritative while normal duplicate detection remains enabled. For a still-managed prepared-partition source, use `$UMBRELLA_TMPDIR/issue-input.txt`, pass `--intra-batch-deps-file "$UMBRELLA_TMPDIR/prepared-deps.tsv"` when the copied file is non-empty, and pass `--no-dep-llm`; the exact persisted parent-approved edges are authoritative while normal duplicate detection remains enabled. Use the copied or drafted TSV as the only filing-time edge source. A compatible managed resume has no missing leaves and skips this child call. In dependency-only mode pass the internal dependency-only flag and require a complete validated analysis result before creation or sentinel completion.
+Invoke `/issue` via the Skill tool once for all missing leaves, with `--input-file "$UMBRELLA_TMPDIR/issue-input.txt"`, `--title-prefix "[LEAF OF $UMBRELLA]"`, `--sentinel-file "$UMBRELLA_TMPDIR/issue.sentinel"`, and an umbrella exclusion. For a standard or adopted source, pass `--intra-batch-deps-file "$UMBRELLA_TMPDIR/persisted-deps.tsv"` when that file is non-empty, and pass `--no-dep-llm`; the persisted edges are authoritative while normal duplicate detection remains enabled. For a still-managed prepared-partition source, use `$UMBRELLA_TMPDIR/prepared-deps.tsv` as the edge file when non-empty, and pass `--no-dep-llm`; the exact persisted parent-approved edges are authoritative while normal duplicate detection remains enabled. Use the composer output as the only filing-time batch and edge source. A compatible managed resume has no missing leaves and skips this child call. In dependency-only mode pass the internal dependency-only flag and require a complete validated analysis result before creation or sentinel completion.
 
 The shared `/issue` create owner assigns every new issue to the GitHub user authenticated in `gh`, including a verbal-input source and every new leaf. Keep assignment owned by `/issue`; do not add a second path in `/umbrella`.
 
@@ -116,7 +121,27 @@ If `/issue` reports a dependency-analysis degradation, including `LIST_STATUS=fa
 
 ## Step 4 — Wire and finalize
 
-For every resolved leaf, call `issue add-sub-issue` and reuse `issue add-blocked-by` to make the umbrella blocked by the leaf. Both operations must be authorization-checked, idempotent, and verified by read-back. Finalize the umbrella title/body through `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella mutate`, retaining the protected proposal record, then require `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella verify` to prove leaf title/body contracts and the complete flat graph. Build `$UMBRELLA_TMPDIR/leaves.json` from a fresh read-back of the resolved leaves as a JSON array of `number`, `title`, and `body` rows. For a snapshot whose `"source"` is `"adopted-umbrella"`, retain the original body byte-for-byte inside the final common-context section, keep the exact existing `[UMBRELLA]` title, and pass `--adopted-umbrella true`. These mutually exclusive modes invoke the canonical issue-mutation owner's atomic, shape-restricted conversion or adoption transition. A compatible resumed `[UMBRELLA]` skips that already-committed mutation.
+For every resolved leaf, add both native graph relations with the explicit operator authorization accepted by the shared edge owner:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue add-sub-issue \
+  --parent-issue "$UMBRELLA" \
+  --child-issue "$LEAF_NUMBER" \
+  --child-id "$LEAF_ID" \
+  --repo "$REPO" \
+  --operator-invoked
+
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue add-blocked-by \
+  --client-issue "$UMBRELLA" \
+  --blocker-issue "$LEAF_NUMBER" \
+  --blocker-id "$LEAF_ID" \
+  --repo "$REPO" \
+  --operator-invoked
+```
+
+Require `SUB_ISSUE_ADDED=true` and `BLOCKED_BY_ADDED=true` for each leaf. Both helpers are idempotent and verify exact read-back. A refusal without either authorization route names `unauthorized-mutation:missing-operator-invoked-or-context-file`.
+
+Finalize the umbrella title/body through `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella mutate`, retaining the protected proposal record, then require `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella verify` to prove leaf title/body contracts and the complete flat graph. Build `$UMBRELLA_TMPDIR/leaves.json` from a fresh read-back of the resolved leaves as a JSON array of `number`, `title`, and `body` rows. For a snapshot whose `"source"` is `"adopted-umbrella"`, retain the original body byte-for-byte inside the final common-context section, keep the exact existing `[UMBRELLA]` title, and pass `--adopted-umbrella true`. These mutually exclusive modes invoke the canonical issue-mutation owner's atomic, shape-restricted conversion or adoption transition. A compatible resumed `[UMBRELLA]` skips that already-committed mutation.
 
 For standard and adopted sources, invoke final verification only with the persisted proposal and fresh leaves:
 

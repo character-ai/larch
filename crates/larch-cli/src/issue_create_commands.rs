@@ -223,6 +223,15 @@ fn parse_create_arguments(arguments: &[OsString]) -> Result<CreateArguments, Str
 /// any GitHub contact, so it neither reads a file the caller named nor needs a
 /// repository to succeed.
 fn plan_create(arguments: &CreateArguments) -> Result<CreatePlan, CreateFailure> {
+    plan_create_with_body(arguments, None)
+}
+
+/// Resolve one create while accepting an already composed body from an
+/// in-process owner such as `issue create-batch`.
+fn plan_create_with_body(
+    arguments: &CreateArguments,
+    supplied_body: Option<&str>,
+) -> Result<CreatePlan, CreateFailure> {
     if arguments.title.is_empty() {
         return Err(CreateFailure::new("--title is required", 1));
     }
@@ -235,7 +244,13 @@ fn plan_create(arguments: &CreateArguments) -> Result<CreatePlan, CreateFailure>
             labels: arguments.labels.clone(),
         });
     }
-    let body = read_body(&arguments.body_file)?;
+    let body = supplied_body.map_or_else(
+        || read_body(&arguments.body_file),
+        |body| {
+            redact_issue_text_outbound(body)
+                .map_err(|error| CreateFailure::new(&format!("redaction:{}", error.reason()), 3))
+        },
+    )?;
     // A caller that files an OOS body without naming a prefix still gets one,
     // so the `[OOS]` identity every consumer filters on cannot be forgotten.
     if arguments.title_prefix.is_empty() && is_oos_issue_body(&body) {
@@ -422,6 +437,30 @@ pub struct CreateSpec<'a> {
     pub assign_authenticated_user: bool,
 }
 
+/// One in-process create whose body has already been composed in memory.
+pub struct CreateTextSpec<'a> {
+    pub title: &'a str,
+    pub title_prefix: &'a str,
+    pub body: &'a str,
+    pub labels: &'a [String],
+    pub repo: &'a str,
+    pub context_file: &'a str,
+    pub run_id: &'a str,
+    pub trusted_root: &'a str,
+    pub operator_invoked: bool,
+    pub assign_authenticated_user: bool,
+    pub dry_run: bool,
+}
+
+/// The two successful outcomes an in-process issue create can report.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CreateIssueOutcome {
+    /// No remote request was made; this is the normalized title preview.
+    DryRun { title: String },
+    /// GitHub created and read-verified the issue.
+    Created { issue: CreatedIssue, title: String },
+}
+
 /// File one issue in process and report its identity or a flat refusal.
 pub fn create_issue(spec: &CreateSpec<'_>) -> Result<CreatedIssue, String> {
     let arguments = CreateArguments {
@@ -440,6 +479,35 @@ pub fn create_issue(spec: &CreateSpec<'_>) -> Result<CreatedIssue, String> {
     match plan_create(&arguments).map_err(|failure| failure.error)? {
         CreatePlan::DryRun { .. } => Err("create refused: unexpected dry run".to_owned()),
         CreatePlan::Live(create) => file_issue(&create).map_err(|failure| failure.error),
+    }
+}
+
+/// File or preview one issue from an already composed body.
+///
+/// The same planner and live effect as `create-one` preserve redaction, title
+/// normalization, label filtering, authorization, assignment, and rollback.
+pub fn create_issue_text(spec: &CreateTextSpec<'_>) -> Result<CreateIssueOutcome, String> {
+    let arguments = CreateArguments {
+        title: spec.title.to_owned(),
+        title_prefix: spec.title_prefix.to_owned(),
+        labels: spec.labels.to_vec(),
+        body_file: String::new(),
+        repo: spec.repo.to_owned(),
+        context_file: spec.context_file.to_owned(),
+        run_id: spec.run_id.to_owned(),
+        trusted_root: spec.trusted_root.to_owned(),
+        dry_run: spec.dry_run,
+        operator_invoked: spec.operator_invoked,
+        assign_authenticated_user: spec.assign_authenticated_user,
+    };
+    match plan_create_with_body(&arguments, Some(spec.body)).map_err(|failure| failure.error)? {
+        CreatePlan::DryRun { title, .. } => Ok(CreateIssueOutcome::DryRun { title }),
+        CreatePlan::Live(create) => {
+            let title = create.title.clone();
+            file_issue(&create)
+                .map(|issue| CreateIssueOutcome::Created { issue, title })
+                .map_err(|failure| failure.error)
+        }
     }
 }
 
@@ -609,19 +677,23 @@ pub fn cleanup_failed(arguments: &[OsString]) -> ExitCode {
     let Some(repo) = resolve_repo_for((!repo.is_empty()).then_some(&repo)) else {
         return emit_cleanup(&issue, false, "could not determine repo");
     };
-    let Ok(repository) = repository_ref(&repo) else {
-        return emit_cleanup(&issue, false, "repository slug is invalid");
-    };
-    let closed = with_github_service(async |service, cancellation| {
+    match cleanup_created_issue(&repo, number) {
+        Ok(()) => emit_cleanup(&issue, true, ""),
+        Err(detail) => emit_cleanup(&issue, false, &detail),
+    }
+}
+
+/// Close one issue the same run just created, without a second authorization
+/// gate, matching the public `cleanup-failed` recovery contract.
+pub fn cleanup_created_issue(repo: &str, number: u64) -> Result<(), String> {
+    let repository = repository_ref(repo).map_err(|()| "repository slug is invalid".to_owned())?;
+    match with_github_service(async |service, cancellation| {
         IssueMutationOwner::new(service)
             .close_not_planned(cancellation, &repository, number)
             .await
-    });
-    match closed {
-        Ok(()) => emit_cleanup(&issue, true, ""),
-        Err(ServiceFailure::Setup(detail) | ServiceFailure::Operation(detail)) => {
-            emit_cleanup(&issue, false, &detail)
-        }
+    }) {
+        Ok(()) => Ok(()),
+        Err(ServiceFailure::Setup(detail) | ServiceFailure::Operation(detail)) => Err(detail),
     }
 }
 

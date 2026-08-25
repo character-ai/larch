@@ -44,13 +44,14 @@ use larch_adapters::{
     runtime::Cancellation,
 };
 use larch_core::{
-    CandidateIssue, CompletionSentinel, GitHubIssueState, GitHubService, ISSUE_DEDUP_LIMIT,
-    IssueMutationField, IssueMutationRequest, ProposalRecord, RemoteLeaf, ResolvedLeaf,
-    UMBRELLA_PROPOSAL_TOKEN, UmbrellaSnapshot, check_leaf_cap, classify_umbrella_source,
-    completion_sentinel_for_record, emit_kv, expected_completion_sentinel,
-    is_managed_partition_title, is_positive_decimal, is_umbrella_title, mark_leaf_in_flight,
-    parse_proposal, prepare_proposal_from_batch, reconcile_in_flight, record_leaf_resolved,
-    render_proposal, render_snapshot, validate_final_umbrella, verify_graph_state,
+    ADOPTED_UMBRELLA_SOURCE, CandidateIssue, CompletionSentinel, GitHubIssueState, GitHubService,
+    ISSUE_DEDUP_LIMIT, IssueMutationField, IssueMutationRequest, ProposalRecord, RemoteLeaf,
+    ResolvedLeaf, UMBRELLA_PROPOSAL_TOKEN, UmbrellaSnapshot, check_leaf_cap,
+    classify_umbrella_source, completion_sentinel_for_record, emit_kv,
+    expected_completion_sentinel, is_managed_partition_title, is_positive_decimal,
+    is_umbrella_title, mark_leaf_in_flight, parse_drafted_proposal, parse_proposal,
+    prepare_proposal_from_batch, reconcile_in_flight, record_leaf_resolved, render_proposal,
+    render_snapshot, validate_final_umbrella, verify_graph_state,
 };
 use serde_json::Value;
 use std::{
@@ -70,7 +71,7 @@ const RECORD_MODE: u32 = 0o600;
 const OPEN_BLOCKERS: &str = "open-blockers";
 
 const PREPARE_USAGE: &str = "Usage: umbrella prepare --repo OWNER/REPO --issue N --output PATH [--managed-partition true|false]";
-const PERSIST_PROPOSAL_USAGE: &str = "Usage: umbrella persist-proposal (--proposal PATH --output PATH | --snapshot PATH --prepared-root PATH --prepared-input PATH --prepared-deps PATH --completion-sentinel PATH --output-root PATH --output PATH --issue-input-output PATH --deps-output PATH)\n--proposal must name a ProposalRecord JSON object with umbrella, repository, expected_updated_at, common_context, and non-empty leaves; see larch_core::issue::umbrella::ProposalRecord.";
+const PERSIST_PROPOSAL_USAGE: &str = "Usage: umbrella persist-proposal (--proposal PATH --output PATH | --snapshot PATH --batch-input PATH [--deps PATH] --output PATH --issue-input-output PATH --deps-output PATH | --snapshot PATH --prepared-root PATH --prepared-input PATH --prepared-deps PATH --completion-sentinel PATH --output-root PATH --output PATH --issue-input-output PATH --deps-output PATH)\n--proposal must name a ProposalRecord JSON object with umbrella, repository, expected_updated_at, common_context, and non-empty leaves; see larch_core::issue::umbrella::ProposalRecord.";
 const MARK_IN_FLIGHT_USAGE: &str =
     "Usage: umbrella mark-in-flight --proposal PATH --identity SHA256";
 const RECORD_RESOLVED_USAGE: &str = "Usage: umbrella record-resolved --proposal PATH --identity SHA256 --number N --url URL [--issue-id ID]";
@@ -199,6 +200,17 @@ fn publish(path: &str, text: &str, reason: &'static str) -> Result<(), &'static 
 fn load_record(path: &str) -> Result<ProposalRecord, &'static str> {
     let text = fs::read_to_string(path).map_err(|_| "invalid-proposal-record")?;
     let record = parse_proposal(&text).map_err(larch_core::UmbrellaRefusal::reason)?;
+    if validate_repo_slug(&record.repository) {
+        Ok(record)
+    } else {
+        Err("invalid-proposal-record")
+    }
+}
+
+/// Read one caller-drafted record with actionable leaf-contract refusals.
+fn load_drafted_record(path: &str) -> Result<ProposalRecord, &'static str> {
+    let text = fs::read_to_string(path).map_err(|_| "invalid-proposal-record")?;
+    let record = parse_drafted_proposal(&text).map_err(larch_core::UmbrellaRefusal::reason)?;
     if validate_repo_slug(&record.repository) {
         Ok(record)
     } else {
@@ -415,8 +427,27 @@ pub fn persist_proposal(arguments: &[OsString]) -> ExitCode {
         "--issue-input-output",
         "--deps-output",
     ];
-    let mut permitted = vec!["--proposal"];
-    permitted.extend_from_slice(&prepared_flags);
+    let standard_required = [
+        "--snapshot",
+        "--batch-input",
+        "--output",
+        "--issue-input-output",
+        "--deps-output",
+    ];
+    let permitted = [
+        "--proposal",
+        "--snapshot",
+        "--batch-input",
+        "--deps",
+        "--prepared-root",
+        "--prepared-input",
+        "--prepared-deps",
+        "--completion-sentinel",
+        "--output-root",
+        "--output",
+        "--issue-input-output",
+        "--deps-output",
+    ];
     let Some(values) = parse_values(arguments, &permitted) else {
         return refuse_with_usage("usage", PERSIST_PROPOSAL_USAGE);
     };
@@ -424,11 +455,28 @@ pub fn persist_proposal(arguments: &[OsString]) -> ExitCode {
         if values.len() != 2 || !values.contains_key("--output") {
             return refuse_with_usage("usage", PERSIST_PROPOSAL_USAGE);
         }
-        return match load_record(&values["--proposal"])
+        return match load_drafted_record(&values["--proposal"])
             .and_then(|record| persist_record(&values["--output"], &record))
         {
             Ok(()) => {
                 emit_kv("PROPOSAL_PERSISTED", "true");
+                ExitCode::SUCCESS
+            }
+            Err(reason) => refuse_with_usage(reason, PERSIST_PROPOSAL_USAGE),
+        };
+    }
+    if values.contains_key("--batch-input") {
+        if !has_required(&values, &standard_required)
+            || values
+                .keys()
+                .any(|flag| !standard_required.contains(&flag.as_str()) && flag != "--deps")
+        {
+            return refuse_with_usage("usage", PERSIST_PROPOSAL_USAGE);
+        }
+        return match persist_standard_proposal(&values) {
+            Ok(leaves) => {
+                emit_kv("PROPOSAL_PERSISTED", "true");
+                emit_kv("LEAF_COUNT", &leaves.to_string());
                 ExitCode::SUCCESS
             }
             Err(reason) => refuse_with_usage(reason, PERSIST_PROPOSAL_USAGE),
@@ -445,6 +493,84 @@ pub fn persist_proposal(arguments: &[OsString]) -> ExitCode {
         }
         Err(reason) => refuse_with_usage(reason, PERSIST_PROPOSAL_USAGE),
     }
+}
+
+/// The inferred scratch root for one standard-path proposal composition.
+struct StandardRoot {
+    root: TemporaryRoot,
+    declared: PathBuf,
+}
+
+impl StandardRoot {
+    /// Infer the root from the source snapshot and reject every escaping path.
+    fn from_snapshot(path: &str) -> Result<Self, &'static str> {
+        let snapshot = absolute(path, "invalid-standard-path")?;
+        let declared = snapshot
+            .parent()
+            .ok_or("invalid-standard-path")?
+            .to_path_buf();
+        let root = TemporaryRoot::resolve(Some(&declared)).map_err(|_| "invalid-standard-path")?;
+        Ok(Self { root, declared })
+    }
+
+    fn confine(&self, path: &str, intent: PathIntent) -> Result<ConfinedPath, &'static str> {
+        let target = absolute(path, "invalid-standard-path")?;
+        anchored(
+            &self.root,
+            &self.declared,
+            &target,
+            intent,
+            "invalid-standard-path",
+        )
+    }
+}
+
+/// Convert a standard verbal-path batch into all three durable artifacts.
+fn persist_standard_proposal(values: &BTreeMap<String, String>) -> Result<usize, &'static str> {
+    let root = StandardRoot::from_snapshot(&values["--snapshot"])?;
+    let snapshot_path = root.confine(&values["--snapshot"], PathIntent::Read)?;
+    let batch_path = root.confine(&values["--batch-input"], PathIntent::Read)?;
+    let source_deps = values
+        .get("--deps")
+        .map(|path| root.confine(path, PathIntent::Read))
+        .transpose()?;
+    let proposal_path = root.confine(&values["--output"], PathIntent::Write)?;
+    let issue_input_path = root.confine(&values["--issue-input-output"], PathIntent::Write)?;
+    let deps_output_path = root.confine(&values["--deps-output"], PathIntent::Write)?;
+
+    let mut occupied = BTreeSet::from([
+        snapshot_path.path().to_path_buf(),
+        batch_path.path().to_path_buf(),
+    ]);
+    if let Some(path) = &source_deps {
+        let _ = occupied.insert(path.path().to_path_buf());
+    }
+    for output in [&proposal_path, &issue_input_path, &deps_output_path] {
+        if !occupied.insert(output.path().to_path_buf()) {
+            return Err("invalid-standard-path");
+        }
+    }
+
+    let snapshot_text = read_utf8(&snapshot_path).map_err(|_| "invalid-snapshot")?;
+    let snapshot = parse_snapshot(&snapshot_text, false)?;
+    let input_text = read_utf8(&batch_path).map_err(|_| "invalid-prepared-partition")?;
+    let deps_text = source_deps.as_ref().map_or_else(
+        || Ok(String::new()),
+        |path| read_utf8(path).map_err(|_| "invalid-prepared-partition"),
+    )?;
+    let (record, issue_input) = prepare_proposal_from_batch(&snapshot, &input_text, &deps_text)
+        .map_err(larch_core::UmbrellaRefusal::reason)?;
+    // The proposal is the durable mutation prerequisite, so publish it last.
+    // A failed companion write can leave only overwrite-safe scratch output,
+    // never a proposal that appears ready for leaf filing.
+    for (path, text) in [
+        (&issue_input_path, issue_input),
+        (&deps_output_path, deps_text),
+        (&proposal_path, render_proposal(&record)),
+    ] {
+        atomic_write_utf8(path, &text, RECORD_MODE).map_err(|_| "proposal-write-failed")?;
+    }
+    Ok(record.leaves.len())
 }
 
 /// The two trusted roots one prepared-partition invocation declares.
@@ -544,7 +670,12 @@ fn read_prepared_snapshot(
 ) -> Result<UmbrellaSnapshot, &'static str> {
     let text = read_utf8(&roots.output(path, PathIntent::Read)?)
         .map_err(|_| "invalid-prepared-partition")?;
-    let value: Value = serde_json::from_str(&text).map_err(|_| "invalid-prepared-partition")?;
+    parse_snapshot(&text, true)
+}
+
+/// Decode the snapshot fields shared by the standard and prepared composers.
+fn parse_snapshot(text: &str, require_managed: bool) -> Result<UmbrellaSnapshot, &'static str> {
+    let value: Value = serde_json::from_str(text).map_err(|_| "invalid-prepared-partition")?;
     let row = value.as_object().ok_or("invalid-prepared-partition")?;
     let mut snapshot = UmbrellaSnapshot::default();
     for (field, slot) in [
@@ -560,13 +691,20 @@ fn read_prepared_snapshot(
             _ => return Err("invalid-snapshot"),
         }
     }
+    snapshot.adopted_umbrella = match row.get("source") {
+        None => false,
+        Some(Value::String(source)) if source == ADOPTED_UMBRELLA_SOURCE => true,
+        Some(_) => return Err("invalid-snapshot"),
+    };
     if !is_positive_decimal(&snapshot.number) {
         return Err("invalid-umbrella");
     }
     if !validate_repo_slug(&snapshot.repository)
         || !snapshot.state.eq_ignore_ascii_case("open")
         || snapshot.updated_at.is_empty()
-        || !is_managed_partition_title(&snapshot.title)
+        || snapshot.title.is_empty()
+        || (require_managed && !is_managed_partition_title(&snapshot.title))
+        || (require_managed && snapshot.adopted_umbrella)
     {
         return Err("invalid-snapshot");
     }
@@ -1159,15 +1297,17 @@ mod tests {
         CompletionPaths, LiveSnapshotSource, OPEN_BLOCKERS, SnapshotRead, SnapshotSource,
         UmbrellaMutation, UmbrellaMutationMode, absolute, candidate_issue, check_completion,
         load_record, mark_in_flight, mutate, mutate_with, parse_values, persist_prepared_proposal,
-        persist_proposal, prepare, prepare_with, reconcile, reconcile_in_flight_command,
-        record_resolved, resolve_into, row_number, verify, verify_completion, verify_graph,
+        persist_proposal, persist_standard_proposal, prepare, prepare_with, reconcile,
+        reconcile_in_flight_command, record_resolved, resolve_into, row_number, verify,
+        verify_completion, verify_graph,
     };
     use crate::github_service::with_test_github_service;
     use larch_adapters::github::OctocrabGitHubService;
     use larch_core::{
-        ExpectedLeaf, LeafState, MANAGED_PARTITION_PREFIXES, ProposalRecord, ResolvedLeaf,
-        UmbrellaSnapshot, leaf_identity, mark_leaf_in_flight, prepare_proposal_from_batch,
-        render_proposal, umbrella_leaf_opening_text,
+        ExpectedLeaf, LeafState, MANAGED_PARTITION_PREFIXES, ProposalRecord, RemoteLeaf,
+        ResolvedLeaf, UmbrellaSnapshot, leaf_identity, mark_leaf_in_flight,
+        prepare_proposal_from_batch, render_proposal, render_snapshot, umbrella_leaf_opening_text,
+        verify_graph_state,
     };
     use larch_test_support::{IssueServiceExchange, IssueServiceStub};
     use serde_json::{Value, json};
@@ -1892,6 +2032,95 @@ mod tests {
         assert_eq!(
             persist_prepared_proposal(&values),
             Err("invalid-prepared-partition")
+        );
+    }
+
+    #[test]
+    fn a_standard_batch_composes_exact_record_and_issue_input_bytes() {
+        let directory = TempDir::new().expect("temporary directory");
+        let sandbox = root(&directory);
+        let snapshot = write(
+            &sandbox,
+            "snapshot.json",
+            &render_snapshot(&snapshot("Regular", "Shared.", "OPEN")),
+        );
+        let batch = write(
+            &sandbox,
+            "batch.md",
+            "### One\n\nFirst.\n\n### Two\n\nSecond.",
+        );
+        let output = text_path(&sandbox.join("proposal.json"));
+        let issue_input = text_path(&sandbox.join("issue-input.txt"));
+        let deps_output = text_path(&sandbox.join("deps.tsv"));
+        let mut values = BTreeMap::from([
+            ("--snapshot".to_owned(), snapshot),
+            ("--batch-input".to_owned(), batch),
+            ("--output".to_owned(), output.clone()),
+            ("--issue-input-output".to_owned(), issue_input.clone()),
+            ("--deps-output".to_owned(), deps_output.clone()),
+        ]);
+
+        assert_eq!(persist_standard_proposal(&values), Ok(2));
+        let record = load_record(&output).expect("record reloads");
+        assert_eq!(
+            record
+                .leaves
+                .iter()
+                .map(|leaf| leaf.title.as_str())
+                .collect::<Vec<_>>(),
+            ["[LEAF OF 12] One", "[LEAF OF 12] Two"]
+        );
+        assert_eq!(
+            record.leaves[1].body,
+            format!("{}\n\nSecond.", umbrella_leaf_opening_text("12"))
+        );
+        assert_eq!(
+            fs::read_to_string(&issue_input).expect("issue input"),
+            format!(
+                "### One\n\n{}\n\nFirst.\n### Two\n\n{}\n\nSecond.\n",
+                umbrella_leaf_opening_text("12"),
+                umbrella_leaf_opening_text("12")
+            )
+        );
+        assert_eq!(fs::read_to_string(&deps_output).expect("deps output"), "");
+
+        let mut resolved = record;
+        let rows: Vec<RemoteLeaf> = resolved
+            .leaves
+            .iter_mut()
+            .enumerate()
+            .map(|(index, leaf)| {
+                leaf.state = LeafState::Resolved;
+                leaf.number = (20 + index).to_string();
+                leaf.url = format!("https://example.test/issues/{}", 20 + index);
+                RemoteLeaf {
+                    number: leaf.number.clone(),
+                    title: leaf.title.clone(),
+                    body: leaf.body.clone(),
+                }
+            })
+            .collect();
+        assert_eq!(verify_graph_state(&resolved, &rows), Ok(()));
+
+        let _ = values.insert("--deps-output".to_owned(), issue_input);
+        assert_eq!(
+            persist_standard_proposal(&values),
+            Err("invalid-standard-path")
+        );
+
+        let outside = TempDir::new().expect("outside directory");
+        let _ = values.insert("--deps-output".to_owned(), deps_output);
+        let _ = values.insert(
+            "--batch-input".to_owned(),
+            write(
+                &root(&outside),
+                "outside.md",
+                "### One\n\nFirst.\n\n### Two\n\nSecond.\n",
+            ),
+        );
+        assert_eq!(
+            persist_standard_proposal(&values),
+            Err("invalid-standard-path")
         );
     }
 

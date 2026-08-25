@@ -32,6 +32,8 @@ impl CleanInstallCase {
     #[allow(clippy::too_many_lines)] // One comment-rich clean-install dispatch table.
     fn expected_exit(self) -> i32 {
         match self.id {
+            // The two issue-graph verbs now publish their complete authorization
+            // grammar for `--help` and exit 0 through the default arm below.
             // `issue state` refuses its own missing-value line. Neither
             // `parse-input` nor `fetch-issue-details` has a `--help` action, so
             // the clean-install token reads as an unknown option and each
@@ -41,9 +43,7 @@ impl CleanInstallCase {
             // `issue state` refuses its own missing-value line, and neither
             // `create-one` nor `write-sentinel` has a `--help` action, so the
             // clean-install token reads as an unknown option there too.
-            "clean-install-issue-add-blocked-by"
-            | "clean-install-issue-add-sub-issue"
-            | "clean-install-alias-generate"
+            "clean-install-alias-generate"
             | "clean-install-alias-resolve-target"
             | "clean-install-issue-create-one"
             | "clean-install-issue-fetch-issue-details"
@@ -1327,6 +1327,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-issue-cleanup-failed",
         "issue",
         "cleanup-failed",
+    ),
+    CleanInstallCase::new(
+        "clean-install-issue-create-batch",
+        "issue",
+        "create-batch",
     ),
     CleanInstallCase::new("clean-install-issue-create-one", "issue", "create-one"),
     CleanInstallCase::new(
