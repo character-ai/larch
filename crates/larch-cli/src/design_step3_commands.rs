@@ -99,22 +99,39 @@ fn current_seam() -> Option<std::rc::Rc<dyn Step3Seam>> {
     TEST_SEAM.with(|cell| cell.borrow().clone())
 }
 
+fn owned_child_argv(args: &[&str], env: &[(&str, &str)]) -> (Vec<String>, Vec<(String, String)>) {
+    (
+        args.iter().map(|value| (*value).to_string()).collect(),
+        env.iter()
+            .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+            .collect(),
+    )
+}
+
 fn run_larch(
     plugin_root: &Path,
     args: &[&str],
     env: &[(&str, &str)],
     runner: &dyn Step0Runner,
 ) -> ChildOutcome {
-    let owned: Vec<String> = args.iter().map(|value| (*value).to_owned()).collect();
-    let owned_env: Vec<(String, String)> = env
-        .iter()
-        .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
-        .collect();
+    let (owned, owned_env) = owned_child_argv(args, env);
     #[cfg(test)]
     if let Some(seam) = current_seam() {
         return seam.larch(&owned, &owned_env);
     }
     runner.run(plugin_root, &owned, &owned_env, false)
+}
+
+fn bytes_to_string(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+fn outcome_from_output(output: &std::process::Output) -> ChildOutcome {
+    ChildOutcome {
+        code: output.status.code().unwrap_or(1),
+        stdout: bytes_to_string(&output.stdout),
+        stderr: bytes_to_string(&output.stderr),
+    }
 }
 
 fn run_larch_stdin(
@@ -123,11 +140,7 @@ fn run_larch_stdin(
     stdin: &str,
     env: &[(&str, &str)],
 ) -> ChildOutcome {
-    let owned: Vec<String> = args.iter().map(|value| (*value).to_owned()).collect();
-    let owned_env: Vec<(String, String)> = env
-        .iter()
-        .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
-        .collect();
+    let (owned, owned_env) = owned_child_argv(args, env);
     #[cfg(test)]
     if let Some(seam) = current_seam() {
         return seam.larch(&owned, &owned_env);
@@ -147,11 +160,7 @@ fn run_larch_stdin(
                 let _ = handle.write_all(stdin.as_bytes());
             }
             match child.wait_with_output() {
-                Ok(output) => ChildOutcome {
-                    code: output.status.code().unwrap_or(1),
-                    stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-                },
+                Ok(output) => outcome_from_output(&output),
                 Err(_error) => ChildOutcome {
                     code: 1,
                     stdout: String::new(),
@@ -283,29 +292,32 @@ struct Step4TailArgs {
 }
 
 fn parse_child_suffix(arguments: &[OsString]) -> Result<(bool, PathBuf, &[OsString]), VerbResult> {
-    let child_suffix = arguments.len() >= 3
-        && arguments[arguments.len() - 3] == "--bgjob-child"
-        && arguments[arguments.len() - 2] == "--merge-result-env"
-        && !arguments[arguments.len() - 1].is_empty();
-    let invalid = arguments.iter().enumerate().any(|(index, arg)| {
-        (arg == "--bgjob-child" || arg == "--merge-result-env")
-            && !(child_suffix && (index == arguments.len() - 3 || index == arguments.len() - 2))
+    let len = arguments.len();
+    let suffix = len
+        .checked_sub(3)
+        .and_then(|start| arguments.get(start..))
+        .filter(|tail| {
+            tail.len() == 3
+                && tail[0] == "--bgjob-child"
+                && tail[1] == "--merge-result-env"
+                && !tail[2].is_empty()
+        });
+    let child_suffix = suffix.is_some();
+    let misplaced = arguments.iter().enumerate().any(|(index, arg)| {
+        matches!(
+            arg.as_os_str().to_str(),
+            Some("--bgjob-child" | "--merge-result-env")
+        ) && !(child_suffix && index >= len.saturating_sub(3) && index < len.saturating_sub(1))
     });
-    if invalid {
+    if misplaced {
         return Err(VerbResult::fail(
             2,
             format!("{STEP4_TAIL_PROGRAM}: adapter child controls must be one terminal suffix\n"),
         ));
     }
-    if child_suffix {
-        Ok((
-            true,
-            PathBuf::from(&arguments[arguments.len() - 1]),
-            &arguments[..arguments.len() - 3],
-        ))
-    } else {
-        Ok((false, PathBuf::new(), arguments))
-    }
+    Ok(suffix.map_or((false, PathBuf::new(), arguments), |tail| {
+        (true, PathBuf::from(&tail[2]), &arguments[..len - 3])
+    }))
 }
 
 fn parse_step4_tail(argv: &[String]) -> Result<(String, String, String), VerbResult> {

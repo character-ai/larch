@@ -852,14 +852,14 @@
 {"id":"design: step2b5 rc handling must reject prompt-side action derivation","path":"skills/design/references/step2b5-rc-handling.md","kind":"contains","needle":"Do not recompute the action from check-size rc, `SIZE_TRIGGER_FIRED`, `DRIFT_TRIGGER_FIRED`, or `partition_requested` in prompt prose."}
 {"id":"design: step2b5 rc handling must remove Gate A fallback rc trigger","path":"skills/design/references/step2b5-rc-handling.md","kind":"absent","needle":"Gate A / discussion-round2 fallback rc `12`"}
 {"id":"design: step2b5 rc handling must remove Gate B fallback rc trigger","path":"skills/design/references/step2b5-rc-handling.md","kind":"absent","needle":"Gate B fallback rc `12`"}
-{"id":"design: design-step3-entry must snapshot pre-review plan","path":"skills/design/scripts/design-step3-entry.sh","kind":"contains","needle":"plan-review snapshot-pre-review"}
+{"id":"design: design-step3-entry must snapshot pre-review plan","path":"crates/larch-cli/src/design_step3_commands.rs","kind":"contains","needle":"snapshot-pre-review"}
 {"id":"design: Step 3 wrapper must delegate to adapter","path":"skills/design/scripts/design-step3-review.sh","kind":"contains","needle":"bgjob adapt \"${_adapt_args[@]}\""}
 {"id":"design: Step 3 wrapper must not use direct bgjob start","path":"skills/design/scripts/design-step3-review.sh","kind":"absent","needle":"bgjob start"}
 {"id":"design: Step 3 wrapper must replace completed resume","path":"skills/design/scripts/design-step3-review.sh","kind":"contains","needle":"--replace-completed-result"}
 {"id":"design: Step 3 wrapper must resolve trusted session env","path":"skills/design/scripts/design-step3-review.sh","kind":"contains","needle":"--resolve-session-env --session-env-path"}
-{"id":"design: Step 4 tail wrapper must delegate to adapter","path":"skills/design/scripts/design-step3b-tail.sh","kind":"contains","needle":"bgjob adapt \"${_adapt_args[@]}\""}
+{"id":"design: Step 4 tail wrapper must delegate to adapter","path":"crates/larch-cli/src/design_step3_commands.rs","kind":"contains","needle":"design-step4-tail"}
 {"id":"design: Step 4 tail wrapper must not use direct bgjob start","path":"skills/design/scripts/design-step3b-tail.sh","kind":"absent","needle":"bgjob start"}
-{"id":"design: Step 4 tail wrapper must resolve trusted session env","path":"skills/design/scripts/design-step3b-tail.sh","kind":"contains","needle":"--resolve-session-env --session-env-path"}
+{"id":"design: Step 4 tail wrapper must resolve trusted session env","path":"crates/larch-cli/src/design_step3_commands.rs","kind":"contains","needle":"--resolve-session-env"}
 {"id":"design: Step 5c wrapper must delegate to adapter","path":"skills/design/scripts/design-step5c.sh","kind":"contains","needle":"bgjob adapt \"${_adapt_args[@]}\""}
 {"id":"design: Step 5c wrapper must not use direct bgjob start","path":"skills/design/scripts/design-step5c.sh","kind":"absent","needle":"bgjob start"}
 {"id":"design: Step 5c wrapper must resolve trusted session env","path":"skills/design/scripts/design-step5c.sh","kind":"contains","needle":"--resolve-session-env --session-env-path"}
