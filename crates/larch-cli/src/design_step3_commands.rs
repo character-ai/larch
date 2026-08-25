@@ -214,7 +214,8 @@ fn parse_step3_entry(argv: &[String]) -> Result<Step3EntryArgs, VerbResult> {
                     .clone_into(&mut parsed.session_env_path);
             }
             "--claude-pid" => {
-                take_value(argv, &mut index, STEP3_ENTRY_PROGRAM)?.clone_into(&mut parsed.claude_pid);
+                take_value(argv, &mut index, STEP3_ENTRY_PROGRAM)?
+                    .clone_into(&mut parsed.claude_pid);
             }
             "--reentry" => {
                 parsed.reentry = true;
@@ -248,7 +249,8 @@ fn parse_gate_b(argv: &[String]) -> Result<GateBArgs, VerbResult> {
             "--" => break,
             "--snapshot-original" | "--skip-validate" => index += 1,
             "--session-env-path" => {
-                take_value(argv, &mut index, GATE_B_PROGRAM)?.clone_into(&mut parsed.session_env_path);
+                take_value(argv, &mut index, GATE_B_PROGRAM)?
+                    .clone_into(&mut parsed.session_env_path);
             }
             "--claude-pid" => {
                 take_value(argv, &mut index, GATE_B_PROGRAM)?.clone_into(&mut parsed.claude_pid);
@@ -1659,9 +1661,15 @@ mod tests {
         assert!(body.contains("SKIP_APPROVE_REQUESTED_GATEC=false"));
         assert!(body.contains(&format!("REJECTED_FINDINGS_BEGIN={REJECTED_BEGIN}")));
         assert!(body.contains(&format!("REJECTED_FINDINGS_END={REJECTED_END}")));
-        assert!(body.contains("REJECTED_FINDINGS_BODY_PATH=") && body.contains("gatec-rejected-findings-framed.md"));
+        assert!(
+            body.contains("REJECTED_FINDINGS_BODY_PATH=")
+                && body.contains("gatec-rejected-findings-framed.md")
+        );
         assert!(body.contains("GATEC_PREVIEW_PATH=") && body.contains("gatec-preview.md"));
-        assert!(body.contains("DIALECTIC_GATEC_DIGEST_PATH=") && body.contains("dialectic-clarifier-digest.md"));
+        assert!(
+            body.contains("DIALECTIC_GATEC_DIGEST_PATH=")
+                && body.contains("dialectic-clarifier-digest.md")
+        );
         assert!(design.join(".completed/step-4").is_file());
     }
 
