@@ -2084,7 +2084,7 @@ mod tests {
         );
         assert_eq!(fs::read_to_string(&deps_output).expect("deps output"), "");
 
-        let mut resolved = record.clone();
+        let mut resolved = record;
         let rows: Vec<RemoteLeaf> = resolved
             .leaves
             .iter_mut()

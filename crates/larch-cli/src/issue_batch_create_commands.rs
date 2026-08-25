@@ -898,7 +898,7 @@ mod tests {
             .push_back(Err("dependency refused".to_owned()));
         let mut events = Vec::new();
         let report = run_batch(&plan, &bodies(), &gateway, &mut |line| {
-            events.push(line.to_owned())
+            events.push(line.to_owned());
         });
         assert_eq!(report.created, 2, "rolled-back creates still count");
         assert_eq!(report.failed, 2, "source and descendant fail");
@@ -915,6 +915,13 @@ mod tests {
             "ISSUE_2_ERROR".to_owned(),
             "transitive-failure: parent #101 (item 1) failed dep-wiring".to_owned()
         )));
+        assert_eq!(
+            events,
+            [
+                "▶ /issue: creating item 1/3 (topo position 1)...",
+                "▶ /issue: creating item 3/3 (topo position 3)...",
+            ]
+        );
     }
 
     #[test]
@@ -1018,7 +1025,7 @@ mod tests {
         let (_, bodies) = load_batch(&options).expect("preloads create body");
         assert_eq!(
             bodies,
-            [(1, "Create body.".to_owned())].into_iter().collect()
+            std::collections::BTreeMap::from([(1, "Create body.".to_owned())])
         );
 
         let outside = TempDir::new().expect("outside directory");
