@@ -96,7 +96,7 @@ const SKIP_PREFIX_PATH_OWNERS: &[(&str, &str)] = &[
     ("plugin/", "trusted-main plugin projection validation"),
     (
         "python/",
-        "python-tests, python-pyright, and trusted-main repository policy",
+        "trusted-main repository policy and plugin validation",
     ),
     (
         "skills/",
@@ -714,7 +714,7 @@ fn select_from_changes(
         skip_proof: None,
         validation_owners: vec![
             "rust-lint: workspace format plus selected-package Clippy".to_owned(),
-            "rust-partial: selected tests, doctests, PR-built larch repository policy, plugin validation, and Python artifact".to_owned(),
+            "rust-partial: selected tests, doctests, PR-built larch repository policy, plugin validation, and bootstrap integration".to_owned(),
         ],
     })
 }
@@ -1157,7 +1157,7 @@ fn full_selection(
         validation_owners: vec![
             "rust-lint: workspace format and Clippy".to_owned(),
             "rust-deny: dependency policy".to_owned(),
-            "rust-coverage: sharded test coverage, parallel policy coverage, combined line gate, doctests, plugin validation, and Python artifact"
+            "rust-coverage: sharded test coverage, parallel policy coverage, combined line gate, doctests, plugin validation, and bootstrap integration"
                 .to_owned(),
         ],
     }

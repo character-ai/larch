@@ -44,7 +44,7 @@ const NOOP_SHARDS: &str = r#"{"1":["test-a"],"2":["test-c","test-b"]}"#;
 
 fn harness_plan_request(max_shard_wall_clock: f64, override_note: &str) -> String {
     format!(
-        r#"{{"schema_version":1,"kind":"plan","selection":"harness","options":{{"max_shard_wall_clock":{max_shard_wall_clock},"balance_threshold":15.0,"n_python_shards":null,"experimental_wall_clock_override":{override_note},"compile_affinities":[]}},"harness":{{"expected_run_ids":[11,12],"current_shards":{NOOP_SHARDS},"timing":{NOOP_HARNESS_TIMING},"jobs":{NOOP_JOBS}}},"python":null}}"#
+        r#"{{"schema_version":2,"kind":"plan","selection":"harness","options":{{"max_shard_wall_clock":{max_shard_wall_clock},"experimental_wall_clock_override":{override_note},"compile_affinities":[]}},"harness":{{"expected_run_ids":[11,12],"current_shards":{NOOP_SHARDS},"timing":{NOOP_HARNESS_TIMING},"jobs":{NOOP_JOBS}}},"rust":null}}"#
     )
 }
 
@@ -54,28 +54,7 @@ fn harness_verify_request(
     override_note: &str,
 ) -> String {
     format!(
-        r#"{{"schema_version":1,"kind":"verify","selection":"harness","options":{{"max_shard_wall_clock":{max_shard_wall_clock},"balance_threshold":15.0,"experimental_wall_clock_override":{override_note}}},"harness":{{"expected_run_ids":[11,12],"expected_shards":{NOOP_SHARDS},"baseline_slowest_wall_clock":136.0,"baseline_runner_seconds":266.0,"approved_slowest_wall_clock":{approved_slowest_wall_clock},"timing":{NOOP_HARNESS_TIMING},"jobs":{NOOP_JOBS}}},"python":null}}"#
-    )
-}
-
-const PYTEST_TIMING: &str = r#"{"schema_version":2,"kind":"pytest","sampled_run_ids":[11,12],"rows":[{"run_id":11,"shard":1,"nodeid":"slow","seconds":10.0,"attempt":1,"shard_total":2},{"run_id":11,"shard":2,"nodeid":"medium","seconds":5.0,"attempt":1,"shard_total":2},{"run_id":11,"shard":2,"nodeid":"fast","seconds":1.0,"attempt":1,"shard_total":2},{"run_id":12,"shard":1,"nodeid":"slow","seconds":10.0,"attempt":1,"shard_total":2},{"run_id":12,"shard":2,"nodeid":"medium","seconds":5.0,"attempt":1,"shard_total":2},{"run_id":12,"shard":2,"nodeid":"fast","seconds":1.0,"attempt":1,"shard_total":2}],"nodeid_medians":[{"nodeid":"slow","seconds":10.0},{"nodeid":"medium","seconds":5.0},{"nodeid":"fast","seconds":1.0}],"shard_medians":[{"shard":1,"seconds":10.0},{"shard":2,"seconds":6.0}],"observed_shard_count":2,"skipped_run_ids":[]}"#;
-
-fn python_plan_request(current_assignments: &str) -> String {
-    format!(
-        r#"{{"schema_version":1,"kind":"plan","selection":"python","options":{{"max_shard_wall_clock":300.0,"balance_threshold":15.0,"n_python_shards":2,"experimental_wall_clock_override":null,"compile_affinities":[]}},"harness":null,"python":{{"expected_run_ids":[11,12],"current_assignments":{current_assignments},"timing":{PYTEST_TIMING}}}}}"#
-    )
-}
-
-fn python_plan_request_for_count(current_assignments: &str, shard_count: u32) -> String {
-    python_plan_request(current_assignments).replace(
-        "\"n_python_shards\":2",
-        &format!("\"n_python_shards\":{shard_count}"),
-    )
-}
-
-fn python_verify_request(balance_threshold: f64) -> String {
-    format!(
-        r#"{{"schema_version":1,"kind":"verify","selection":"python","options":{{"max_shard_wall_clock":300.0,"balance_threshold":{balance_threshold},"experimental_wall_clock_override":null}},"harness":null,"python":{{"expected_run_ids":[11,12],"expected_shard_count":2,"timing":{PYTEST_TIMING}}}}}"#
+        r#"{{"schema_version":2,"kind":"verify","selection":"harness","options":{{"max_shard_wall_clock":{max_shard_wall_clock},"experimental_wall_clock_override":{override_note}}},"harness":{{"expected_run_ids":[11,12],"expected_shards":{NOOP_SHARDS},"baseline_slowest_wall_clock":136.0,"baseline_runner_seconds":266.0,"approved_slowest_wall_clock":{approved_slowest_wall_clock},"timing":{NOOP_HARNESS_TIMING},"jobs":{NOOP_JOBS}}},"rust":null}}"#
     )
 }
 
@@ -85,13 +64,13 @@ const RUST_FOUR_SHARD_TIMING: &str = r#"{"schema_version":2,"kind":"rust-jobs","
 
 fn rust_plan_request(target_shards: u32) -> String {
     format!(
-        r#"{{"schema_version":1,"kind":"plan","selection":"rust","options":{{"max_shard_wall_clock":300.0,"max_rust_shard_wall_clock":600.0,"balance_threshold":15.0,"n_python_shards":null,"n_rust_shards":{target_shards},"experimental_wall_clock_override":null,"compile_affinities":[]}},"harness":null,"python":null,"rust":{{"expected_run_ids":[11,12],"current_shard_count":1,"timing":{RUST_MONOLITHIC_TIMING}}}}}"#
+        r#"{{"schema_version":2,"kind":"plan","selection":"rust","options":{{"max_shard_wall_clock":300.0,"max_rust_shard_wall_clock":600.0,"n_rust_shards":{target_shards},"experimental_wall_clock_override":null,"compile_affinities":[]}},"harness":null,"rust":{{"expected_run_ids":[11,12],"current_shard_count":1,"timing":{RUST_MONOLITHIC_TIMING}}}}}"#
     )
 }
 
 fn rust_verify_request(timing: &str) -> String {
     format!(
-        r#"{{"schema_version":1,"kind":"verify","selection":"rust","options":{{"max_shard_wall_clock":300.0,"max_rust_shard_wall_clock":600.0,"balance_threshold":15.0,"experimental_wall_clock_override":null}},"harness":null,"python":null,"rust":{{"expected_run_ids":[21,22],"expected_shard_count":4,"baseline_shard_count":1,"baseline_slowest_wall_clock":702.0,"approved_slowest_wall_clock":600.0,"timing":{timing}}}}}"#
+        r#"{{"schema_version":2,"kind":"verify","selection":"rust","options":{{"max_shard_wall_clock":300.0,"max_rust_shard_wall_clock":600.0,"experimental_wall_clock_override":null}},"harness":null,"rust":{{"expected_run_ids":[21,22],"expected_shard_count":4,"baseline_shard_count":1,"baseline_slowest_wall_clock":702.0,"approved_slowest_wall_clock":600.0,"timing":{timing}}}}}"#
     )
 }
 
@@ -137,32 +116,6 @@ fn plan_rejects_or_overrides_a_modeled_threshold_regression() {
 }
 
 #[test]
-fn plan_uses_the_existing_shard_packer_for_python_nodeids() {
-    let output = result("plan", &python_plan_request("{}"), true);
-    assert_eq!(output["decision"], "change");
-    assert_eq!(
-        output["python"]["assignments"],
-        serde_json::json!({"fast": 2, "medium": 2, "slow": 1})
-    );
-}
-
-#[test]
-fn plan_allows_an_explicit_python_matrix_resize() {
-    let output = result(
-        "plan",
-        &python_plan_request_for_count("{\"old\":2}", 4),
-        true,
-    );
-
-    assert_eq!(output["decision"], "change");
-    assert_eq!(output["python"]["shard_count"], 4);
-    assert_eq!(
-        output["python"]["assignments"],
-        serde_json::json!({"fast": 3, "medium": 2, "slow": 1})
-    );
-}
-
-#[test]
 fn plan_and_verify_support_an_explicit_rust_coverage_resize() {
     let planned = result("plan", &rust_plan_request(4), true);
     assert_eq!(planned["decision"], "change");
@@ -171,24 +124,17 @@ fn plan_and_verify_support_an_explicit_rust_coverage_resize() {
     assert_eq!(planned["rust"]["baseline_slowest_wall_clock"], 702.0);
     assert_eq!(planned["rust"]["approved_slowest_wall_clock"], 600.0);
 
-    let verified = result(
-        "verify",
-        &rust_verify_request(RUST_FOUR_SHARD_TIMING),
-        true,
-    );
+    let verified = result("verify", &rust_verify_request(RUST_FOUR_SHARD_TIMING), true);
     assert_eq!(verified["outcome"], "passed");
     assert_eq!(verified["rust"]["observed_slowest_wall_clock"], 560.0);
 }
 
 #[test]
 fn an_over_budget_unchanged_leg_rejects_a_multi_leg_change() {
-    let mut request: Value = serde_json::from_str(&harness_plan_request(136.0, "null"))
-        .expect("valid harness request");
-    let python: Value =
-        serde_json::from_str(&python_plan_request("{}")).expect("valid Python request");
+    let mut request: Value =
+        serde_json::from_str(&harness_plan_request(136.0, "null")).expect("valid harness request");
     let rust: Value = serde_json::from_str(&rust_plan_request(1)).expect("valid Rust request");
     request["selection"] = Value::String("all".to_owned());
-    request["python"] = python["python"].clone();
     request["rust"] = rust["rust"].clone();
 
     let rejected = result(
@@ -208,11 +154,8 @@ fn an_over_budget_unchanged_leg_rejects_a_multi_leg_change() {
 
 #[test]
 fn rust_coverage_verification_rejects_incomplete_or_slow_cohorts() {
-    let incomplete = RUST_FOUR_SHARD_TIMING.replacen(
-        r#",{"run_id":22,"shard":4,"seconds":427.0}"#,
-        "",
-        1,
-    );
+    let incomplete =
+        RUST_FOUR_SHARD_TIMING.replacen(r#",{"run_id":22,"shard":4,"seconds":427.0}"#, "", 1);
     invalid(
         "verify",
         &rust_verify_request(&incomplete),
@@ -221,27 +164,13 @@ fn rust_coverage_verification_rejects_incomplete_or_slow_cohorts() {
 
     let slow = RUST_FOUR_SHARD_TIMING
         .replace("\"seconds\":563.0", "\"seconds\":640.0")
-        .replace("\"shard\":1,\"seconds\":560.0", "\"shard\":1,\"seconds\":601.0");
+        .replace(
+            "\"shard\":1,\"seconds\":560.0",
+            "\"shard\":1,\"seconds\":601.0",
+        );
     let rejected = result("verify", &rust_verify_request(&slow), false);
     assert_eq!(rejected["outcome"], "rejected");
     assert_eq!(rejected["rust"]["observed_slowest_wall_clock"], 601.0);
-}
-
-#[test]
-fn equal_cost_python_ties_remain_deterministic() {
-    let request = python_plan_request("{}")
-        .replace("\"seconds\":5.0", "\"seconds\":10.0")
-        .replace("\"seconds\":1.0", "\"seconds\":10.0");
-    let first = run("plan", &request);
-    let second = run("plan", &request);
-
-    assert!(first.status.success(), "{}", stderr(&first));
-    assert_eq!(stdout(&first), stdout(&second));
-    let result: Value = serde_json::from_str(&stdout(&first)).expect("valid plan JSON");
-    assert_eq!(
-        result["python"]["assignments"],
-        serde_json::json!({"fast": 1, "medium": 2, "slow": 1})
-    );
 }
 
 #[test]
@@ -281,14 +210,6 @@ fn malformed_or_incomplete_timing_evidence_fails_closed() {
         1,
     );
     invalid("plan", &duplicate_medians, "contains a duplicate shard");
-
-    let partial_python =
-        python_plan_request("{}").replace("\"run_id\":11,\"shard\":2", "\"run_id\":11,\"shard\":1");
-    invalid(
-        "plan",
-        &partial_python,
-        "pytest timing has incompatible shard counts",
-    );
 }
 
 #[test]
@@ -322,8 +243,4 @@ fn verify_reports_pass_rejection_and_experimental_override_without_mutation() {
         true,
     );
     assert_eq!(overridden_json["outcome"], "overridden");
-
-    let python_json = result("verify", &python_verify_request(3.0), false);
-    assert_eq!(python_json["outcome"], "rejected");
-    assert_eq!(python_json["python"]["spread"], 4.0);
 }

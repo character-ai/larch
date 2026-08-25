@@ -73,33 +73,6 @@
       "publication_event": "trusted-main"
     },
     {
-      "id": "pip-python-dev",
-      "key_output": "pip-python-dev",
-      "key_inputs": ["runner OS", "runner architecture", "Python 3.11", "python/requirements-dev.txt"],
-      "producer": "main-cache-python-dev",
-      "validation": "pinned requirements install",
-      "maximum_bytes": null,
-      "publication_event": "trusted-main"
-    },
-    {
-      "id": "pip-python-test",
-      "key_output": "pip-python-test",
-      "key_inputs": ["runner OS", "runner architecture", "Python 3.11", "python/requirements-test.txt"],
-      "producer": "main-cache-python-tests",
-      "validation": "pinned requirements install",
-      "maximum_bytes": null,
-      "publication_event": "trusted-main"
-    },
-    {
-      "id": "site-python-test",
-      "key_output": "site-python-test",
-      "key_inputs": ["runner OS", "runner architecture", "Python 3.11", "python/requirements-test.txt"],
-      "producer": "main-cache-python-tests",
-      "validation": "fresh interpreter site-packages install",
-      "maximum_bytes": null,
-      "publication_event": "trusted-main"
-    },
-    {
       "id": "gitleaks",
       "key_output": "gitleaks",
       "key_inputs": ["runner OS", "runner architecture", "gitleaks version", "gitleaks binary SHA-256"],

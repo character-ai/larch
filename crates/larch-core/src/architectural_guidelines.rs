@@ -621,13 +621,13 @@ mod tests {
             "### G-Py-4: Annotate locals\n",
             "- Why: reviewers read types.\n",
             "- Deviate when: never.\n",
-            "- Mechanized: make py-lint\n",
+            "- Mechanized: make rust-check\n",
             "\n",
             "### G-Md-3: Balanced fences\n",
             "- Why: fence state must be shared.\n",
         );
         let parsed = parse_entries(ArchitecturalKind::Guidelines, text);
-        assert!(parsed.contains("### G-Py-4: Annotate locals\n- Mechanized: make py-lint"));
+        assert!(parsed.contains("### G-Py-4: Annotate locals\n- Mechanized: make rust-check"));
         assert!(!parsed.contains("reviewers read types"));
         assert!(parsed.contains("### G-Md-3: Balanced fences\n- Why: fence state must be shared."));
     }

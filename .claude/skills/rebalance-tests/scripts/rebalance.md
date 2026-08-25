@@ -3,7 +3,7 @@
 ## Purpose
 
 `larch rebalance-tests run` refreshes CI shard assignments for harness lanes,
-Python unit-test lanes, Rust coverage lanes, or any combination. It is the Rust workflow owner for baseline
+Rust coverage lanes, or both. It is the Rust workflow owner for baseline
 timing collection, pure planning, candidate artifact writes, branch and pull
 request publication, and post-PR verification.
 
@@ -17,14 +17,12 @@ Invoke it through the verified bootstrap:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--kind` | `all` | Selected leg: `harness`, `python`, `rust`, or `all`. |
+| `--kind` | `all` | Selected leg: `harness`, `rust`, or `all`. |
 | `--repo` | origin remote | GitHub repository in `owner/name` form; must match `origin`. |
 | `--n-runs` | `5` | Successful baseline CI runs to sample, from 1 through 20. |
 | `--branch-prefix` | `rebalance-shards` | Prefix for the generated branch. |
 | `--n-verify-runs` | `3` | Successful verification workflow runs to dispatch. |
-| `--n-python-shards` | observed | Expected `python-tests` matrix shard count. |
 | `--n-rust-shards` | configured | Expected `rust-full-shards` matrix count, from 1 through 32. |
-| `--balance-threshold` | `15.0` | Maximum Python timing spread in seconds. |
 | `--max-shard-wall-clock` | `300.0` | Maximum harness CI job wall-clock in seconds. |
 | `--max-rust-shard-wall-clock` | `600.0` | Maximum Rust coverage shard wall-clock in seconds. |
 | `--experimental-wall-clock-override NOTE` | unset | Documented harness or Rust wall-clock experiment. It cannot bypass incomplete evidence. |
@@ -44,9 +42,8 @@ GitHub Actions service, and supplies those reports to
 
 The pure planner rejects stale, skipped, incomplete, or incompatible evidence.
 The harness leg also rejects target inventory drift and a modeled or observed
-wall-clock regression. The Python leg rejects empty data, incomplete coverage,
-or a spread over `--balance-threshold`. The Rust leg requires one jobs-API row
-for every configured shard and run. It treats the legacy monolithic
+wall-clock regression. The Rust leg requires one jobs-API row for every
+configured shard and run. It treats the legacy monolithic
 `rust-full` job as a one-shard baseline. An unchanged harness or Rust layout is
 not a success if its measured baseline exceeds the corresponding wall-clock
 limit.
@@ -57,9 +54,9 @@ the same preflight and planning checks.
 ## Writes and recovery
 
 For a changing plan, the command validates the harness partition and atomically
-writes the selected `Makefile`, `python/shard-assignments.json`, and
-`.github/workflows/ci.yaml` artifacts. One workflow write keeps each selected
-matrix and its configured count fields in lockstep.
+writes the selected `Makefile` and `.github/workflows/ci.yaml` artifacts. One
+workflow write keeps the Rust matrix and its configured count fields in
+lockstep.
 It then creates a timestamped branch, commits only those artifacts, pushes it,
 returns to `main`, and creates one non-draft pull request through the typed
 GitHub service.
@@ -75,9 +72,8 @@ and branch available for investigation.
 The command dispatches `--n-verify-runs` workflows on the PR branch. It waits
 for each successful run, collects timing only for those exact run IDs, and sends
 the reports to `larch rebalance-tests verify`. Harness verification checks the
-approved slowest-shard threshold and summed runner cost. Python verification
-checks expected shard coverage and spread. Rust verification requires every
-resized matrix cell and checks its slowest wall-clock against both the baseline
+approved slowest-shard threshold and summed runner cost. Rust verification
+requires every resized matrix cell and checks its slowest wall-clock against both the baseline
 approval and `--max-rust-shard-wall-clock`. A documented experimental override
 can acknowledge only a harness or Rust wall-clock regression. It never admits
 missing or stale evidence.
@@ -87,7 +83,7 @@ Merge remains operator-owned.
 ## Pure decision contract
 
 `larch rebalance-tests plan` and `larch rebalance-tests verify` read one
-schema-v1 UTF-8 JSON request from standard input or `--input PATH` and write
+schema-v2 UTF-8 JSON request from standard input or `--input PATH` and write
 one compact JSON result followed by a newline. They have no repository,
 filesystem, Git, GitHub, branch, or workflow side effects. Their nested timing
 reports use the schema-v2 contract emitted by `larch ci-timing`.

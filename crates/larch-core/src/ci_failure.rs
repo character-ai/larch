@@ -22,7 +22,7 @@ const DISTILL_STEP_CONTEXT_LINES: usize = 4;
 const DISTILL_TOTAL_BYTES: usize = 60_000;
 const DISTILL_REPEATED_BLOCK_LIMIT: usize = 2;
 const DISTILL_TRUNCATION_SUFFIX: &str = "\n\n[ci-fixer digest truncated at total-byte cap]\n";
-const CI_FIXABLE_JOBS: [&str; 9] = [
+const CI_FIXABLE_JOBS: [&str; 7] = [
     "lint",
     "lint-local",
     "shellcheck",
@@ -30,8 +30,6 @@ const CI_FIXABLE_JOBS: [&str; 9] = [
     "agent-lint",
     "agnix",
     "agent-sync",
-    "python-pyright",
-    "python-tests",
 ];
 const FAILURE_CONCLUSIONS: [&str; 5] = [
     "action_required",

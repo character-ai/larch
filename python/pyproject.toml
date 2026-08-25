@@ -1,7 +1,0 @@
-[project]
-name = "larch-python-tooling"
-version = "0.0.0"
-requires-python = ">=3.11"
-
-[tool.pytest.ini_options]
-pythonpath = ["."]

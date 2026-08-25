@@ -65,7 +65,7 @@ env:
 
 jobs:
   # External-tool linters only: markdownlint, jsonlint, and actionlint.
-  # Local bash linters and Ruff run in the parallel `lint-local` job.
+  # Local bash linters run in the parallel `lint-local` job.
   # `agent-lint`, `agnix`, `lintlang`, and `shellcheck` run in their dedicated jobs.
   # `gitleaks` working-tree scan moved to the `gitleaks` job to shed ~40s
   # from this job's critical path. Test harnesses run in the separate
@@ -104,12 +104,11 @@ jobs:
       - name: Run pre-commit linters (external tools)
         # Runs markdownlint, jsonlint, and actionlint only.
         # `agent-lint`, `agnix`, `lintlang`, and `shellcheck` run in dedicated jobs.
-        # `gitleaks` moved to the `gitleaks` job. Ruff runs in `lint-local`,
-        # and Pyright runs in its dedicated Python job. Local bash linters run
-        # in `lint-local`. If a dedicated job is removed, drop its hook
+        # `gitleaks` moved to the `gitleaks` job. Local bash linters run in
+        # `lint-local`. If a dedicated job is removed, drop its hook
         # name from SKIP to restore CI coverage. Issue #1034.
         env:
-          SKIP: agnix,shellcheck,gitleaks,ruff,pyright,agent-lint,cargo-fmt,cargo-clippy,larch-lint,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths,lint-retired-scripts
+          SKIP: agnix,shellcheck,gitleaks,agent-lint,cargo-fmt,cargo-clippy,larch-lint,lint-no-raw-stderr-after-quiet-init,bash-syntax-check,check-topology-rule-paths,lint-retired-scripts
         run: |
           set -euo pipefail
           log="$(mktemp)"
@@ -133,7 +132,7 @@ jobs:
             sleep 10
           done
 
-  # Local bash linters and Ruff — split from `lint` into a parallel job so
+  # Local bash linters, split from `lint` into a parallel job so
   # both halves run concurrently. Runs local hooks while `lint` runs the
   # external-tool hooks (markdownlint, jsonlint, agent-lint, actionlint).
   lint-local:
@@ -167,12 +166,12 @@ jobs:
           PIP_DEFAULT_TIMEOUT: "30"
         run: pip install -r .github/workflows/requirements-lint.txt
       - name: Run pre-commit linters (local)
-        # Runs local bash linters and Ruff. External tools (markdownlint,
+        # Runs local bash linters. External tools (markdownlint,
         # jsonlint, actionlint) run in `lint`. Dedicated-job hooks
-        # (gitleaks, agnix, shellcheck, agent-lint, pyright, and Rust
+        # (gitleaks, agnix, shellcheck, agent-lint, and Rust
         # hooks covered by rust-gate) are skipped here.
         env:
-          SKIP: agnix,shellcheck,gitleaks,pyright,markdownlint,jsonlint,agent-lint,actionlint,cargo-fmt,cargo-clippy,larch-lint,check-topology-rule-paths,lint-retired-scripts
+          SKIP: agnix,shellcheck,gitleaks,markdownlint,jsonlint,agent-lint,actionlint,cargo-fmt,cargo-clippy,larch-lint,check-topology-rule-paths,lint-retired-scripts
         run: make lint-only
       - name: Pipe SIGPIPE safety lint
         run: bash scripts/test-pipe-sigpipe-safety.sh
@@ -404,6 +403,9 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - id: main-cache-keys
+        # A base/candidate cache-key schema transition must fail closed to the
+        # full Rust path instead of making the selector job terminally red.
+        continue-on-error: true
         uses: ./.rust-ci-selector-base/.github/actions/main-cache-keys
         with:
           rust-policy-source-root: .rust-ci-selector-base
@@ -922,7 +924,7 @@ jobs:
   # it whenever selection is full or selection infrastructure cannot prove a
   # narrower path. Each shard rebuilds the instrumented workspace and owns one
   # hash partition. The first shard also owns doctests, plugin validation, the
-  # bootstrap integration artifact, and trusted-main policy-cache candidate staging. The
+  # bootstrap integration checks and trusted-main policy-cache candidate staging. The
   # repository-policy scan runs in its own parallel coverage job below.
   rust-full-shards:
     name: rust-full shard ${{ matrix.shard }}
@@ -955,8 +957,7 @@ jobs:
       COVERAGE_SHARD_COUNT: "4"
       COVERAGE_LCOV_ARTIFACT_SUFFIX: ${{ format('-shard-{0}', matrix.shard) }}
       COVERAGE_TIMING_ARTIFACT_SUFFIX: ${{ format('-opt0-sample1-shard-{0}', matrix.shard) }}
-      COVERAGE_PRODUCES_PYTHON_ARTIFACT: "true"
-      COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary"
+      COVERAGE_RUN_BOOTSTRAP_INTEGRATION: "true"
       # Three comparable warm-cache main samples beat the cache-off control
       # end to end. The expanded dependency-only inventory is 1,369,854,810
       # bytes, so this reviewed decimal bound leaves 30,145,190 bytes of
@@ -1006,7 +1007,7 @@ jobs:
         with:
           path: ${{ runner.temp }}/trusted-main-rust-policy
           key: ${{ steps.main-cache-keys.outputs.rust-policy }}
-      # The coverage action has already prepared the integration artifact and
+      # The coverage action has already prepared the policy bundle and
       # pruned workspace products. A merge-group run stages a candidate only
       # on an exact main-key miss; the trusted publication workflow is the
       # sole cache writer.
@@ -1075,8 +1076,7 @@ jobs:
       RUST_COVERAGE_EXECUTION_ROLE: policy
       COVERAGE_LCOV_ARTIFACT_SUFFIX: "-policy"
       COVERAGE_TIMING_ARTIFACT_SUFFIX: "-opt0-sample1-policy"
-      COVERAGE_PRODUCES_PYTHON_ARTIFACT: "false"
-      COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary-policy"
+      COVERAGE_RUN_BOOTSTRAP_INTEGRATION: "false"
       COVERAGE_TARGET_CACHE_ENABLED: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_target_cache_benchmark && 'false' || 'true' }}
       COVERAGE_TARGET_CACHE_SCHEMA: "v2"
       COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"
@@ -1107,8 +1107,8 @@ jobs:
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
 
   # The partial path has a strict package closure but still builds the CLI from
-  # the candidate, validates repository policy and plugin projection, and
-  # uploads the same bootstrap integration artifact. It deliberately omits only
+  # the candidate, validates repository policy and plugin projection, and runs
+  # the same bootstrap integration checks. It deliberately omits only
   # the full-workspace coverage threshold.
   rust-partial:
     name: rust-partial
@@ -1190,41 +1190,26 @@ jobs:
             "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --check
           CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
             "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --check --check-worktree
-      - name: Prepare partial Rust integration artifact
+      - name: Run bootstrap integration with the partial executable
         env:
-          RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
+          LARCH_TEST_RUST_BINARY: ${{ github.workspace }}/target/debug/larch
+          RUST_CI_MODE: partial
         run: |
           set -euo pipefail
-          test -n "$RUST_POLICY_INPUTS_SHA256"
-          policy_larch="$GITHUB_WORKSPACE/target/debug/larch"
-          artifact_dir="$RUNNER_TEMP/larch-linux-test-binary"
-          test -x "$policy_larch"
-          mkdir -p "$artifact_dir"
-          install -m 0755 "$policy_larch" "$artifact_dir/larch"
-          (
-            cd "$artifact_dir"
-            sha256sum larch > larch.sha256
-          )
-          printf '%s\n' "$GITHUB_SHA" > "$artifact_dir/source-sha"
-          printf '%s\n' "$RUST_POLICY_INPUTS_SHA256" > "$artifact_dir/rust-inputs-sha256"
-          printf '%s\n' current-checkout > "$artifact_dir/producer-ref"
-          "$artifact_dir/larch" --version > "$artifact_dir/version"
-      - name: Upload partial Rust executable for bootstrap integration tests
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: larch-linux-test-binary
-          path: ${{ runner.temp }}/larch-linux-test-binary
-          if-no-files-found: error
+          read -r LARCH_TEST_RUST_BINARY_SHA256 _ < <(sha256sum "$LARCH_TEST_RUST_BINARY")
+          export LARCH_TEST_RUST_BINARY_SHA256
+          bash scripts/test-rust-integration-consumer.sh
+          LARCH_BINARY="$LARCH_TEST_RUST_BINARY" make test-findings-classification
       - name: Summarize partial Rust selection
         if: always()
         run: |
           set -euo pipefail
-          printf '## Partial Rust CI\n\nNo full-workspace coverage threshold ran. Selected package tests, applicable doctests, repository policy, plugin projection validation, and the bootstrap integration artifact remain required.\n' \
+          printf '## Partial Rust CI\n\nNo full-workspace coverage threshold ran. Selected package tests, applicable doctests, repository policy, plugin projection validation, and bootstrap integration remain required.\n' \
             >> "$GITHUB_STEP_SUMMARY"
 
   # A skip path never executes a PR-provided Rust binary. The selection job
   # restores and validates an exact trusted-main cache entry first; this job
-  # validates that artifact again before policy, projection, and Python use.
+  # validates that artifact again before policy, projection, and integration use.
   rust-skip:
     name: rust-skip
     needs: [rust-selection]
@@ -1243,7 +1228,7 @@ jobs:
         with:
           name: trusted-main-rust-policy
           path: ${{ runner.temp }}/trusted-main-rust-policy
-      - name: Verify trusted main policy artifact and prepare Python handoff
+      - name: Verify trusted main policy artifact
         env:
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
         run: |
@@ -1267,10 +1252,6 @@ jobs:
           source_sha="$(<"$policy_dir/source-sha")"
           [[ "$source_sha" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]
           test "$("$policy_dir/larch" --version)" = "$(<"$policy_dir/version")"
-          artifact_dir="$RUNNER_TEMP/larch-linux-test-binary"
-          mkdir -p "$artifact_dir"
-          cp "$policy_dir/larch" "$policy_dir/larch.sha256" "$policy_dir/producer-ref" \
-            "$policy_dir/rust-inputs-sha256" "$policy_dir/source-sha" "$policy_dir/version" "$artifact_dir/"
       - name: Run repository and plugin validation with the trusted main executable
         env:
           LLVM_PROFILE_FILE: ${{ runner.temp }}/larch-trusted-main-policy-%p.profraw
@@ -1284,17 +1265,21 @@ jobs:
             "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --check
           CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
             "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --check --check-worktree
-      - name: Upload trusted-main Rust executable for bootstrap integration tests
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: larch-linux-test-binary
-          path: ${{ runner.temp }}/larch-linux-test-binary
-          if-no-files-found: error
+      - name: Run bootstrap integration with the trusted main executable
+        env:
+          LARCH_TEST_RUST_BINARY: ${{ runner.temp }}/trusted-main-rust-policy/larch
+          RUST_CI_MODE: skip
+        run: |
+          set -euo pipefail
+          read -r LARCH_TEST_RUST_BINARY_SHA256 _ < <(sha256sum "$LARCH_TEST_RUST_BINARY")
+          export LARCH_TEST_RUST_BINARY_SHA256
+          bash scripts/test-rust-integration-consumer.sh
+          LARCH_BINARY="$LARCH_TEST_RUST_BINARY" make test-findings-classification
       - name: Summarize skipped Rust compilation
         if: always()
         run: |
           set -euo pipefail
-          printf '## Rust compilation skipped\n\nTrusted-main repository policy, plugin projection validation, and the bootstrap integration artifact completed against a matching Rust-input identity.\n' \
+          printf '## Rust compilation skipped\n\nTrusted-main repository policy, plugin projection validation, and bootstrap integration completed against a matching Rust-input identity.\n' \
             >> "$GITHUB_STEP_SUMMARY"
 
   # Publish the protected rust-coverage status directly from the selected
@@ -1479,8 +1464,8 @@ jobs:
           overwrite: false
 
   # Manual profile sweeps remain isolated from the protected production job.
-  # They share every validation and timing step, but never publish the Python
-  # executable artifact because the direct job already owns that handoff.
+  # They share the coverage validation and timing steps, but do not run the
+  # production lane's bootstrap integration checks.
   rust-coverage-benchmark:
     if: github.event_name == 'workflow_dispatch' && inputs.coverage_profile_benchmark
     name: rust-coverage-benchmark (opt${{ matrix.test_opt_level }} sample${{ matrix.sample }})
@@ -1510,8 +1495,7 @@ jobs:
       RUST_COVERAGE_EXECUTION_ROLE: combined
       COVERAGE_LCOV_ARTIFACT_SUFFIX: ${{ format('-opt{0}-sample{1}', matrix.test_opt_level, matrix.sample) }}
       COVERAGE_TIMING_ARTIFACT_SUFFIX: ${{ format('-opt{0}-sample{1}', matrix.test_opt_level, matrix.sample) }}
-      COVERAGE_PRODUCES_PYTHON_ARTIFACT: "false"
-      COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary-profile-benchmark"
+      COVERAGE_RUN_BOOTSTRAP_INTEGRATION: "false"
       COVERAGE_TARGET_CACHE_ENABLED: "false"
       COVERAGE_TARGET_CACHE_SCHEMA: "v2"
       COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"
@@ -1580,8 +1564,7 @@ jobs:
       RUST_COVERAGE_EXECUTION_ROLE: combined
       COVERAGE_LCOV_ARTIFACT_SUFFIX: ${{ format('-overlap-{0}-sample{1}', matrix.phase_mode, matrix.sample) }}
       COVERAGE_TIMING_ARTIFACT_SUFFIX: ${{ format('-overlap-{0}-sample{1}', matrix.phase_mode, matrix.sample) }}
-      COVERAGE_PRODUCES_PYTHON_ARTIFACT: "true"
-      COVERAGE_PYTHON_ARTIFACT_NAME: ${{ format('larch-linux-test-binary-overlap-{0}-sample{1}', matrix.phase_mode, matrix.sample) }}
+      COVERAGE_RUN_BOOTSTRAP_INTEGRATION: "false"
       COVERAGE_TARGET_CACHE_ENABLED: "true"
       COVERAGE_TARGET_CACHE_SCHEMA: "v2"
       COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"
@@ -1646,8 +1629,7 @@ jobs:
       RUST_COVERAGE_EXECUTION_ROLE: combined
       COVERAGE_LCOV_ARTIFACT_SUFFIX: "-target-cache-benchmark"
       COVERAGE_TIMING_ARTIFACT_SUFFIX: "-target-cache-benchmark"
-      COVERAGE_PRODUCES_PYTHON_ARTIFACT: "true"
-      COVERAGE_PYTHON_ARTIFACT_NAME: "larch-linux-test-binary-target-cache-benchmark"
+      COVERAGE_RUN_BOOTSTRAP_INTEGRATION: "false"
       COVERAGE_TARGET_CACHE_ENABLED: "true"
       COVERAGE_TARGET_CACHE_SCHEMA: "v2"
       COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps-benchmark"
@@ -1978,169 +1960,3 @@ jobs:
           version: 3.82.13
           path: ./
           extra_args: --only-verified
-
-  python-pyright:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/larch-logs/
-          sparse-checkout-cone-mode: false
-      - id: main-cache-keys
-        uses: ./.github/actions/main-cache-keys
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-      - id: pip-python-dev-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ~/.cache/pip
-          key: ${{ steps.main-cache-keys.outputs.pip-python-dev }}
-      - uses: actions/setup-node@v5
-      - name: Install Python typecheck dependencies
-        env:
-          PIP_RETRIES: "5"
-          PIP_DEFAULT_TIMEOUT: "30"
-        run: pip install -r python/requirements-dev.txt
-      - name: Run Python typecheck
-        run: make py-typecheck
-
-  # Stub-safe Python unit tests, sharded across a matrix to speed up CI. They
-  # deliberately have no Rust dependency. conftest.py round-robins the
-  # collected tests by index using PYTEST_SHARD_ID / PYTEST_SHARD_COUNT (see
-  # python/pytest_sharding.py); the matrix `shard` list below is the source of
-  # truth for shard count. `make py-test` runs pytest with --durations=0 so
-  # shards can be rebalanced by wall time later.
-  python-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11"]
-        shard: [1, 2, 3, 4]
-    steps:
-      # Sparse checkout keeps larch-logs/implement (the calibration replay tests
-      # read committed larch-logs/implement/<run-id>/ fixtures) but drops the
-      # larger larch-logs/design and larch-logs/shared trees, which no test
-      # reads, to trim checkout time.
-      - uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/larch-logs/design/
-            !/larch-logs/shared/
-          sparse-checkout-cone-mode: false
-      - id: main-cache-keys
-        uses: ./.github/actions/main-cache-keys
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-      - id: pip-python-test-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ~/.cache/pip
-          key: ${{ steps.main-cache-keys.outputs.pip-python-test }}
-      - name: Resolve interpreter site-packages
-        id: site-packages
-        run: printf 'path=%s\n' "$(python -c 'import site; print(site.getsitepackages()[0])')" >> "$GITHUB_OUTPUT"
-      - name: Cache installed Python packages
-        id: cache-site-packages
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ${{ steps.site-packages.outputs.path }}
-          key: ${{ steps.main-cache-keys.outputs.site-python-test }}
-      - name: Install Python test dependencies
-        if: steps.cache-site-packages.outputs.cache-hit != 'true'
-        env:
-          PIP_RETRIES: "5"
-          PIP_DEFAULT_TIMEOUT: "30"
-        run: pip install -r python/requirements-test.txt
-      - name: Run Python tests (shard ${{ matrix.shard }} of 4)
-        env:
-          PYTEST_SHARD_ID: ${{ matrix.shard }}
-          PYTEST_SHARD_COUNT: "4"
-        run: make py-test
-
-  # This job exercises the CI-selected Rust binary through the shipped
-  # bootstrap after both the Python unit suite and Rust coverage succeed.
-  # Preserve python-tests-gate as the stable required check while
-  # combining the focused consumer with the gate to avoid another runner tail.
-  # The same-run artifact is validated before either consumer executes, so a
-  # missing, stale, or altered binary is a hard failure rather than a skip.
-  python-rust-integration:
-    name: python-tests-gate
-    needs: [rust-coverage, python-tests]
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      LARCH_TEST_RUST_BINARY: ${{ github.workspace }}/.ci-bin/larch
-      RUST_CI_MODE: ${{ needs.rust-coverage.outputs.mode }}
-    steps:
-      - name: Require Python unit tests and Rust coverage to pass
-        shell: bash
-        run: |
-          set -euo pipefail
-          unit_result="${{ needs.python-tests.result }}"
-          coverage_result="${{ needs.rust-coverage.result }}"
-          [ "$unit_result" = success ] || { echo "::error::python-tests result=$unit_result"; exit 1; }
-          [ "$coverage_result" = success ] || { echo "::error::rust-coverage result=$coverage_result"; exit 1; }
-      - uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/larch-logs/design/
-            !/larch-logs/shared/
-          sparse-checkout-cone-mode: false
-      - name: Download Rust executable for bootstrap integration tests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: larch-linux-test-binary
-          path: .ci-bin
-      - name: Verify selected Rust integration artifact
-        shell: bash
-        env:
-          RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
-        run: |
-          set -euo pipefail
-          artifact_dir="$GITHUB_WORKSPACE/.ci-bin"
-          test -n "$RUST_POLICY_INPUTS_SHA256"
-          for artifact_file in larch larch.sha256 producer-ref rust-inputs-sha256 source-sha version; do
-            test -f "$artifact_dir/$artifact_file"
-            test ! -L "$artifact_dir/$artifact_file"
-          done
-          chmod 755 "$artifact_dir/larch"
-          (
-            cd "$artifact_dir"
-            sha256sum --check --strict larch.sha256
-          )
-          read -r binary_sha artifact_name < "$artifact_dir/larch.sha256"
-          test "$artifact_name" = larch
-          read -r source_sha < "$artifact_dir/source-sha"
-          [[ "$source_sha" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]
-          test "$(<"$artifact_dir/rust-inputs-sha256")" = "$RUST_POLICY_INPUTS_SHA256"
-          producer_ref="$(<"$artifact_dir/producer-ref")"
-          case "$producer_ref" in
-            current-checkout)
-              test "$source_sha" = "$GITHUB_SHA"
-              ;;
-            refs/heads/main)
-              test "$RUST_CI_MODE" = skip
-              ;;
-            *)
-              printf '::error::unexpected Rust integration artifact producer=%s\n' "$producer_ref"
-              exit 1
-              ;;
-          esac
-          expected_version="$(<"$artifact_dir/version")"
-          actual_version="$("$artifact_dir/larch" --version)"
-          test "$actual_version" = "$expected_version"
-          printf 'LARCH_TEST_RUST_BINARY_SHA256=%s\n' "$binary_sha" >> "$GITHUB_ENV"
-      - name: Run selected Rust bootstrap integration tests
-        run: |
-          bash scripts/test-rust-integration-consumer.sh
-          LARCH_BINARY="$LARCH_TEST_RUST_BINARY" make test-findings-classification

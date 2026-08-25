@@ -3,9 +3,8 @@
 use clap::{Args, Subcommand};
 use larch_core::{
     CiTimingRunSelection, GitHubRepositoryRef, MAX_CI_TIMING_REQUIRED_TARGETS, MAX_CI_TIMING_RUNS,
-    collect_harness_timing, collect_job_timing, collect_pytest_timing,
-    collect_rust_coverage_job_timing, resolve_main_cache_merge_group_source,
-    validate_main_cache_source_sha,
+    collect_harness_timing, collect_job_timing, collect_rust_coverage_job_timing,
+    resolve_main_cache_merge_group_source, validate_main_cache_source_sha,
 };
 use serde::Serialize;
 use std::{collections::HashSet, io::Write as _, path::Path, process::ExitCode};
@@ -20,8 +19,6 @@ pub enum CiTimingCommand {
     RustJobs(LogSourceArguments),
     /// Resolve the exact successful merge-group run that produced a main SHA.
     MergeGroupSource(MergeGroupSourceArguments),
-    /// Collect pytest --durations=0 call rows and their medians.
-    Pytest(PytestArguments),
 }
 
 #[derive(Args)]
@@ -31,12 +28,6 @@ pub struct HarnessArguments {
     /// Makefile target that must have at least one timing row.
     #[arg(long = "required-target")]
     required_targets: Vec<String>,
-}
-
-#[derive(Args)]
-pub struct PytestArguments {
-    #[command(flatten)]
-    source: LogSourceArguments,
 }
 
 #[derive(Args)]
@@ -121,7 +112,6 @@ impl CiTimingCommand {
                 validate_main_cache_source_sha(&arguments.source_sha)
                     .map_err(|error| error.to_string())
             }
-            Self::Pytest(arguments) => validate_run_ids(&arguments.source.run_ids),
         }
     }
 }
@@ -186,19 +176,6 @@ async fn run_async(command: CiTimingCommand, working_directory: &Path) -> Result
             .await
             .map_err(|error| error.to_string())?;
             Ok(format!("run-id={run_id}\n").into_bytes())
-        }
-        CiTimingCommand::Pytest(arguments) => {
-            let selection = arguments.source.selection();
-            let report = collect_pytest_timing(
-                &service,
-                &arguments.source.repository,
-                &selection,
-                &cancellation,
-            )
-            .await
-            .map_err(|error| error.to_string())?;
-            warn_skipped("pytest", &report.skipped_run_ids);
-            serialize_report(&report)
         }
     }
 }

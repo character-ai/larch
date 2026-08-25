@@ -48,10 +48,10 @@ any event or ref other than `push` or `workflow_dispatch` on
 
 The publisher has only `actions: read` and `contents: read` permissions and a
 newest-wins `main-cache-publication` concurrency group. Lightweight classes
-(Python and pre-commit packages, test site packages, agent tools, and gitleaks)
-are populated directly on exact misses. Those jobs install or verify their
-pinned inputs and save the matching cache, but deliberately do not run a lint,
-test, or secret scan.
+(pre-commit and harness packages, agent tools, and gitleaks) are populated
+directly on exact misses. Those jobs install or verify their pinned inputs and
+save the matching cache, but deliberately do not run a lint, test, or secret
+scan.
 
 Rust CI caches Cargo registry and Git inputs separately from compiler output.
 Their versioned keys bind the runner operating system and architecture,
@@ -180,28 +180,18 @@ cold and warm comparisons.
 Each `rust-full-shards` coverage job builds the `larch` CLI under the same
 instrumented target directory and Cargo test profile as its full workspace
 test partition. Every cell uploads a uniquely named LCOV artifact. Shard 1 is
-the only cell permitted to run plugin validation, stage cache candidates, or
-upload `larch-linux-test-binary`. Before shard 1 uploads that binary, it fails
-closed unless
-the coverage-target executable at `target/llvm-cov-target/debug/larch` is
-runnable and reports its version. The same executable runs plugin projection
-validation before it is uploaded. The parallel `rust-full-policy` job installs
-only the pinned coverage tool, builds an instrumented `larch` binary without
-the workspace test executables, runs the single repository-policy scan, and
-uploads distinct LCOV and per-rule timing artifacts. The artifact contains the
-executable plus its SHA-256, source SHA,
-reported version, Rust-input digest, and producer reference. The required
-`python-rust-integration` job publishes the stable `python-tests-gate` check.
-It verifies both prerequisite results, regular-file shape, checksum, Rust-input
-identity, producer-specific source identity, and version before it runs the
-shipped bootstrap integration harness. That harness rechecks the executable
-checksum, runs lifecycle start/finalize through `scripts/larch.sh`, and proves
-coverage profiles cannot escape into the temporary client repository. A
-candidate-built artifact must name the current
-checkout; a trusted-main artifact is accepted only for an enforced `skip` run.
-The stub-safe `python-tests` matrix has no Rust artifact dependency. The
-producer's `if-no-files-found: error` prevents an absent producer artifact from
-being treated as a successful handoff. In full mode, the parallel
+the only cell permitted to run plugin validation or stage cache candidates.
+It also runs the bootstrap integration harness with the coverage-target
+executable after verifying that executable's checksum and version. The
+parallel `rust-full-policy` job installs only the pinned coverage tool, builds
+an instrumented `larch` binary without the workspace test executables, runs the
+single repository-policy scan, and uploads distinct LCOV and per-rule timing
+artifacts. The selected `rust-partial` and `rust-skip` producers run the same
+bootstrap integration contract with their candidate-built or trusted-main
+executable. Every selected producer runs lifecycle start/finalize through
+`scripts/larch.sh`, proves profiles cannot escape into the temporary client
+repository, and runs the findings-classification contract before the stable
+`rust-coverage` check can pass. In full mode, the parallel
 `rust-full-lcov-tool` job installs the exact pinned Ubuntu LCOV package. It
 archives only files owned by that package and the dependencies installed or
 updated by the same transaction. It rejects unsafe package paths, verifies the
@@ -951,21 +941,21 @@ limits archive download and decompressed output to 64 MiB, limits archive
 entries to 1,024, rejects malformed archives and oversized entries, and never
 treats archive paths as local filesystem paths.
 
-`larch ci-timing harness` and `larch ci-timing pytest` parse the same untrusted
-workflow archives entirely in memory. They apply the shared 64 MiB and 1,024
-entry limits, cap entry-name length, never extract archive paths, and emit only
-schema-v2 timing fields consumed by the rebalancer. The harness report includes
-the selected run identifiers and bounded bootstrap diagnostics alongside target
-rows, so the consumer can reject an incomplete cohort rather than infer missing
-startup cost. One timing operation accepts at most 20 runs and retains at most
-100,000 rows, 32 MiB of label text, and 16,384 bytes per target or nodeid.
-Harness input is also capped at 4,096 required targets. `larch ci-timing jobs`
+`larch ci-timing harness` parses untrusted workflow archives entirely in
+memory. It applies the shared 64 MiB and 1,024 entry limits, caps entry-name
+length, never extracts archive paths, and emits only schema-v2 timing fields
+consumed by the rebalancer. The report includes the selected run identifiers
+and bounded bootstrap diagnostics alongside target rows, so the consumer can
+reject an incomplete cohort rather than infer missing startup cost. One timing
+operation accepts at most 20 runs and retains at most 100,000 rows, 32 MiB of
+label text, and 16,384 bytes per target. Harness input is also capped at 4,096
+required targets. `larch ci-timing jobs`
 derives harness wall-clock durations from typed Actions job records.
 `larch ci-timing rust-jobs` uses the same bounded records for Rust coverage,
 treats a legacy `rust-full` as one shard, and ignores the stable aggregate when
 matrix jobs are present. Both report the same selected cohort.
 `larch ci-timing merge-group-source` reads bounded workflow and job records to
-resolve only a trusted producer run. All five commands use the Actions adapter
+resolve only a trusted producer run. All four commands use the Actions adapter
 and the fixed GitHub credential boundary above; they do not call `gh api`,
 accept raw URLs, or expose log text in their output.
 

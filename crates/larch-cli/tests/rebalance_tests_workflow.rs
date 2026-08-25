@@ -13,5 +13,8 @@ fn run_help_exposes_the_checked_orchestration_boundary() {
         ))
         .stdout(predicate::str::contains("--n-rust-shards"))
         .stdout(predicate::str::contains("--max-rust-shard-wall-clock"))
-        .stdout(predicate::str::contains("rust"));
+        .stdout(predicate::str::contains("rust"))
+        .stdout(predicate::str::contains("--n-python-shards").not())
+        .stdout(predicate::str::contains("--balance-threshold").not())
+        .stdout(predicate::str::contains("python").not());
 }

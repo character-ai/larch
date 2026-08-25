@@ -314,13 +314,13 @@ follows:
   described below. `rust-gate` independently validates `rust-lint`,
   `rust-deny`, and the raw producer-result shape without waiting for
   `rust-coverage`; both stable checks are required, so a red producer or LCOV
-  threshold failure blocks the merge queue. `python-rust-integration` uses the
-  stable `rust-coverage` status and selected-mode output.
+  threshold failure blocks the merge queue. The selected producer also runs
+  the bootstrap integration consumer before `rust-coverage` reports success.
 - The `rust-full-shards` matrix owns the full locked-workspace test coverage.
   Four cells run `cargo llvm-cov nextest` with disjoint
   `--partition hash:N/4` partitions and upload distinct LCOV reports. Shard 1
-  alone runs workspace doctests and plugin projection validation, stages cache
-  candidates, and uploads the Linux executable artifact. `rust-full-policy`
+  alone runs workspace doctests and plugin projection validation and stages
+  cache candidates. `rust-full-policy`
   runs beside the four cells. It builds only the instrumented `larch` binary,
   runs the single `larch lint all` scan, and uploads its LCOV and per-rule
   timing artifacts. `rust-full-lcov-tool` starts beside those producers. It
@@ -336,10 +336,10 @@ follows:
   merged report without parsing the input set a second time.
   After coverage-target pruning, an exact cache miss in a successful
   `merge_group` full lane stages and verifies a policy-cache candidate from
-  that preserved artifact. The trusted main publisher may promote it only after
-  that candidate's SHA becomes the current `main` SHA, then rewrites and
-  revalidates its `refs/heads/main` provenance. This does not build a second
-  executable.
+  the locally prepared policy bundle. The trusted main publisher may promote
+  it only after that candidate's SHA becomes the current `main` SHA, then
+  rewrites and revalidates its `refs/heads/main` provenance. This does not
+  build a second executable.
   The composed full mode is the only path that enforces full-workspace
   coverage. The
   `merge_group` `checks_requested` trigger runs the same full, read-only path
@@ -352,29 +352,19 @@ follows:
   misleading full-workspace coverage threshold. `rust-skip` runs no
   pull-request Rust binary; it validates and uses the exact trusted-main policy
   executable instead. Both producers retain repository policy, plugin
-  projection validation, and the Linux artifact handoff required for bootstrap
-  integration.
-- The 4-shard `python-tests` matrix is artifact-independent and runs its
-  stub-safe tests without waiting for Rust coverage. The required
-  `python-rust-integration` job waits for `python-tests` and the stable
-  `rust-coverage` aggregate, then consumes the selected producer's verified
-  `larch-linux-test-binary`. It verifies the artifact checksum, source SHA, and
-  version before running `scripts/test-rust-integration-consumer.sh` and
-  publishing the stable `python-tests-gate` check. The harness requires an
-  explicit `full`, `partial`, or `skip` mode. Coverage-built `full` and `skip`
-  executables must emit their redirected LLVM profile; the uninstrumented
-  `partial` executable still exercises the same verified bootstrap without a
-  profile-output requirement. Every mode rejects default profile files in the
-  temporary client repository. This avoids a second post-integration runner
-  tail.
+  projection validation, and direct bootstrap integration. Full, partial, and
+  skip each run `scripts/test-rust-integration-consumer.sh` with the selected
+  executable and then run the findings-classification contract. The harness
+  requires an explicit mode and rejects default profile files in the temporary
+  client repository.
 - `rust-coverage-benchmark` runs only when a manual dispatch sets
   `coverage_profile_benchmark=true`. Its matrix keeps the profile sweep out of
-  the protected production path and does not upload a competing integration artifact.
+  the protected production path and does not publish production integration
+  output.
 - `rust-coverage-target-cache-benchmark` runs only when a manual dispatch on
   `main` sets `coverage_target_cache_benchmark=true`. It runs beside the normal
   cache-off full shard and policy path as the control, uses the same coverage
-  action and profile, and uploads a uniquely named verification artifact rather
-  than competing with the Python handoff.
+  action and profile, and uploads a uniquely named verification artifact.
 
 ### Rust coverage shard count
 
@@ -775,10 +765,9 @@ A final production claim needs three comparable warm full-path successful
 `push` runs on `refs/heads/main` after the relevant repair. Record each run's
 direct URL and the results for every `rust-full shard N` cell, `rust-full
 policy`, `rust-full LCOV tool`, `rust-coverage`, `rust-gate`, and
-`python-tests-gate`.
+the selected producer's bootstrap integration step.
 For every sample, link each producer's coverage-timing TSV and LCOV artifact,
-the merged LCOV artifact, and the `larch-linux-test-binary` artifact. Record
-each job duration, cache hit
+and the merged LCOV artifact. Record each job duration, cache hit
 or miss, restored bytes and restore time, compile time, cache-save outcome and
 time, and end-to-end time. Keep warm exact hits separate from cold or miss
 samples. Report raw values and medians. A pull-request or manual run does not
@@ -865,7 +854,7 @@ candidate manifest. Before staging, the workflow removes profile/report data
 and workspace products from `target/llvm-cov-target`, then publishes its
 directory inventory as a separate artifact. A cache hit never replaces the
 coverage report, executable smoke test, repository policy, plugin validation,
-or Python-artifact handoff.
+or bootstrap integration.
 
 The target-cache benchmark uses a separate
 `coverage-target-deps-benchmark-*` key, never the production key. It runs only
@@ -915,6 +904,4 @@ stable aggregate check when the internal shard count changes.
 `larch test-shard` owns deterministic LPT packing and the literal
 single-physical-line `test-harnesses-N:` Makefile grammar. The harness
 rebalancer reaches it through `scripts/larch.sh`; any future Rust CI partition
-uses the same packer for Cargo package groups. Python pytest collection
-sharding remains a separate temporary Python owner until its test surface
-leaves the migration.
+uses the same packer for Cargo package groups.

@@ -1,6 +1,0 @@
-{
-  "tests/test_cli.py::test_dispatcher_registry_is_empty": 1,
-  "tests/test_pytest_sharding.py::test_collection_hook_uses_assignments": 2,
-  "tests/test_python_cli_invocations.py::test_live_python_cli_invocations_use_python3": 3,
-  "tests/test_stdlib_only.py::test_runtime_modules_import_cleanly": 4
-}

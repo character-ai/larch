@@ -1939,7 +1939,6 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "ci-timing",
         "merge-group-source",
     ),
-    CleanInstallCase::new("clean-install-ci-timing-pytest", "ci-timing", "pytest"),
     CleanInstallCase::new("clean-install-ci-gitleaks-base", "ci", "gitleaks-base"),
     CleanInstallCase::new("clean-install-ci-behind-count", "ci", "behind-count"),
     CleanInstallCase::new("clean-install-ci-distill-log", "ci", "distill-log"),
