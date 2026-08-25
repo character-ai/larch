@@ -448,6 +448,9 @@ fn admission_clean_install_arguments(id: &str) -> Option<&'static [&'static str]
         // reports for a field it does not serve; neither reaches the network.
         "clean-install-issue-state" => Some(&["--issue"]),
         "clean-install-issue-info" => Some(&["--issue", "1", "--field", "title"]),
+        // An all-removed path proves the search dispatch through its
+        // deterministic `STATUS=invalid_path` result without reaching GitHub.
+        "clean-install-issue-search-implementing" => Some(&["--file-path", "!!!"]),
         // `content-block` and `scope-paths` print their `argparse` help and
         // exit `0`; `strip-body` routes its help through the diagnostic writer
         // and also exits `0`. The rest refuse the clean-install token, so each
@@ -1521,6 +1524,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "refresh",
     ),
     CleanInstallCase::new("clean-install-issue-parse-input", "issue", "parse-input"),
+    CleanInstallCase::new(
+        "clean-install-issue-search-implementing",
+        "issue",
+        "search-implementing",
+    ),
     CleanInstallCase::new("clean-install-issue-state", "issue", "state"),
     CleanInstallCase::new(
         "clean-install-issue-write-sentinel",

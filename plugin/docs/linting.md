@@ -551,9 +551,9 @@ shellcheck compiles the dependency-free `larch-residual-bash-paths` binary from
 the same canonical Rust module and enables existence checks unconditionally.
 
 The residual manifest covers kept hooks, thin wrappers, the approved
-`scripts/larch.sh` clean-install bootstrap, `scripts/sleep-seconds.sh`, the
-combine-issues helper, residual harnesses, and any standalone source `.awk`
-helper. Terminal shared libraries, retired non-thin helpers, and
+`scripts/larch.sh` clean-install bootstrap, `scripts/sleep-seconds.sh`,
+residual harnesses, and any standalone source `.awk` helper. Terminal shared
+libraries, retired non-thin helpers, and
 verified-zero-consumer includes are absent.
 
 Agent-lint G010/G011 treat `scripts/agent-lint-script-inventory.txt` as their authoritative explicit scope, even if another rule excludes one of its paths. Add standalone awk helpers to that inventory in the same change; its test enforces complete residual-Bash coverage. CI shellcheck continues to read `scripts/residual-bash-paths.txt`. Test shard rebalance is deferred to `/rebalance-tests`.

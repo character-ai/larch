@@ -2958,6 +2958,15 @@ clean_install_test = "clean-install-issue-parse-input"
 
 [[commands]]
 domain = "issue"
+verb = "search-implementing"
+machine_stdout = true
+owner = "rust"
+planning_issue = 8927
+migration_issue = 8932
+clean_install_test = "clean-install-issue-search-implementing"
+
+[[commands]]
+domain = "issue"
 verb = "state"
 machine_stdout = false
 owner = "rust"
@@ -6178,7 +6187,7 @@ rust = ["cleanup run"]
 [[callers]]
 path = "skills/combine-issues/SKILL.md"
 kind = "skill"
-rust = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues close-eligible", "combine-issues close-sources", "combine-issues close-stale", "combine-issues fetch", "combine-issues fetch-deps", "combine-issues list-open", "combine-issues plan-audit", "combine-issues plan-inherited", "combine-issues prose-audit", "gh resolve-repo", "issue add-blocked-by"]
+rust = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues close-eligible", "combine-issues close-sources", "combine-issues close-stale", "combine-issues fetch", "combine-issues fetch-deps", "combine-issues list-open", "combine-issues plan-audit", "combine-issues plan-inherited", "combine-issues prose-audit", "gh resolve-repo", "issue add-blocked-by", "issue search-implementing"]
 
 [[callers]]
 path = "skills/complete-umbrella/SKILL.md"

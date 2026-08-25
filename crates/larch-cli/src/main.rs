@@ -1389,6 +1389,9 @@ enum IssueCommand {
     /// Parse one batch-input file into per-item rows and body files.
     #[command(name = "parse-input", disable_help_flag = true)]
     ParseInput(RawCompatibilityArguments),
+    /// Find one open design or implementation issue that names a path.
+    #[command(name = "search-implementing", disable_help_flag = true)]
+    SearchImplementing(RawCompatibilityArguments),
     /// Emit one issue's state, URL, and pull-request discrimination.
     #[command(disable_help_flag = true)]
     State(RawCompatibilityArguments),
@@ -3398,6 +3401,9 @@ fn run(
             }
             IssueCommand::ParseInput(arguments) => {
                 issue_input_commands::parse_input(&arguments.arguments)
+            }
+            IssueCommand::SearchImplementing(arguments) => {
+                issue_commands::search_implementing(&arguments.arguments)
             }
             IssueCommand::State(arguments) => issue_commands::state(&arguments.arguments),
             IssueCommand::WriteSentinel(arguments) => {

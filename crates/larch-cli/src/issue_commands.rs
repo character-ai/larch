@@ -1,14 +1,13 @@
-//! `issue state`, `issue info`, and `issue context`.
+//! `issue state`, `issue info`, `issue context`, and `issue search-implementing`.
 //!
-//! Three single-issue reads that route through the typed GitHub adapter. Each
-//! keeps the hand-rolled option scanner its Python predecessor used, because
-//! callers branch on the exact `KEY=value` rows and exit codes those scanners
-//! produce; none of the three was ever an `argparse` command.
+//! These issue reads route through the typed GitHub adapter. Each keeps the
+//! hand-rolled option scanner its predecessor used, because callers branch on
+//! the exact `KEY=value` rows and exit codes those scanners produce.
 //!
 //! Fetched titles, bodies, and URLs are untrusted data (G-Sec-2). They are
 //! written to files or published as KV values, never interpreted, and a value
-//! that could forge a contract-stream row fails closed instead of reaching
-//! `emit_kv` (G-IO-2).
+//! that could forge a contract-stream row either fails closed or follows its
+//! existing line-flattening contract before reaching `emit_kv` (G-IO-2).
 
 use crate::{
     argparse_compat::{absolute_path, write_stdout},
@@ -18,8 +17,8 @@ use crate::{
 };
 use larch_adapters::{PathIntent, TemporaryRoot, atomic_write_utf8, ensure_directory_chain};
 use larch_core::{
-    GitHubIssue, GitHubIssueState, GitHubOperationErrorKind, GitHubService, emit_kv, redact,
-    single_line,
+    DESIGNING_PREFIX, GitHubIssue, GitHubIssueSearch, GitHubIssueSearchSort, GitHubIssueState,
+    GitHubOperationErrorKind, GitHubService, IMPLEMENTING_PREFIX, emit_kv, redact, single_line,
 };
 use std::{
     ffi::OsString,
@@ -39,6 +38,8 @@ const CONTEXT_FILE_MODE: u32 = 0o600;
 const CONTEXT_MISSING_VALUE_RC: u8 = 1;
 /// The line is unusable: print the usage block to stderr.
 const CONTEXT_USAGE_RC: u8 = 2;
+/// Match the retired helper's `gh issue list --limit 100` bound.
+const IMPLEMENTING_SEARCH_LIMIT: usize = 100;
 
 // ------------------------------------------------------------------ issue state
 
@@ -259,6 +260,170 @@ fn read_field(request: &InfoRequest) -> String {
 fn emit_value(value: &str) -> ExitCode {
     emit_kv("VALUE", if kv_safe(value) { value } else { "" });
     ExitCode::SUCCESS
+}
+
+// --------------------------------------------------- issue search-implementing
+
+/// Find an open design or implementation issue that names a repo-relative path.
+///
+/// GitHub search is only the recall filter. The exact lifecycle-prefix and path
+/// predicates run locally over its bounded result before any match is emitted.
+pub fn search_implementing(arguments: &[OsString]) -> ExitCode {
+    let (file_path, repo) = match parse_search_implementing_arguments(arguments) {
+        SearchImplementingArguments::Valid { file_path, repo } => (file_path, repo),
+        SearchImplementingArguments::Invalid(error) => return emit_search_error(&error),
+    };
+    let sanitized_path = sanitize_repo_relative_path(&file_path);
+    if sanitized_path.is_empty() {
+        return emit_implementing_outcome(ImplementingSearchOutcome::InvalidPath);
+    }
+    let Some(repo) = resolve_repo_for(repo.as_deref()) else {
+        return emit_search_error("Could not determine repository; pass --repo owner/name");
+    };
+    let Ok(reference) = repository_ref(&repo) else {
+        return emit_search_error(&search_read_failure(&repo));
+    };
+    let query = format!("{sanitized_path} state:open");
+    let rows = with_github_service(async |service, cancellation| {
+        let request = GitHubIssueSearch {
+            repo: reference.clone(),
+            query: query.clone(),
+            limit: IMPLEMENTING_SEARCH_LIMIT.min(service.transport_policy().limits().items()),
+            sort: GitHubIssueSearchSort::BestMatch,
+        };
+        service
+            .search_issues(&request, cancellation)
+            .await
+            .map_err(|error| error.to_string())
+    });
+    let Ok(rows) = rows else {
+        return emit_search_error(&search_read_failure(&repo));
+    };
+    match classify_implementing_issues(&sanitized_path, &rows) {
+        Ok(outcome) => emit_implementing_outcome(outcome),
+        Err(error) => emit_search_error(&error),
+    }
+}
+
+/// One `issue search-implementing` command line.
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum SearchImplementingArguments {
+    Valid {
+        file_path: String,
+        repo: Option<String>,
+    },
+    Invalid(String),
+}
+
+fn parse_search_implementing_arguments(arguments: &[OsString]) -> SearchImplementingArguments {
+    let mut file_path = String::new();
+    let mut repo: Option<String> = None;
+    let mut index = 0;
+    while index < arguments.len() {
+        let token = arguments[index].to_string_lossy().into_owned();
+        let Some(value) = arguments.get(index + 1) else {
+            return match token.as_str() {
+                "--file-path" | "--repo" => {
+                    SearchImplementingArguments::Invalid(format!("Missing value for {token}"))
+                }
+                _ => SearchImplementingArguments::Invalid(format!("Unknown argument: {token}")),
+            };
+        };
+        match token.as_str() {
+            "--file-path" => file_path = value.to_string_lossy().into_owned(),
+            "--repo" => repo = Some(value.to_string_lossy().into_owned()),
+            _ => {
+                return SearchImplementingArguments::Invalid(format!("Unknown argument: {token}"));
+            }
+        }
+        index += 2;
+    }
+    if file_path.is_empty() {
+        SearchImplementingArguments::Invalid("Missing --file-path".to_owned())
+    } else {
+        SearchImplementingArguments::Valid { file_path, repo }
+    }
+}
+
+/// Keep only the byte alphabet accepted by the retired `tr -cd` pipeline.
+fn sanitize_repo_relative_path(path: &str) -> String {
+    path.chars()
+        .filter(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '/' | '.' | '_' | '-')
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ImplementingSearchOutcome {
+    InvalidPath,
+    None,
+    Ambiguous,
+    Blocked { number: u64, title: String },
+}
+
+/// Re-apply the exact local predicate after GitHub's recall-oriented search.
+fn classify_implementing_issues(
+    file_path: &str,
+    issues: &[GitHubIssue],
+) -> Result<ImplementingSearchOutcome, String> {
+    let file_path = sanitize_repo_relative_path(file_path);
+    if file_path.is_empty() {
+        return Ok(ImplementingSearchOutcome::InvalidPath);
+    }
+    let mut matches = issues.iter().filter(|issue| {
+        issue.state == GitHubIssueState::Open
+            && !issue.is_pull_request
+            && (issue.title.starts_with(DESIGNING_PREFIX)
+                || issue.title.starts_with(IMPLEMENTING_PREFIX))
+            && (issue.title.contains(&file_path) || issue.body.contains(&file_path))
+    });
+    let Some(first) = matches.next() else {
+        return Ok(ImplementingSearchOutcome::None);
+    };
+    if matches.next().is_some() {
+        return Ok(ImplementingSearchOutcome::Ambiguous);
+    }
+    if first.number == 0 {
+        return Err("Unexpected implementing issue number: 0".to_owned());
+    }
+    Ok(ImplementingSearchOutcome::Blocked {
+        number: first.number,
+        title: first.title.clone(),
+    })
+}
+
+fn emit_implementing_outcome(outcome: ImplementingSearchOutcome) -> ExitCode {
+    match outcome {
+        ImplementingSearchOutcome::InvalidPath => emit_kv("STATUS", "invalid_path"),
+        ImplementingSearchOutcome::None => emit_kv("STATUS", "none"),
+        ImplementingSearchOutcome::Ambiguous => emit_kv("STATUS", "ambiguous"),
+        ImplementingSearchOutcome::Blocked { number, title } => {
+            emit_kv("STATUS", "blocked");
+            emit_kv("IMPLEMENTING_ISSUE", &number.to_string());
+            emit_kv("IMPLEMENTING_TITLE", &flatten_title(&title));
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+fn flatten_title(title: &str) -> String {
+    title
+        .chars()
+        .map(|character| match character {
+            '\n' | '\r' => ' ',
+            other => other,
+        })
+        .collect()
+}
+
+fn search_read_failure(repo: &str) -> String {
+    format!("gh issue list failed for repo {}", single_line(repo))
+}
+
+fn emit_search_error(message: &str) -> ExitCode {
+    eprintln!("ERROR={}", single_line(redact(message).text()));
+    ExitCode::from(1)
 }
 
 // ---------------------------------------------------------------- issue context
@@ -488,11 +653,15 @@ fn kv_path(path: &Path) -> Option<String> {
 mod tests {
     use super::{BODY_FILE_NAME, TITLE_FILE_NAME, write_context_files};
     use super::{
-        ContextArguments, InfoArguments, InfoField, StateArguments, kv_path, kv_safe,
-        parse_context_arguments, parse_info_arguments, parse_state_arguments, positive_issue_text,
-        read_failure, read_reason, state_text, valid_context_repo,
+        ContextArguments, ImplementingSearchOutcome, InfoArguments, InfoField, StateArguments,
+        classify_implementing_issues, flatten_title, kv_path, kv_safe, parse_context_arguments,
+        parse_info_arguments, parse_state_arguments, positive_issue_text, read_failure,
+        read_reason, sanitize_repo_relative_path, state_text, valid_context_repo,
     };
-    use larch_core::{GitHubIssueState, GitHubOperationErrorKind};
+    use larch_core::{
+        DESIGNING_PREFIX, GitHubIssue, GitHubIssueState, GitHubOperationErrorKind,
+        IMPLEMENTING_PREFIX,
+    };
     use std::{ffi::OsString, fs, os::unix::fs::PermissionsExt as _, path::Path, path::PathBuf};
 
     fn arguments(values: &[&str]) -> Vec<OsString> {
@@ -504,6 +673,103 @@ mod tests {
             issue: issue.to_owned(),
             repo: repo.map(str::to_owned),
         }
+    }
+
+    fn search_issue(number: u64, title: &str, body: &str, state: GitHubIssueState) -> GitHubIssue {
+        GitHubIssue {
+            id: number,
+            number,
+            title: title.to_owned(),
+            body: body.to_owned(),
+            state,
+            state_reason: String::new(),
+            url: format!("https://github.com/o/r/issues/{number}"),
+            author: "author".to_owned(),
+            assignees: Vec::new(),
+            labels: Vec::new(),
+            comments: 0,
+            created_at: String::new(),
+            closed_at: String::new(),
+            updated_at: String::new(),
+            is_pull_request: false,
+        }
+    }
+
+    #[test]
+    fn implementing_search_reports_invalid_path_after_sanitization() {
+        assert_eq!(sanitize_repo_relative_path("src/a b+$c.rs"), "src/abc.rs");
+        assert_eq!(
+            classify_implementing_issues("!@#$", &[]),
+            Ok(ImplementingSearchOutcome::InvalidPath)
+        );
+    }
+
+    #[test]
+    fn implementing_search_reports_none_without_an_exact_local_match() {
+        let issues = [
+            search_issue(
+                1,
+                "Unmanaged title for src/new.rs",
+                "src/new.rs",
+                GitHubIssueState::Open,
+            ),
+            search_issue(
+                2,
+                &format!("{IMPLEMENTING_PREFIX}Different path"),
+                "src/other.rs",
+                GitHubIssueState::Open,
+            ),
+            search_issue(
+                3,
+                &format!("{DESIGNING_PREFIX}src/new.rs"),
+                "src/new.rs",
+                GitHubIssueState::Closed,
+            ),
+        ];
+        assert_eq!(
+            classify_implementing_issues("src/new.rs", &issues),
+            Ok(ImplementingSearchOutcome::None)
+        );
+    }
+
+    #[test]
+    fn implementing_search_reports_ambiguous_for_multiple_exact_matches() {
+        let issues = [
+            search_issue(
+                4,
+                &format!("{DESIGNING_PREFIX}First"),
+                "Creates src/new.rs",
+                GitHubIssueState::Open,
+            ),
+            search_issue(
+                5,
+                &format!("{IMPLEMENTING_PREFIX}src/new.rs"),
+                "Second",
+                GitHubIssueState::Open,
+            ),
+        ];
+        assert_eq!(
+            classify_implementing_issues("src/new.rs", &issues),
+            Ok(ImplementingSearchOutcome::Ambiguous)
+        );
+    }
+
+    #[test]
+    fn implementing_search_reports_the_one_blocking_issue() {
+        let issues = [search_issue(
+            6,
+            &format!("{IMPLEMENTING_PREFIX}Add the missing module"),
+            "Creates src/new.rs",
+            GitHubIssueState::Open,
+        )];
+        assert_eq!(
+            classify_implementing_issues("src/new.rs", &issues),
+            Ok(ImplementingSearchOutcome::Blocked {
+                number: 6,
+                title: format!("{IMPLEMENTING_PREFIX}Add the missing module"),
+            })
+        );
+        assert_eq!(flatten_title("first\r\nsecond"), "first  second");
     }
 
     #[test]
