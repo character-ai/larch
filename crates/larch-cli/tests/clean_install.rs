@@ -287,7 +287,10 @@ impl CleanInstallCase {
             // `--help` token carries no mode, so the entry refuses with exit 2.
             // (`postplan-emit` owns a real `--help` action and exits 0 by default;
             // the two Step 2b wrapper verbs join the `=> 1` arm above.)
-            | "clean-install-design-step3b-entry" => 2,
+            | "clean-install-design-step3b-entry"
+            | "clean-install-design-gate-b"
+            | "clean-install-design-step3-entry"
+            | "clean-install-design-step4-tail" => 2,
             // The three remaining publication verbs mirror the retired Python
             // module, which caught the argparse `SystemExit` and emitted each
             // verb's own publication-failure envelope, so the clean-install
@@ -1125,6 +1128,9 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "design",
         "step3-continuation-entry",
     ),
+    CleanInstallCase::new("clean-install-design-gate-b", "design", "gate-b"),
+    CleanInstallCase::new("clean-install-design-step3-entry", "design", "step3-entry"),
+    CleanInstallCase::new("clean-install-design-step4-tail", "design", "step4-tail"),
     CleanInstallCase::new(
         "clean-install-design-step35-settle",
         "design",

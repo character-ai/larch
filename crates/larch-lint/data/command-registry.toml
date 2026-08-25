@@ -1570,6 +1570,15 @@ clean_install_test = "clean-install-design-file-oos-prepare"
 
 [[commands]]
 domain = "design"
+verb = "gate-b"
+machine_stdout = true
+owner = "rust"
+planning_issue = 7680
+migration_issue = 8931
+clean_install_test = "clean-install-design-gate-b"
+
+[[commands]]
+domain = "design"
 verb = "init-runparams"
 machine_stdout = true
 owner = "rust"
@@ -1837,6 +1846,15 @@ clean_install_test = "clean-install-design-step3-continuation-entry"
 
 [[commands]]
 domain = "design"
+verb = "step3-entry"
+machine_stdout = true
+owner = "rust"
+planning_issue = 7680
+migration_issue = 8931
+clean_install_test = "clean-install-design-step3-entry"
+
+[[commands]]
+domain = "design"
 verb = "step35-settle"
 machine_stdout = true
 owner = "rust"
@@ -1852,6 +1870,15 @@ owner = "rust"
 planning_issue = 7680
 migration_issue = 8583
 clean_install_test = "clean-install-design-step3b-entry"
+
+[[commands]]
+domain = "design"
+verb = "step4-tail"
+machine_stdout = true
+owner = "rust"
+planning_issue = 7680
+migration_issue = 8931
+clean_install_test = "clean-install-design-step4-tail"
 
 [[commands]]
 domain = "design"
@@ -6352,12 +6379,12 @@ rust = ["design clarify"]
 [[callers]]
 path = "skills/design/scripts/design-step3-entry.md"
 kind = "skill"
-rust = ["plan-review step3-entry-preview", "plan-review step3-entry-state"]
+rust = ["design step3-entry"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-entry.sh"
 kind = "skill"
-rust = ["plan-block strip-body", "plan-review prelaunch-failure", "plan-review snapshot-pre-review", "plan-review step3-entry-preview", "plan-review step3-entry-state", "scope-anchor validate", "session validate-design-tmpdir"]
+rust = ["design step3-entry"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-review.md"
@@ -6370,14 +6397,24 @@ kind = "skill"
 rust = ["bgjob adapt", "bgjob write-merge-result-env", "design pause-save", "plan-review normalize-status", "plan-review prelaunch-failure", "plan-review run", "scope-anchor validate", "session require-plugin-root", "session validate-design-tmpdir"]
 
 [[callers]]
+path = "skills/design/scripts/design-step35.md"
+kind = "skill"
+rust = ["design gate-b"]
+
+[[callers]]
 path = "skills/design/scripts/design-step35.sh"
 kind = "skill"
-rust = ["design pause-save", "session require-plugin-root", "timing mark"]
+rust = ["design gate-b"]
+
+[[callers]]
+path = "skills/design/scripts/design-step3b-tail.md"
+kind = "skill"
+rust = ["design step4-tail"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3b-tail.sh"
 kind = "skill"
-rust = ["bgjob adapt", "bgjob write-merge-result-env", "design dialectic-gatec", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview", "session validate-design-tmpdir", "timing mark"]
+rust = ["design step4-tail"]
 
 [[callers]]
 path = "skills/design/scripts/design-step5b-annotate.md"

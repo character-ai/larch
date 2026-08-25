@@ -205,7 +205,7 @@ pub fn run(command: PlanReviewCommand) -> ExitCode {
             loop_implementation::step3_gate_b_bypass(&arguments.arguments)
         }
         PlanReviewCommand::Step3bTail(arguments) => {
-            loop_implementation::delegate_script("design-step3b-tail.sh", &arguments.arguments)
+            crate::design_step3_commands::step4_tail(&arguments.arguments)
         }
         PlanReviewCommand::Step35(arguments) => loop_implementation::step35(&arguments.arguments),
         PlanReviewCommand::Step35Settle(arguments) => {

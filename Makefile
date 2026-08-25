@@ -98,7 +98,7 @@ test-harnesses: test-harnesses-1 test-harnesses-2
 
 test-harnesses-1: test-hook-anti-read-poll
 
-test-harnesses-2: test-harness-shards-coverage test-prompt-template-invariants test-file-failure-report-cross-repo test-gate-b-apply-mode test-read-result-env test-sessionstart test-deny-edit-write test-design-step3b-tail test-token-vendor-scrapers test-external-tool-registry test-resolve-upstream-larch-repo test-cache-root-validation test-block-submodule test-cache-key-discipline test-architectural-guidelines-step test-references-headers test-extinct-notification-stack test-pipe-sigpipe-safety test-hook-stop-fail-close test-hook-deny-run-in-background test-quick-mode-docs-sync test-check-stale-plugin oos-disposition-gate-bash-harness test-render-cost-line-callsites test-plan-adequacy-audit write-final-report-bash-harness step-7a-bash-harness test-implement-timing-rehydration test-pause-skill flush-execution-issues-bash-harness test-audit-edit-write test-cleanup-sessionstart test-subskill-anchors test-rejected-analysis test-implement-anti-halt test-sessionstart-statusline test-step-8-oos-checkpoint test-design-clarify test-implement-fence-shape test-legacy-title-prefix-literals-scope test-implement-step2-routing test-triage-structure test-anti-halt test-implement-rebase-macro test-research-angle-prompts test-implement-step8-exit3-first-fixer test-orchestrator-scope-sync test-brainstorm-prompts test-synthesis-subagent test-implement-cleanup-roundtrip test-anti-improvised-wakeup test-implement-relevant-checks-anti-halt test-fluff-analysis-corpus test-implement-positional-issue test-effort-prose
+test-harnesses-2: test-harness-shards-coverage test-prompt-template-invariants test-file-failure-report-cross-repo test-gate-b-apply-mode test-read-result-env test-sessionstart test-deny-edit-write test-token-vendor-scrapers test-external-tool-registry test-resolve-upstream-larch-repo test-cache-root-validation test-block-submodule test-cache-key-discipline test-architectural-guidelines-step test-references-headers test-extinct-notification-stack test-pipe-sigpipe-safety test-hook-stop-fail-close test-hook-deny-run-in-background test-quick-mode-docs-sync test-check-stale-plugin oos-disposition-gate-bash-harness test-render-cost-line-callsites test-plan-adequacy-audit write-final-report-bash-harness step-7a-bash-harness test-implement-timing-rehydration test-pause-skill flush-execution-issues-bash-harness test-audit-edit-write test-cleanup-sessionstart test-subskill-anchors test-rejected-analysis test-implement-anti-halt test-sessionstart-statusline test-step-8-oos-checkpoint test-design-clarify test-implement-fence-shape test-legacy-title-prefix-literals-scope test-implement-step2-routing test-triage-structure test-anti-halt test-implement-rebase-macro test-research-angle-prompts test-implement-step8-exit3-first-fixer test-orchestrator-scope-sync test-brainstorm-prompts test-synthesis-subagent test-implement-cleanup-roundtrip test-anti-improvised-wakeup test-implement-relevant-checks-anti-halt test-fluff-analysis-corpus test-implement-positional-issue test-effort-prose
 
 test-pipe-sigpipe-safety:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
@@ -952,14 +952,13 @@ test-design-step3-review:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3-review.sh
 
 test-design-step3b-tail:
-	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3b-tail.sh
+	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --bin larch design_step3_commands::
 
 test-design-step3b-entry:
 	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --bin larch design_step2b_commands::
 
 test-design-step3-entry:
-	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test integration plan_review_loop_commands::tests::normalize_and_session_entry
-	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3-entry.sh
+	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --bin larch design_step3_commands::
 
 test-design-small-session-entries:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_review_loop_commands::tests::normalize_and_session_entry
