@@ -3516,7 +3516,7 @@ domain = "plan-review"
 verb = "resume-state"
 machine_stdout = false
 owner = "rust"
-planning_issue = 7679
+planning_issue = 8927
 migration_issue = 8930
 clean_install_test = "clean-install-plan-review-resume-state"
 
@@ -3615,7 +3615,7 @@ domain = "plan-review"
 verb = "step3-review"
 machine_stdout = true
 owner = "rust"
-planning_issue = 7679
+planning_issue = 8927
 migration_issue = 8930
 clean_install_test = "clean-install-plan-review-step3-review"
 
