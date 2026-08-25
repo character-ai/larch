@@ -31,7 +31,7 @@ use crate::{
     checks_identity_commands::{live_identity, validate_repo_root},
     child_process::{bounded_request_in, run_bounded},
     implement_child_seam::resolve_plugin_root,
-    python_verb::{publish_session_environment, run_python_verb},
+    runtime_entrypoint::{publish_session_environment, run_verified_larch_with_options_in},
 };
 
 const RECOVERY_PROG: &str = "cli.py implement recovery-paths";
@@ -41,7 +41,6 @@ const STEP_PROG: &str = "cli.py implement run-step-checks";
 const STEP_USAGE: &str = "usage: cli.py implement run-step-checks [-h] --site SITE\n                                        [--commit-site COMMIT_SITE]\n                                        [--forked-target {true,false}]\n                                        [--rebase-checkpoint-4r]\n                                        [--bgjob-child]\n                                        [--merge-result-env MERGE_RESULT_ENV]\n                                        [--repo-root REPO_ROOT]\n                                        [--launch-head LAUNCH_HEAD]\n                                        [--launch-fp LAUNCH_FP]\n                                        [--launch-schema LAUNCH_SCHEMA]\n";
 const STEP_HELP: &str = "usage: cli.py implement run-step-checks [-h] --site SITE\n                                        [--commit-site COMMIT_SITE]\n                                        [--forked-target {true,false}]\n                                        [--rebase-checkpoint-4r]\n                                        [--bgjob-child]\n                                        [--merge-result-env MERGE_RESULT_ENV]\n                                        [--repo-root REPO_ROOT]\n                                        [--launch-head LAUNCH_HEAD]\n                                        [--launch-fp LAUNCH_FP]\n                                        [--launch-schema LAUNCH_SCHEMA]\n\noptions:\n  -h, --help            show this help message and exit\n  --site SITE\n  --commit-site COMMIT_SITE\n  --forked-target {true,false}\n  --rebase-checkpoint-4r\n  --bgjob-child\n  --merge-result-env MERGE_RESULT_ENV\n  --repo-root REPO_ROOT\n  --launch-head LAUNCH_HEAD\n  --launch-fp LAUNCH_FP\n  --launch-schema LAUNCH_SCHEMA\n";
 
-const PYTHON_TIMEOUT: Duration = Duration::from_secs(600);
 const ADAPT_TIMEOUT: Duration = Duration::from_secs(600);
 const ADAPT_GRACE: Duration = Duration::from_secs(5);
 const ADAPT_OUTPUT_LIMIT: usize = 256 * 1024;
@@ -51,28 +50,13 @@ const CHECKS_SCHEMA: &str = "CHECKS_INPUT_FP_SCHEMA";
 const IDENTITY_FAILED: &str = "identity-integrity-failed";
 
 #[cfg(test)]
-type PythonHook =
-    std::sync::Arc<dyn Fn(&[OsString]) -> Result<ProcessOutput, String> + Send + Sync>;
-#[cfg(test)]
 type LarchHook = std::sync::Arc<
     dyn Fn(&Path, &Path, &[OsString]) -> Result<ProcessOutput, String> + Send + Sync,
 >;
 
 #[cfg(test)]
 std::thread_local! {
-    static TEST_PYTHON: std::cell::RefCell<Option<PythonHook>> = const { std::cell::RefCell::new(None) };
     static TEST_LARCH: std::cell::RefCell<Option<LarchHook>> = const { std::cell::RefCell::new(None) };
-}
-
-pub fn delegate_python(
-    arguments: impl IntoIterator<Item = OsString>,
-) -> Result<ProcessOutput, String> {
-    let args: Vec<OsString> = arguments.into_iter().collect();
-    #[cfg(test)]
-    if let Some(hook) = TEST_PYTHON.with(|slot| slot.borrow().clone()) {
-        return hook(&args);
-    }
-    run_python_verb(args, PYTHON_TIMEOUT)
 }
 
 pub fn delegate_verified_larch(
@@ -87,12 +71,16 @@ pub fn delegate_verified_larch(
     run_verified_larch_in(cwd, root, args)
 }
 
-/// Answer every `delegate_python` call from `hook` for this thread (test only).
-#[cfg(test)]
-pub fn install_test_python(
-    hook: impl Fn(&[OsString]) -> Result<ProcessOutput, String> + Send + Sync + 'static,
-) {
-    TEST_PYTHON.with(|slot| *slot.borrow_mut() = Some(std::sync::Arc::new(hook)));
+/// Compose a verified larch command with the published session environment.
+pub fn delegate_session_larch(cwd: &Path, args: &[OsString]) -> Result<ProcessOutput, String> {
+    #[cfg(test)]
+    {
+        if let Some(hook) = TEST_LARCH.with(|slot| slot.borrow().clone()) {
+            let root = resolve_plugin_root()?;
+            return hook(cwd, &root, args);
+        }
+    }
+    run_verified_larch_with_options_in(args, &[], cwd, ADAPT_TIMEOUT)
 }
 
 /// Answer every `delegate_verified_larch` call from `hook` for this thread (test only).
@@ -103,10 +91,9 @@ pub fn install_test_larch(
     TEST_LARCH.with(|slot| *slot.borrow_mut() = Some(std::sync::Arc::new(hook)));
 }
 
-/// Restore both dispatch seams and the child seam for this thread (test only).
+/// Restore the dispatch seam and the child seam for this thread (test only).
 #[cfg(test)]
 pub fn clear_test_hooks() {
-    TEST_PYTHON.with(|slot| *slot.borrow_mut() = None);
     TEST_LARCH.with(|slot| *slot.borrow_mut() = None);
     crate::implement_child_seam::clear_hooks();
 }
@@ -485,7 +472,10 @@ fn run_step_checks_worker(
     repo_root: &Path,
 ) -> Result<(i32, String), String> {
     let output = if commit_site.is_empty() {
-        delegate_python(checks_run_relevant_args(site, tmpdir, repo_root))?
+        delegate_session_larch(
+            repo_root,
+            &checks_run_relevant_args(site, tmpdir, repo_root),
+        )?
     } else {
         // #8611: `checks-commit-route` is now Rust-owned. Route it through the
         // verified bootstrap as a captured child so this worker keeps appending
@@ -1054,7 +1044,7 @@ fn stderr_or_stdout(output: &ProcessOutput) -> String {
 mod tests {
     use super::{
         CHECKS_FP, CHECKS_HEAD, CHECKS_SCHEMA, IDENTITY_FAILED, LaunchIdentity, TEST_LARCH,
-        TEST_PYTHON, format_rows, integrity_rows, kv_value, opt_string, prepare_checks_rejoin,
+        format_rows, integrity_rows, kv_value, opt_string, prepare_checks_rejoin,
         publish_identity_child, publish_rows, run_child, run_parent, run_step_checks,
         safe_merge_env, session_key, status_byte, stdout_is_merge_rows, terminal_action_in_output,
         unlink_safe,
@@ -1079,14 +1069,6 @@ mod tests {
         )
     }
 
-    fn install_python(
-        hook: impl Fn(&[OsString]) -> Result<ProcessOutput, String> + Send + Sync + 'static,
-    ) {
-        TEST_PYTHON.with(|slot| {
-            *slot.borrow_mut() = Some(Arc::new(hook));
-        });
-    }
-
     fn install_larch(
         hook: impl Fn(&Path, &Path, &[OsString]) -> Result<ProcessOutput, String>
         + Send
@@ -1099,7 +1081,6 @@ mod tests {
     }
 
     fn clear_hooks() {
-        TEST_PYTHON.with(|slot| *slot.borrow_mut() = None);
         TEST_LARCH.with(|slot| *slot.borrow_mut() = None);
         crate::implement_child_seam::clear_hooks();
     }
@@ -1380,7 +1361,7 @@ mod tests {
         fs::create_dir_all(tmp.join("bgjob")).expect("bgjob");
         let merge = tmp.join("bgjob").join("child.merge.env");
         let launch = live(repository.root());
-        install_python(|args| {
+        install_larch(|_cwd, _root, args| {
             if args_contain(args, "run-relevant") {
                 Ok(output(0, "NEXT_ACTION=continue\n"))
             } else {

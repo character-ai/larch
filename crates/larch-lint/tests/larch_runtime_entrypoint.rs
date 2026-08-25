@@ -92,3 +92,33 @@ fn larch_runtime_entrypoint_rejects_retired_upgrade_python_exception() {
             "python/larch/core/upgrade_larch.py:1: direct bin/larch production entrypoint",
         ));
 }
+
+#[test]
+fn larch_runtime_entrypoint_rejects_retired_python_bridge_in_rust() {
+    let repository = TempRepo::new();
+    repository.write(
+        "crates/example/src/bridge.rs",
+        b"let program = PythonVerbProgram::new(root)?;\nlet child = ExternalProgram::PythonVerb(program);\nrun_python_verb(args)?;\nlet dispatcher = root.join(\"python/cli.py\");\nlet alternate = root.join(\"python\").join(\"cli.py\");\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "larch-runtime-entrypoint"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "crates/example/src/bridge.rs:1: retired Python runtime bridge",
+        ))
+        .stdout(predicate::str::contains(
+            "crates/example/src/bridge.rs:2: retired Python runtime bridge",
+        ))
+        .stdout(predicate::str::contains(
+            "crates/example/src/bridge.rs:3: retired Python runtime bridge",
+        ))
+        .stdout(predicate::str::contains(
+            "crates/example/src/bridge.rs:4: retired Python runtime bridge",
+        ))
+        .stdout(predicate::str::contains(
+            "crates/example/src/bridge.rs:5: retired Python runtime bridge",
+        ));
+}

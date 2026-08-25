@@ -698,7 +698,7 @@ fn step2_dispatch_argv(arguments: &[OsString]) -> Result<Step2Request, ExitCode>
 /// Session identity rows every child of this dispatch inherits.
 ///
 /// The workspace forbids mutating this process's own environment, so the rows
-/// travel explicitly instead: published for delegated Python verbs and passed
+/// travel explicitly instead: published for shared Rust composition and passed
 /// to each verified `larch` child.
 static STEP2_CHILD_ENVIRONMENT: Mutex<Vec<(ChildEnvironment, OsString)>> = Mutex::new(Vec::new());
 

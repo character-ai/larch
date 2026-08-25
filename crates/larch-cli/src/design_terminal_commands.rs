@@ -2540,8 +2540,8 @@ fn render_final_summary_post_publish(design_tmpdir: &Path, ctx: &SummaryCtx) -> 
     }
     let render_stdout = design_tmpdir.join("render-final-summary.stdout.log");
     // #8581 flipped `design render-final-summary` to a Rust owner, so this
-    // neighbor now reaches it through the verified bootstrap (never the removed
-    // Python registration behind `run_python_verb`).
+    // neighbor reaches it through the verified bootstrap with no retired
+    // dispatcher fallback.
     match crate::runtime_entrypoint::run_verified_larch(&args) {
         Ok(output) => {
             let _ = fs::write(&render_stdout, output.stdout());

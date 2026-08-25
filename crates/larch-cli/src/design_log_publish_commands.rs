@@ -28,8 +28,8 @@ use larch_core::{
 };
 
 use crate::{
-    python_verb::plugin_root_directory,
     run_log_entry_commands::append_execution_issue,
+    runtime_entrypoint::plugin_root_directory,
     runtime_entrypoint::{run_verified_larch, run_verified_larch_with_timeout},
 };
 

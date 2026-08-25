@@ -45,7 +45,7 @@ use crate::{
         ParsedCommandLine, choice_error, finish_parse, option_text, parse, parse_with_flags,
         python_io_error, usage_error, write_stdout,
     },
-    python_verb::plugin_root_directory,
+    runtime_entrypoint::plugin_root_directory,
 };
 
 const GANTT_PROGRAM: &str = "cli.py gantt render";
@@ -1275,7 +1275,7 @@ pub struct VoterRenderOutput {
     pub prompt: String,
     pub payload_bytes: u64,
     /// Soft skip diagnostics. The CLI wrapper prints them; in-process callers
-    /// discard them to match the prior `run_python_verb` capture semantics.
+    /// discard them to preserve the prior captured-child semantics.
     pub diagnostics: Vec<String>,
 }
 

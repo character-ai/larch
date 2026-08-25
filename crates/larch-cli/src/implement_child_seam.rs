@@ -128,7 +128,7 @@ pub fn delegate_larch_with_options_in(
     run_verified_larch_with_options_in(arguments, environment, working_directory, timeout)
 }
 
-/// Resolve the active plugin root that owns the still-Python siblings.
+/// Resolve the active plugin root that owns the verified larch entrypoint.
 pub fn resolve_plugin_root() -> Result<PathBuf, String> {
     #[cfg(test)]
     if let Some(root) = TEST_PLUGIN_ROOT.with(|slot| slot.borrow().clone()) {

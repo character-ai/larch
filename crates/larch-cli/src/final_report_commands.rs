@@ -6,8 +6,8 @@
 //! manifest reconcile, and the tracking-issue upsert.
 //!
 //! PR line counts and architectural assessment sections are rendered in
-//! process. Remaining compatibility delegation stays behind the
-//! [`crate::python_verb`] seam.
+//! process. Isolated command composition re-enters through the verified Rust
+//! bootstrap.
 
 use std::{
     collections::BTreeMap,
@@ -37,13 +37,13 @@ use serde_json::{Map, Value};
 
 use crate::{
     argparse_compat::{parse_with_flags, write_stdout},
-    python_verb::{publish_session_environment, run_python_verb},
     run_log_entry_commands::{
         append_execution_issue, plugin_version, stage_append_batch, write_run_log_file,
     },
+    runtime_entrypoint::run_verified_larch_with_options,
 };
 
-/// Timeout for one delegated Python helper verb.
+/// Timeout for one delegated Rust helper verb.
 const VERB_TIMEOUT: Duration = Duration::from_secs(300);
 /// Lifecycle manifest schema version that can pin disabled publication.
 const DISABLED_LIFECYCLE_SCHEMA_VERSION: i64 = 3;
@@ -382,16 +382,20 @@ fn validate(
     Ok(overrides)
 }
 
-/// Run one delegated Python verb with the run's tmpdir published to the child.
+/// Run one delegated Rust verb with the run's tmpdir published to the child.
 fn delegate(
     implement_tmpdir: &Path,
     arguments: impl IntoIterator<Item = OsString>,
 ) -> Result<(i32, String), String> {
-    publish_session_environment(vec![(
-        ChildEnvironment::ImplementTmpdir,
-        OsString::from(implement_tmpdir),
-    )]);
-    let output = run_python_verb(arguments, VERB_TIMEOUT)?;
+    let arguments = arguments.into_iter().collect::<Vec<_>>();
+    let output = run_verified_larch_with_options(
+        &arguments,
+        &[(
+            ChildEnvironment::ImplementTmpdir,
+            OsString::from(implement_tmpdir),
+        )],
+        VERB_TIMEOUT,
+    )?;
     let code = output.status().code().unwrap_or(1);
     Ok((code, String::from_utf8_lossy(output.stdout()).into_owned()))
 }

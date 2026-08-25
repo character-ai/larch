@@ -1,9 +1,8 @@
 //! Pure candidate-shape and plan-reconciliation rules for the design dialectic.
 //!
-//! The candidate file grammar is shared by the four Rust-owned candidate
-//! commands from #8584 and by the still-Python Gate C debate commands. The
-//! command effects stay in `larch-cli`; this module owns only byte-independent
-//! normalization, fingerprinting, and plan-choice checks.
+//! The candidate file grammar is shared by the candidate and Gate C debate
+//! commands. Command effects stay in `larch-cli`; this module owns only
+//! byte-independent normalization, fingerprinting, and plan-choice checks.
 
 use std::{collections::BTreeSet, error::Error, fmt};
 

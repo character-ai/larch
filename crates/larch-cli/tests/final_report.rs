@@ -303,6 +303,48 @@ fn step18b_emits_the_contract_and_refreshes_the_summary() {
     assert!(run.tmpdir.join("summary-final.md").is_file());
 }
 
+#[cfg(unix)]
+#[test]
+fn step18b_composes_a_missing_step16_through_the_verified_rust_entrypoint() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let run = shipped_run();
+    let plugin = run.tmpdir.join("plugin");
+    let launcher = plugin.join("scripts/larch.sh");
+    fs::create_dir_all(launcher.parent().expect("launcher parent")).expect("plugin scripts");
+    fs::write(
+        &launcher,
+        "#!/bin/sh\nset -eu\nprintf '%s\\n' \"$*\" > \"$IMPLEMENT_TMPDIR/delegated-step16.argv\"\nprintf '%s\\n' \"$CLAUDE_PLUGIN_ROOT\" > \"$IMPLEMENT_TMPDIR/delegated-plugin-root\"\n",
+    )
+    .expect("launcher");
+    fs::set_permissions(&launcher, fs::Permissions::from_mode(0o755)).expect("launcher mode");
+
+    let output = run
+        .command("step18b")
+        .arg("--step17-emitted")
+        .arg("false")
+        .env("CLAUDE_PLUGIN_ROOT", &plugin)
+        .output()
+        .expect("final-report step18b");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(run.tmpdir.join("delegated-step16.argv")).expect("delegated argv"),
+        format!(
+            "implement step-16-16a --implement-tmpdir {}\n",
+            run.tmpdir.display()
+        )
+    );
+    assert_eq!(
+        fs::read_to_string(run.tmpdir.join("delegated-plugin-root"))
+            .expect("delegated plugin root"),
+        format!("{}\n", plugin.canonicalize().expect("plugin root").display())
+    );
+}
+
 #[test]
 fn step18b_suppresses_the_body_when_step17_already_emitted_an_identical_one() {
     let run = shipped_run();

@@ -36,7 +36,7 @@ use crate::{
     implement_bootstrap_continuation::resolve_revision_sha,
     implement_child_seam::{child_streams, delegate_larch_with_environment, resolve_plugin_root},
     implement_commands::{kv_value, read_kv_first, write_atomic},
-    python_verb::publish_session_environment,
+    runtime_entrypoint::publish_session_environment,
 };
 
 const PROGRAM: &str = "cli.py implement preflight";

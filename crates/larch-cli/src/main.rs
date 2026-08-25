@@ -130,7 +130,6 @@ mod pr_commands;
 mod progress_commands;
 mod push_network;
 mod push_rebase;
-mod python_verb;
 mod rebalance_tests;
 mod rebalance_tests_workflow;
 mod redact_commands;

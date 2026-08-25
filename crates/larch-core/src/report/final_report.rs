@@ -2,8 +2,7 @@
 //!
 //! Port of the derivation half of Python `larch.report.final_report`. Every
 //! helper reads only files or values and returns derived values; process
-//! launches, GitHub calls, and still-Python helper verbs stay with the command
-//! layer.
+//! launches and GitHub calls stay with the command layer.
 
 use std::{fmt::Write as _, fs, path::Path};
 

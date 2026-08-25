@@ -18,9 +18,10 @@ use crate::{
         write_confined, write_confined_required as write_required,
         write_json_lines_confined as write_manifest,
     },
-    python_verb::{plugin_root_directory, run_python_verb},
     rendering_commands::specialist_result,
-    runtime_entrypoint::{run_verified_larch, run_verified_larch_with_timeout},
+    runtime_entrypoint::{
+        plugin_root_directory, run_verified_larch, run_verified_larch_with_timeout,
+    },
     scout_commands::filter_manifest_paths,
     waterfall_commands::{append_review_routing_arguments, dispatch_for_review, parse_dispatch_kv},
 };
@@ -585,8 +586,8 @@ fn prepare_dynamic_slots(
                 options.session_env_path.clone(),
             ]);
         }
-        // Preserve the retired Python `run_python_verb` 120s outer ceiling for
-        // /review dynamic scout rather than the 600s verified-larch default.
+        // Preserve the 120s outer ceiling for /review dynamic scout rather
+        // than the 600s verified-larch default.
         let scout_output = run_verified_larch_with_timeout(
             &arguments
                 .into_iter()
@@ -1101,7 +1102,7 @@ fn append_producer_scout_warning_once(_options: &PanelOptions, scout: &ScoutResu
     } else {
         format!(" ({})", scout.fail_reason)
     };
-    let output = run_python(vec![
+    let output = run_larch(vec![
         "run-log".to_owned(),
         "append-entry".to_owned(),
         "--log".to_owned(),
@@ -1280,9 +1281,12 @@ fn process_stdout(output: &larch_core::ProcessOutput) -> String {
     String::from_utf8_lossy(output.stdout()).into_owned()
 }
 
-fn run_python(arguments: Vec<String>) -> Result<larch_core::ProcessOutput, String> {
-    run_python_verb(
-        arguments.into_iter().map(OsString::from),
+fn run_larch(arguments: Vec<String>) -> Result<larch_core::ProcessOutput, String> {
+    run_verified_larch_with_timeout(
+        &arguments
+            .into_iter()
+            .map(OsString::from)
+            .collect::<Vec<_>>(),
         Duration::from_secs(120),
     )
 }

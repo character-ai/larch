@@ -1,9 +1,9 @@
 //! Rust owner for the legacy `agent launch-review` command.
 //!
 //! Vendor process setup remains in `external_agent`, credentials stay in the
-//! vendor adapters, and remaining cross-owner timing/token writes use the
-//! bounded Python verb bridge. The read-only token budget check runs in
-//! process. This module owns only the review command composition.
+//! vendor adapters, and cross-owner writes re-enter through the verified Rust
+//! bootstrap. The read-only token budget check runs in process. This module
+//! owns only the review command composition.
 
 use crate::{
     agent_commands::AgentRawArguments,
@@ -12,6 +12,7 @@ use crate::{
     dirty_tree_commands,
     external_agent::{ExternalAgentLaunch, ExternalAgentRouting, run_external_agent_launch},
     rendering_commands::{SpecialistError, specialist_result},
+    runtime_entrypoint::run_verified_larch_with_options_in,
     valid_meta_path,
 };
 use larch_adapters::{
@@ -32,8 +33,7 @@ use larch_core::{
     AuthVerdict, CODEX_DESCRIPTOR, CURSOR_DEGRADED_RESPONSE, CURSOR_DESCRIPTOR, ChildEnvironment,
     CodexModelRole, CodexPromptSentinelRead, CodexPromptSidecarArgs, ENV_CURSOR_LAUNCH_JITTER_MS,
     ENV_CURSOR_RETRY_EMPTY_RESULT, ENV_TOKEN_BUDGET_CAP_REVIEW, ENV_TRANSIENT_RETRY_DELAY,
-    ExternalProcessRunner as _, ExternalProgram, LaunchFailureInputs, LauncherArtifact,
-    LauncherArtifactKind, LauncherArtifactPaths, ModelTool, ProcessRequest, PythonVerbProgram,
+    LaunchFailureInputs, LauncherArtifact, LauncherArtifactKind, LauncherArtifactPaths, ModelTool,
     REVIEW_MAX_TRANSIENT_RETRIES, ResearchOutputValidator, SpecialistRenderPort,
     VendorLaunchRequest, VendorProgram, codex_env_auth_from_key, cursor_child_environment,
     cursor_launch_jitter_ms, cursor_normalize_no_issues, effective_review_token_cap, emit_kv,
@@ -50,7 +50,6 @@ use std::{
     fmt::Write as _,
     fs,
     io::{Read as _, Seek as _, SeekFrom, Write as _},
-    num::NonZeroUsize,
     path::{Path, PathBuf},
     process::ExitCode,
     sync::{
@@ -87,9 +86,7 @@ const CURSOR_STRICT_PREAMBLE: &str = concat!(
     "The launcher passes --mode ask to the cursor CLI. Any post-run mutation will ",
     "be detected by the dirty-tree sidecar.",
 );
-const PYTHON_OUTPUT_LIMIT: usize = 256 * 1024;
-const PYTHON_TIMEOUT: Duration = Duration::from_secs(120);
-const PYTHON_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+const NESTED_LARCH_TIMEOUT: Duration = Duration::from_secs(120);
 const PANEL_FIELDS: &[&str] = &[
     "site",
     "phase",
@@ -1859,7 +1856,7 @@ fn append_launch_failure(
     if let Some(log) =
         crate::launcher_support::execution_issues_log(&args.selected_session_env_path())
     {
-        let _ignored = run_python(
+        let _ignored = run_larch(
             session,
             [
                 OsString::from("run-log"),
@@ -2412,33 +2409,19 @@ fn panel_payload_bytes() -> u64 {
         .unwrap_or(0)
 }
 
-fn run_python<I>(session: &ReviewSession, arguments: I) -> Option<larch_core::ProcessOutput>
+fn run_larch<I>(session: &ReviewSession, arguments: I) -> Option<larch_core::ProcessOutput>
 where
     I: IntoIterator<Item = OsString>,
 {
-    let root = plugin_root_directory()?;
-    let program = PythonVerbProgram::new(&root).ok()?;
     let cwd = env::current_dir().ok()?;
-    let request = ProcessRequest::new(
-        ExternalProgram::PythonVerb(program),
-        arguments,
-        cwd,
-        PYTHON_TIMEOUT,
-        PYTHON_SHUTDOWN_GRACE,
-        NonZeroUsize::new(PYTHON_OUTPUT_LIMIT).unwrap_or(NonZeroUsize::MIN),
+    let arguments = arguments.into_iter().collect::<Vec<_>>();
+    run_verified_larch_with_options_in(
+        &arguments,
+        &session.child_environment,
+        &cwd,
+        NESTED_LARCH_TIMEOUT,
     )
-    .ok()?;
-    let request = session
-        .child_environment
-        .iter()
-        .fold(request, |request, (key, value)| {
-            request.with_environment(*key, value.clone())
-        });
-    let runtime = LarchRuntime::current_thread().ok()?;
-    let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
-    runtime
-        .block_on(runner.run(request, &Cancellation::new()))
-        .ok()
+    .ok()
 }
 
 fn plugin_root_directory() -> Option<PathBuf> {

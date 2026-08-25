@@ -48,12 +48,12 @@ use sha2::{Digest as _, Sha256};
 use crate::{
     argparse_compat::{missing, parse_with_flags, usage_error as argparse_usage_error},
     child_process::{bounded_request, run_bounded},
-    python_verb::plugin_root_directory,
     run_log_entry_commands::{
         ExecutionIssueAppendOutcome, append_execution_issue as append_execution_issue_atomic,
         append_execution_issue_filtered, clear_execution_issue_if_unchanged, plugin_version,
         read_optional_regular_lossy, read_regular_bytes, read_regular_lossy, write_run_log_file,
     },
+    runtime_entrypoint::plugin_root_directory,
 };
 
 /// Deadline for one re-entry into the verified larch executable.

@@ -54,7 +54,7 @@ use crate::{
         usage_error as argparse_usage_error,
     },
     oos_commands::atomic_write,
-    python_verb::plugin_root_directory,
+    runtime_entrypoint::plugin_root_directory,
     runtime_entrypoint::run_verified_larch,
 };
 

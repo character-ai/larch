@@ -260,7 +260,7 @@ pub fn write_calibration_snapshot(log_root: &Path, output: &Path, window: usize)
 
 fn default_log_root() -> Result<PathBuf, String> {
     let worktree = |path: &Path| crate::launcher_support::git_workdir(path).map(|root| absolute_lexical(&root));
-    let plugin = crate::python_verb::plugin_root_directory().map(|root| worktree(&root).unwrap_or_else(|| absolute_lexical(&root)));
+    let plugin = crate::runtime_entrypoint::plugin_root_directory().map(|root| worktree(&root).unwrap_or_else(|| absolute_lexical(&root)));
     for name in ["LARCH_CONSUMER_REPO", "CLAUDE_PROJECT_DIR", "REPO_ROOT"] {
         if let Some(root) = env::var_os(name).filter(|value| !value.is_empty()) {
             let root = worktree(Path::new(&root)).unwrap_or_else(|| absolute_lexical(Path::new(&root)));

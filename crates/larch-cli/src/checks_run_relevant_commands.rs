@@ -33,7 +33,7 @@ use crate::{
     argparse_compat::parse_required_with_help,
     child_process::{bounded_request_in, run_bounded},
     implement_dispatch_commands::opt_string,
-    python_verb::run_python_verb,
+    runtime_entrypoint::run_verified_larch_with_options_in,
 };
 
 const RUN_RELEVANT_PROG: &str = "cli.py checks run-relevant";
@@ -323,7 +323,7 @@ fn run_bounded_rust_fallback(repo: &Path, rust_changed: &[String], log: &mut Str
         OsString::from(repo),
     ];
     arguments.extend(rust_changed.iter().map(OsString::from));
-    match run_python_verb(arguments, CHECKS_SUBPROCESS_TIMEOUT) {
+    match run_verified_larch_with_options_in(&arguments, &[], repo, CHECKS_SUBPROCESS_TIMEOUT) {
         Ok(output) => {
             log.push_str(&combined_output(&output));
             let code = process_code(&output);

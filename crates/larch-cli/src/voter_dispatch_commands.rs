@@ -38,8 +38,8 @@ use crate::argparse_compat::parse;
 use crate::calibration_commands::{positive_window, write_calibration_snapshot};
 use crate::child_process::{bounded_request, run_bounded};
 use crate::launcher_support::{confined_target, parse_presence, validate_site, write_confined};
-use crate::python_verb::plugin_root_directory;
 use crate::rendering_commands::voter_result;
+use crate::runtime_entrypoint::plugin_root_directory;
 use crate::waterfall_commands::inherited_child_rows;
 
 /// Program name every refusal carries, matching the retired Python command.

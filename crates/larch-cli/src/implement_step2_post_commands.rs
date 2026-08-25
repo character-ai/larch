@@ -16,7 +16,9 @@ use std::{
 use larch_adapters::GixRepository;
 use larch_core::{ChildEnvironment, Head, RepositoryRead as _, emit_kv};
 
-use crate::{argparse_compat::parse_required_with_help, python_verb::publish_session_environment};
+use crate::{
+    argparse_compat::parse_required_with_help, runtime_entrypoint::publish_session_environment,
+};
 
 const PROG: &str = "cli.py implement step-2-post-dispatch";
 const USAGE: &str = "usage: cli.py implement step-2-post-dispatch [-h] --expected-branch\n                                             EXPECTED_BRANCH\n";

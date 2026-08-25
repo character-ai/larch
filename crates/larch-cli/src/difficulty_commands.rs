@@ -30,7 +30,7 @@ use crate::{
     github_repository_resolution::{ambient_repo, repository_ref},
     github_service::{ServiceFailure, with_github_service},
     issue_mutation_support::authorization_request,
-    python_verb::plugin_root_directory,
+    runtime_entrypoint::plugin_root_directory,
 };
 
 const VALIDATE_PROGRAM: &str = "cli.py difficulty validate-rating";

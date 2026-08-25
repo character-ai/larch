@@ -49,7 +49,7 @@ use crate::launcher_support::{
     LauncherArtifacts, confined_target, is_control_character, is_positive_int, parse_presence,
     validate_site, write_confined,
 };
-use crate::python_verb::plugin_root_directory;
+use crate::runtime_entrypoint::plugin_root_directory;
 
 /// Decode a legacy `KEY=value` dispatch envelope with last-key-wins semantics.
 ///

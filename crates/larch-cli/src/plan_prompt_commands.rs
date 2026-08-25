@@ -21,8 +21,8 @@ use crate::{
     argparse_compat::{ParsedCommandLine, parse_with_flags},
     design_step1_commands::consumer_repo_root,
     launcher_support::read_confined_bytes_checked,
-    python_verb::plugin_root_directory,
     rendering_commands::{OOS_PROPOSAL_INSTRUCTION, write_payload_bytes_sidecar},
+    runtime_entrypoint::plugin_root_directory,
 };
 
 const OPTIONS: &[&str] = &[

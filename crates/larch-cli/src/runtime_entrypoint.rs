@@ -10,10 +10,13 @@ use std::{
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
+    sync::{Mutex, PoisonError},
     time::Duration,
 };
 
-use larch_core::{ChildEnvironment, ExternalProgram, LarchProgram, ProcessOutput};
+use larch_core::{
+    ChildEnvironment, ExternalProgram, LarchProgram, ProcessOutput, is_valid_plugin_root_value,
+};
 
 use crate::child_process::{bounded_request, bounded_request_in, run_bounded};
 
@@ -21,6 +24,23 @@ const PLUGIN_ROOT_ENV: &str = "CLAUDE_PLUGIN_ROOT";
 const VERIFIED_LARCH_TIMEOUT: Duration = Duration::from_secs(600);
 const VERIFIED_LARCH_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 const VERIFIED_LARCH_OUTPUT_LIMIT: usize = 256 * 1024;
+
+/// Session-derived child environment used by later nested Rust commands.
+static SESSION_ENVIRONMENT: Mutex<Vec<(ChildEnvironment, OsString)>> = Mutex::new(Vec::new());
+
+/// Publish session-derived rows for later verified larch subprocesses.
+pub fn publish_session_environment(rows: Vec<(ChildEnvironment, OsString)>) {
+    *SESSION_ENVIRONMENT
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner) = rows;
+}
+
+fn session_environment() -> Vec<(ChildEnvironment, OsString)> {
+    SESSION_ENVIRONMENT
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
+}
 
 /// Explicit context read by the current nested larch composition graph.
 ///
@@ -82,9 +102,9 @@ const VERIFIED_LARCH_CONTEXT: &[ChildEnvironment] = &[
 
 /// Reduce a composed process result to `(exit_code, stdout)`.
 ///
-/// The nested-composition callers that run a verified larch verb or a Python
-/// verb and then branch on its exit code and captured stdout share this
-/// projection: a missing exit code and a start failure both read as `1`.
+/// Nested-composition callers that branch on a verified larch command's exit
+/// code and captured stdout share this projection: a missing exit code and a
+/// start failure both read as `1`.
 #[must_use]
 pub fn code_and_stdout(result: Result<ProcessOutput, String>) -> (i32, String) {
     match result {
@@ -190,6 +210,9 @@ fn run_verified_larch_at(
         ChildEnvironment::ClaudePluginRoot,
         root.as_os_str().to_owned(),
     );
+    for (key, value) in session_environment() {
+        request = request.with_environment(key, value);
+    }
     for (key, value) in environment {
         request = request.with_environment(*key, value.clone());
     }
@@ -202,10 +225,8 @@ fn run_verified_larch_at(
 /// A production command must use the installed plugin it was launched from,
 /// not a checkout that happens to be the process working directory.
 pub fn plugin_root() -> Result<PathBuf, String> {
-    let raw = env::var_os(PLUGIN_ROOT_ENV)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| "CLAUDE_PLUGIN_ROOT is required".to_owned())?;
-    let root = PathBuf::from(raw);
+    let root =
+        plugin_root_directory().ok_or_else(|| "CLAUDE_PLUGIN_ROOT is required".to_owned())?;
     if !root.is_absolute() {
         return Err("CLAUDE_PLUGIN_ROOT must be an absolute path".to_owned());
     }
@@ -217,4 +238,22 @@ pub fn plugin_root() -> Result<PathBuf, String> {
         return Err("CLAUDE_PLUGIN_ROOT must name a directory".to_owned());
     }
     Ok(root)
+}
+
+/// Resolve the active plugin root from the wrapper environment or executable.
+///
+/// Installed binaries live at `<root>/bin/larch`, so the executable fallback
+/// stays within the verified runtime layout and never consults the ambient
+/// working directory.
+#[must_use]
+pub fn plugin_root_directory() -> Option<PathBuf> {
+    let declared = env::var(PLUGIN_ROOT_ENV).unwrap_or_default();
+    if is_valid_plugin_root_value(&declared) {
+        return Some(PathBuf::from(declared));
+    }
+    env::current_exe()
+        .ok()?
+        .parent()?
+        .parent()
+        .map(Path::to_path_buf)
 }

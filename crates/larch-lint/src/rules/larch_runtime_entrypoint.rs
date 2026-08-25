@@ -7,9 +7,18 @@ use regex::Regex;
 use crate::{Finding, LintError, Repository, Rule, RuleMetadata, RuleOutput};
 
 const NAME: &str = "larch-runtime-entrypoint";
-const DESCRIPTION: &str = "Reject production callers that bypass scripts/larch.sh";
+const DESCRIPTION: &str = "Reject bypassed or retired production runtime entrypoints";
 const MESSAGE: &str =
     "direct bin/larch production entrypoint; invoke ${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh";
+const RETIRED_PYTHON_MESSAGE: &str =
+    "retired Python runtime bridge; compose through the verified scripts/larch.sh Rust entrypoint";
+const RETIRED_PYTHON_TOKENS: [&str; 5] = [
+    "PythonVerbProgram",
+    "ExternalProgram::PythonVerb",
+    "run_python_verb",
+    "join(\"python/cli.py\")",
+    "join(\"python\").join(\"cli.py\")",
+];
 const ALLOWED_PATHS: [&str; 1] = ["scripts/larch.sh"];
 
 static DIRECT_BINARY: LazyLock<Regex> = LazyLock::new(|| {
@@ -45,6 +54,21 @@ impl Rule for LarchRuntimeEntrypointRule {
         let mut findings = Vec::new();
         for path in repository.paths() {
             let path_text = path.as_str();
+            if is_production_rust(path_text) {
+                let source = repository.read_utf8(path)?;
+                for (index, line) in source.lines().enumerate() {
+                    if RETIRED_PYTHON_TOKENS
+                        .iter()
+                        .any(|token| line.contains(token))
+                    {
+                        findings.push(Finding::new(
+                            path_text,
+                            u32::try_from(index + 1).unwrap_or(u32::MAX),
+                            RETIRED_PYTHON_MESSAGE,
+                        ));
+                    }
+                }
+            }
             if !is_production_surface(path_text) || ALLOWED_PATHS.contains(&path_text) {
                 continue;
             }
@@ -61,6 +85,13 @@ impl Rule for LarchRuntimeEntrypointRule {
         }
         Ok(RuleOutput::from_findings(findings))
     }
+}
+
+fn is_production_rust(path: &str) -> bool {
+    path.starts_with("crates/")
+        && path.contains("/src/")
+        && has_extension(path, "rs")
+        && path != "crates/larch-lint/src/rules/larch_runtime_entrypoint.rs"
 }
 
 pub(super) fn is_production_surface(path: &str) -> bool {
