@@ -2555,6 +2555,15 @@ clean_install_test = "clean-install-implement-clone-tag"
 
 [[commands]]
 domain = "implement"
+verb = "code-flow-diagram"
+machine_stdout = true
+owner = "rust"
+planning_issue = 7681
+migration_issue = 8933
+clean_install_test = "clean-install-implement-code-flow-diagram"
+
+[[commands]]
+domain = "implement"
 verb = "commit"
 machine_stdout = false
 owner = "rust"
@@ -6555,16 +6564,6 @@ rust = ["execution-issues flush"]
 path = "skills/implement/scripts/flush-execution-issues.sh"
 kind = "skill"
 rust = ["execution-issues flush"]
-
-[[callers]]
-path = "skills/implement/scripts/generate-code-flow-diagram.md"
-kind = "skill"
-rust = ["mermaid sanitize"]
-
-[[callers]]
-path = "skills/implement/scripts/generate-code-flow-diagram.sh"
-kind = "skill"
-rust = ["agent launch-claude-subprocess", "mermaid sanitize"]
 
 [[callers]]
 path = "skills/implement/scripts/hook-stop-fail-close.md"

@@ -2276,6 +2276,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "checks-step5-resume",
     ),
     CleanInstallCase::new(
+        "clean-install-implement-code-flow-diagram",
+        "implement",
+        "code-flow-diagram",
+    ),
+    CleanInstallCase::new(
         "clean-install-implement-step-5-resume",
         "implement",
         "step-5-resume",

@@ -1,7 +1,8 @@
 //! Rust-owned diagram commands.
 //!
 //! Hosts the Mermaid sanitizer and marker-comment diagram upsert alongside the
-//! Rust owner for `diagram code-flow` (#8839).
+//! shared Rust owner for `diagram code-flow` (#8839) and
+//! `implement code-flow-diagram` (#8933).
 //!
 //! `diagram code-flow` ports Python `larch.git.pr_body.generate_code_flow_diagram` +
 //! `generate_code_flow_diagram_main`: resolve the committed diff, author the
@@ -10,8 +11,8 @@
 //! the `code-flow-diagram.retried` sidecar, capture bounded failure logs through
 //! the reused `report::diagram_log` owner, sanitize the candidate with the reused
 //! `ship_pr` mermaid validator, and emit the `STATUS`/`DIAGRAM_FILE`/`SKIP_REASON`
-//! KV contract. The two callers (`/implement` Step 7a and the CLI verb) reach
-//! this in-process owner, satisfying I-Cutover-1 with no bridge.
+//! KV contract. `/implement` Step 7a and both CLI selectors reach this
+//! in-process owner, satisfying I-Cutover-1 with no bridge.
 
 use std::{
     collections::BTreeSet,
@@ -466,6 +467,8 @@ const CODE_FLOW_PROG: &str = "cli.py diagram code-flow";
 const CODE_FLOW_USAGE: &str = "usage: cli.py diagram code-flow [-h] --implement-tmpdir IMPLEMENT_TMPDIR\n                                [--model MODEL] [--base-remote BASE_REMOTE]\n                                [--base-ref BASE_REF]";
 const CODE_FLOW_HELP: &str = "usage: cli.py diagram code-flow [-h] --implement-tmpdir IMPLEMENT_TMPDIR\n                                [--model MODEL] [--base-remote BASE_REMOTE]\n                                [--base-ref BASE_REF]\n\noptions:\n  -h, --help            show this help message and exit\n  --implement-tmpdir IMPLEMENT_TMPDIR\n  --model MODEL\n  --base-remote BASE_REMOTE\n  --base-ref BASE_REF\n";
 
+const IMPLEMENT_CODE_FLOW_USAGE: &str = "Usage: scripts/larch.sh implement code-flow-diagram --implement-tmpdir PATH [--model claude-sonnet-4-6] [--base-remote NAME] [--base-ref BRANCH]";
+
 const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 const CODE_FLOW_DIAGRAM_TIMEOUT_SECONDS: u32 = 180;
 const MAX_DIAGRAM_RETRIES: usize = 4;
@@ -544,6 +547,99 @@ pub fn code_flow(arguments: &[OsString]) -> ExitCode {
     ExitCode::from(u8::try_from(result.exit_code).unwrap_or(1))
 }
 
+/// `implement code-flow-diagram` CLI handler.
+///
+/// This preserves the retired Bash helper's option validation and machine
+/// stdout envelope while delegating generation to the existing Rust owner.
+pub fn implement_code_flow_diagram(arguments: &[OsString]) -> ExitCode {
+    let mut tmpdir = OsString::new();
+    let mut model = OsString::from(DEFAULT_MODEL);
+    let mut base_remote = OsString::from("origin");
+    let mut base_ref = OsString::from("main");
+    let mut index = 0;
+    while index < arguments.len() {
+        let option = arguments[index].to_string_lossy();
+        match option.as_ref() {
+            "--implement-tmpdir" | "--model" | "--base-remote" | "--base-ref" => {
+                let Some(value) = arguments.get(index + 1) else {
+                    return implement_code_flow_usage_failure(&format!(
+                        "{option} requires a value"
+                    ));
+                };
+                match option.as_ref() {
+                    "--implement-tmpdir" => tmpdir.clone_from(value),
+                    "--model" => model.clone_from(value),
+                    "--base-remote" => base_remote.clone_from(value),
+                    "--base-ref" => base_ref.clone_from(value),
+                    _ => unreachable!("matched code-flow option"),
+                }
+                index += 2;
+            }
+            "--help" => {
+                eprintln!("{IMPLEMENT_CODE_FLOW_USAGE}");
+                return ExitCode::SUCCESS;
+            }
+            _ => {
+                return implement_code_flow_usage_failure(&format!("unknown option: {option}"));
+            }
+        }
+    }
+
+    if tmpdir.is_empty() {
+        return implement_code_flow_usage_failure("--implement-tmpdir is required");
+    }
+    let tmpdir = PathBuf::from(tmpdir);
+    if !tmpdir.is_absolute() {
+        return implement_code_flow_usage_failure("--implement-tmpdir must be absolute");
+    }
+    let model = model.to_string_lossy();
+    let base_remote = base_remote.to_string_lossy();
+    let base_ref = base_ref.to_string_lossy();
+    if !valid_code_flow_base_component(&base_remote) {
+        return implement_code_flow_usage_failure("--base-remote must match ^[A-Za-z0-9._/-]+$");
+    }
+    if !valid_code_flow_base_component(&base_ref) {
+        return implement_code_flow_usage_failure("--base-ref must match ^[A-Za-z0-9._/-]+$");
+    }
+    if fs::create_dir_all(&tmpdir).is_err() {
+        emit_code_flow_result(&CodeFlowDiagramResult {
+            exit_code: 1,
+            status: "failed".to_owned(),
+            diagram_file: String::new(),
+            reason: "tmpdir-unavailable".to_owned(),
+        });
+        return ExitCode::FAILURE;
+    }
+
+    let result = generate_code_flow_diagram(&tmpdir, &model, &base_remote, &base_ref);
+    emit_code_flow_result(&result);
+    ExitCode::from(u8::try_from(result.exit_code).unwrap_or(1))
+}
+
+fn valid_code_flow_base_component(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'/' | b'-'))
+}
+
+fn implement_code_flow_usage_failure(reason: &str) -> ExitCode {
+    eprintln!("{IMPLEMENT_CODE_FLOW_USAGE}");
+    emit_code_flow_result(&CodeFlowDiagramResult {
+        exit_code: 2,
+        status: "failed".to_owned(),
+        diagram_file: String::new(),
+        reason: reason.replace(['\n', '\r'], " "),
+    });
+    ExitCode::from(2)
+}
+
+fn emit_code_flow_result(result: &CodeFlowDiagramResult) {
+    emit_kv("STATUS", &result.status);
+    emit_kv("DIAGRAM_FILE", &result.diagram_file);
+    emit_kv("SKIP_REASON", &result.reason);
+}
+
 /// Generate the committed-diff code-flow diagram (Python `generate_code_flow_diagram`).
 pub fn generate_code_flow_diagram(
     tmpdir: &Path,
@@ -563,6 +659,9 @@ pub fn generate_code_flow_diagram(
     let failure_log = tmpdir.join("code-flow-diagram.failure.log");
     let retry_sidecar = tmpdir.join("code-flow-diagram.retried");
     let raw_failure = tmpdir.join("code-flow-diagram.raw-failure.log");
+    let launch_stdout = tmpdir.join("code-flow-launch.out");
+    let launch_stderr = tmpdir.join("code-flow-launch.err");
+    let sanitizer_log = tmpdir.join("code-flow-sanitizer.failure.log");
 
     let changed = resolve_changed_files(base_remote, base_ref);
     let mut prompt_lines = vec![
@@ -581,10 +680,19 @@ pub fn generate_code_flow_diagram(
     let _ = fs::remove_file(&failure_log);
 
     let launch = run_diagram_subprocess(model, &prompt_path, &raw, &retry_sidecar);
+    let _ = fs::write(&launch_stdout, &launch.stdout);
+    let _ = fs::write(&launch_stderr, &launch.stderr);
     if launch.code != 0 {
         return launch_failure_result(tmpdir, &failure_log, &raw_failure, &raw, &launch);
     }
-    finalize_candidate(&raw, &candidate, &diagram, &failure_log, &raw_failure)
+    finalize_candidate(
+        &raw,
+        &candidate,
+        &diagram,
+        &failure_log,
+        &raw_failure,
+        &sanitizer_log,
+    )
 }
 
 /// Compose the `generation-failed` result and write the bounded failure log
@@ -650,6 +758,7 @@ fn finalize_candidate(
     diagram: &Path,
     failure_log: &Path,
     raw_failure: &Path,
+    sanitizer_log: &Path,
 ) -> CodeFlowDiagramResult {
     let empty_generation = || CodeFlowDiagramResult {
         exit_code: 1,
@@ -663,11 +772,31 @@ fn finalize_candidate(
     let Ok(raw_bytes) = fs::read(raw) else {
         return empty_generation();
     };
-    let _ = fs::write(candidate, &raw_bytes);
+    if fs::write(candidate, &raw_bytes).is_err() {
+        return CodeFlowDiagramResult {
+            exit_code: 1,
+            status: "failed".to_owned(),
+            diagram_file: String::new(),
+            reason: "candidate-write-failed".to_owned(),
+        };
+    }
     let text = String::from_utf8_lossy(&raw_bytes);
-    code_flow_reject_reason(&text).map_or_else(
+    let rejection = code_flow_reject_reason(&text);
+    let sanitizer_record = rejection.map_or_else(
+        || "STATUS=ok\n".to_owned(),
+        |reason| format!("STATUS=rejected\nREASON_TOKEN={reason}\n"),
+    );
+    let _ = fs::write(sanitizer_log, sanitizer_record);
+    rejection.map_or_else(
         || {
-            let _ = fs::rename(candidate, diagram);
+            if fs::rename(candidate, diagram).is_err() {
+                return CodeFlowDiagramResult {
+                    exit_code: 1,
+                    status: "failed".to_owned(),
+                    diagram_file: String::new(),
+                    reason: "candidate-write-failed".to_owned(),
+                };
+            }
             let _ = fs::remove_file(failure_log);
             let _ = fs::remove_file(raw_failure);
             CodeFlowDiagramResult {

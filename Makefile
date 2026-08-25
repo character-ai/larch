@@ -650,6 +650,7 @@ test-commit-implementation:
 test-review-and-fix-commit-fixes:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration review_and_fix_commands::implementation::self_review_snapshot_commits_only_its_delta
 
+# Rust black-box coverage for `implement code-flow-diagram`.
 test-generate-code-flow-diagram:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration diagram_code_flow_parity::
 
