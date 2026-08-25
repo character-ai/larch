@@ -71,7 +71,7 @@ const RECORD_MODE: u32 = 0o600;
 const OPEN_BLOCKERS: &str = "open-blockers";
 
 const PREPARE_USAGE: &str = "Usage: umbrella prepare --repo OWNER/REPO --issue N --output PATH [--managed-partition true|false]";
-const PERSIST_PROPOSAL_USAGE: &str = "Usage: umbrella persist-proposal (--proposal PATH --output PATH | --snapshot PATH --batch-input PATH [--deps PATH] --output PATH --issue-input-output PATH --deps-output PATH | --snapshot PATH --prepared-root PATH --prepared-input PATH --prepared-deps PATH --completion-sentinel PATH --output-root PATH --output PATH --issue-input-output PATH --deps-output PATH)";
+const PERSIST_PROPOSAL_USAGE: &str = "Usage: umbrella persist-proposal (--proposal PATH --output PATH | --snapshot PATH --batch-input PATH [--deps PATH] --output PATH --issue-input-output PATH --deps-output PATH | --snapshot PATH --prepared-root PATH --prepared-input PATH --prepared-deps PATH --completion-sentinel PATH --output-root PATH --output PATH --issue-input-output PATH --deps-output PATH)\n--proposal must name a ProposalRecord JSON object with umbrella, repository, expected_updated_at, common_context, and non-empty leaves; see larch_core::issue::umbrella::ProposalRecord.";
 const MARK_IN_FLIGHT_USAGE: &str =
     "Usage: umbrella mark-in-flight --proposal PATH --identity SHA256";
 const RECORD_RESOLVED_USAGE: &str = "Usage: umbrella record-resolved --proposal PATH --identity SHA256 --number N --url URL [--issue-id ID]";
