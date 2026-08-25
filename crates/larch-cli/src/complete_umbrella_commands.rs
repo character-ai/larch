@@ -38,11 +38,11 @@ use larch_core::{
     build_claude_argv, checked_dir, child_liveness, complete_umbrella_child_prompt,
     complete_umbrella_done_title, complete_umbrella_leaf_non_candidate,
     complete_umbrella_relaunch_title, complete_umbrella_start_title, daemon_liveness, emit_kv,
-    git_output_is_unreachable, has_umbrella_proposal, is_controlling_umbrella_title,
-    is_transient_claude_api_error, is_valid_claude_pid, iter_entries, parse_claude_envelope,
-    private_atomic_write, read_confined_regular_tail, redact, redact_issue_create_request,
-    redact_issue_mutation_request, refresh_wait_lease_for_pid, result_env_path,
-    retry_while_unreachable, select_complete_umbrella_leaf, session_pointer_root, single_line,
+    git_output_is_unreachable, is_controlling_umbrella_title, is_transient_claude_api_error,
+    is_valid_claude_pid, iter_entries, parse_claude_envelope, private_atomic_write,
+    read_confined_regular_tail, redact, redact_issue_create_request, redact_issue_mutation_request,
+    refresh_wait_lease_for_pid, result_env_path, retry_while_unreachable,
+    select_complete_umbrella_leaf, session_pointer_root, single_line,
     triage_text_is_security_sensitive, umbrella_leaf_opening, umbrella_leaf_prefix,
     validate_complete_umbrella_leaf, validate_complete_umbrella_parent,
 };
@@ -1460,7 +1460,7 @@ async fn start_remote(
         .read_snapshot(repository, issue, cancellation)
         .await
         .map_err(|error| net.record(&error))?;
-    if before.state != GitHubIssueState::Open || !has_umbrella_proposal(&before.body) {
+    if before.state != GitHubIssueState::Open {
         return Err("parent changed before the active-title mutation".to_owned());
     }
     let title = complete_umbrella_start_title(&before.title).map_err(str::to_owned)?;
@@ -3588,7 +3588,7 @@ async fn finish_remote(
         .read_snapshot(repository, issue, cancellation)
         .await
         .map_err(|error| net.record(&error))?;
-    if before.state != GitHubIssueState::Open || !has_umbrella_proposal(&before.body) {
+    if before.state != GitHubIssueState::Open {
         return Err("parent changed before completion".to_owned());
     }
     let title = complete_umbrella_done_title(&before.title).map_err(str::to_owned)?;
@@ -3783,7 +3783,10 @@ fn require_runnable_umbrella(graph: &GraphState) -> Result<(), String> {
         &selection_leaves(&graph.leaves),
         &graph.open_orphan_blockers,
     ) {
-        CompleteUmbrellaNext::Launch(_) | CompleteUmbrellaNext::Audit => Ok(()),
+        CompleteUmbrellaNext::Launch(_) => Ok(()),
+        CompleteUmbrellaNext::Audit => {
+            Err("cannot start without a selectable direct leaf".to_owned())
+        }
         CompleteUmbrellaNext::OrphanBlocked(issues) => Err(format!(
             "cannot start while open non-leaf parent blockers remain: {}",
             join_numbers(&issues)
