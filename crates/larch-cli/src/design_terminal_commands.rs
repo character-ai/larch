@@ -31,8 +31,8 @@ use crate::{
     design_commands::quote_single,
     design_step0_commands::{
         ChildOutcome, Env, LiveStep0Runner, Step0Runner, env_get, exit_from_i32, load_wrapper_env,
-        parse_wrapper_args, phase_driver_read_result_env, require_plugin_root,
-        resolve_owned_run_id, utf8_arguments, valid_var_name,
+        parse_wrapper_args, phase_driver_read_result_env, replay_result_env_warn_error,
+        require_plugin_root, resolve_owned_run_id, utf8_arguments, valid_var_name,
     },
     design_step1_commands::append_failure_args,
     github_repository_resolution::repository_ref,
@@ -412,21 +412,6 @@ fn resolve_read_result_env_source(
     (Some(fallback_path.to_path_buf()), warning)
 }
 
-/// Port of `_replay_warn_error`: emit each `WARN`/`ERROR` row to stdout.
-fn replay_warn_error(path: &Path) {
-    let Ok(bytes) = fs::read(path) else {
-        return;
-    };
-    let text = String::from_utf8_lossy(&bytes);
-    let document =
-        KvDocument::parse(&text, ParseOptions::legacy()).expect("legacy parser is non-rejecting");
-    for row in document.rows() {
-        if row.key() == "WARN" || row.key() == "ERROR" {
-            println!("{}={}", row.key(), row.value());
-        }
-    }
-}
-
 /// The `read-result-env` entry point.
 pub fn read_result_env(arguments: &[OsString]) -> ExitCode {
     let argv = utf8_arguments(arguments);
@@ -473,7 +458,7 @@ pub fn read_result_env(arguments: &[OsString]) -> ExitCode {
             .map(|d| d.as_nanos())
             .unwrap_or(0)
     ));
-    replay_warn_error(&source_path);
+    replay_result_env_warn_error(&source_path);
     let allow_refs: Vec<&str> = parsed.allow.iter().map(String::as_str).collect();
     let Ok(pairs) = phase_driver_read_result_env(&source_path, &allow_refs) else {
         return ExitCode::from(1);

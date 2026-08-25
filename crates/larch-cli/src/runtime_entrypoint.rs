@@ -149,6 +149,21 @@ pub fn run_verified_larch_with_environment(
     run_verified_larch_with_options(arguments, environment, VERIFIED_LARCH_TIMEOUT)
 }
 
+/// Run verified larch from a caller-selected plugin root with explicitly
+/// scoped environment overrides.
+///
+/// # Errors
+/// Returns a concise diagnostic when `plugin_root` is not an absolute,
+/// resolvable directory or the bootstrap process cannot be started.
+pub fn run_verified_larch_from_root_with_environment(
+    plugin_root: &Path,
+    arguments: &[OsString],
+    environment: &[(ChildEnvironment, OsString)],
+) -> Result<ProcessOutput, String> {
+    let root = validate_verified_plugin_root(plugin_root)?;
+    run_verified_larch_at_root(&root, arguments, environment, None, VERIFIED_LARCH_TIMEOUT)
+}
+
 pub fn run_verified_larch_with_options(
     arguments: &[OsString],
     environment: &[(ChildEnvironment, OsString)],
@@ -178,11 +193,21 @@ fn run_verified_larch_at(
     timeout: Duration,
 ) -> Result<ProcessOutput, String> {
     let root = plugin_root()?;
+    run_verified_larch_at_root(&root, arguments, environment, working_directory, timeout)
+}
+
+fn run_verified_larch_at_root(
+    root: &Path,
+    arguments: &[OsString],
+    environment: &[(ChildEnvironment, OsString)],
+    working_directory: Option<&Path>,
+    timeout: Duration,
+) -> Result<ProcessOutput, String> {
     let script = root.join("scripts").join("larch.sh");
     if !script.is_file() || script.is_symlink() {
         return Err("CLAUDE_PLUGIN_ROOT does not contain a safe scripts/larch.sh".to_owned());
     }
-    let program = LarchProgram::bootstrap(&root)
+    let program = LarchProgram::bootstrap(root)
         .map_err(|error| format!("could not select verified larch entrypoint: {error}"))?;
     let mut request = match working_directory {
         Some(directory) => bounded_request_in(
@@ -227,15 +252,39 @@ fn run_verified_larch_at(
 pub fn plugin_root() -> Result<PathBuf, String> {
     let root =
         plugin_root_directory().ok_or_else(|| "CLAUDE_PLUGIN_ROOT is required".to_owned())?;
+    validate_plugin_root_directory(&root)
+}
+
+/// Resolve and validate an explicitly selected plugin root.
+///
+/// # Errors
+/// Returns a concise diagnostic when `root` is relative, missing, or not a
+/// directory.
+pub fn validate_plugin_root_directory(root: &Path) -> Result<PathBuf, String> {
     if !root.is_absolute() {
         return Err("CLAUDE_PLUGIN_ROOT must be an absolute path".to_owned());
     }
-    let root = fs::canonicalize(&root)
+    let root = fs::canonicalize(root)
         .map_err(|error| format!("could not resolve CLAUDE_PLUGIN_ROOT: {error}"))?;
     let metadata = fs::symlink_metadata(&root)
         .map_err(|error| format!("could not inspect CLAUDE_PLUGIN_ROOT: {error}"))?;
     if !metadata.is_dir() {
         return Err("CLAUDE_PLUGIN_ROOT must name a directory".to_owned());
+    }
+    Ok(root)
+}
+
+/// Resolve an explicitly selected plugin root and require its safe bootstrap
+/// script.
+///
+/// # Errors
+/// Returns the directory-validation diagnostic or reports that `scripts/larch.sh`
+/// is missing, non-regular, or a symlink.
+pub fn validate_verified_plugin_root(root: &Path) -> Result<PathBuf, String> {
+    let root = validate_plugin_root_directory(root)?;
+    let script = root.join("scripts").join("larch.sh");
+    if !script.is_file() || script.is_symlink() {
+        return Err("CLAUDE_PLUGIN_ROOT does not contain a safe scripts/larch.sh".to_owned());
     }
     Ok(root)
 }

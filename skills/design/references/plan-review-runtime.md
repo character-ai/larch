@@ -117,7 +117,7 @@ Voter prompts are emitted at runtime by `scripts/larch.sh render voter` through 
 
 ## Ballot file handling
 
-Ballot rebuild, proposer-map writes, validation, anonymizing rewrites, and voter prompt path references are loop-internal to the Rust plan-review owner. There is no prompt-side Write-tool ballot authoring in loop mode. The deferred MainAgent wrapper obtains `BALLOT_PATH` from `design-step3-mav.sh --phase pre`; use that trusted path instead of constructing one inline.
+Ballot rebuild, proposer-map writes, validation, anonymizing rewrites, and voter prompt path references are loop-internal to the Rust plan-review owner. There is no prompt-side Write-tool ballot authoring in loop mode. The deferred MainAgent path obtains `BALLOT_PATH` from `scripts/larch.sh plan-review step3-mav --phase pre`; use that trusted path instead of constructing one inline.
 
 ---
 
@@ -213,7 +213,7 @@ Plan review stages use a staged scope anchor under `$DESIGN_TMPDIR`, built at St
 
 ## Deferred main-agent adjudication (0-judge fallback)
 
-When `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required`, the main agent adjudicates the ballot instead of entering Gate B. Prompt-side orchestration delegates mechanical setup and re-tally work to `design-step3-mav.sh --phase pre` and `design-step3-mav.sh --phase post`.
+When `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required`, the main agent adjudicates the ballot instead of entering Gate B. Prompt-side orchestration delegates mechanical setup and re-tally work directly to `scripts/larch.sh plan-review step3-mav --phase pre` and `--phase post`.
 
 The pre phase reads Step 3 result envs, renders any scope anchor as prefixed untrusted evidence, and emits trusted scalars only inside `DESIGN_STEP3_MAV_KV`. Abort the MAV branch if pre fails or the frame omits `BALLOT_PATH`.
 

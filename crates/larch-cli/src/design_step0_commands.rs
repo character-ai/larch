@@ -1161,6 +1161,25 @@ pub fn phase_driver_read_result_env(
         .collect())
 }
 
+/// Replay `WARN` and `ERROR` rows from a result envelope in source order.
+///
+/// The allowlisted result-env compatibility surface emits these diagnostics
+/// before it writes sourceable rows. Callers that rehydrate in process use the
+/// same owner so untrusted diagnostic output stays outside their trusted frame.
+pub fn replay_result_env_warn_error(path: &Path) {
+    let Ok(bytes) = fs::read(path) else {
+        return;
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    let document =
+        KvDocument::parse(&text, ParseOptions::legacy()).expect("legacy parser is non-rejecting");
+    for row in document.rows() {
+        if row.key() == "WARN" || row.key() == "ERROR" {
+            println!("{}={}", row.key(), row.value());
+        }
+    }
+}
+
 /// Port of `_read_result_pairs`: primary then optional regular-file fallback.
 fn read_result_pairs(primary: &Path, fallback: Option<&Path>, allowed: &[&str]) -> Env {
     let mut pairs = phase_driver_read_result_env(primary, allowed).unwrap_or_default();

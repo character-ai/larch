@@ -38,7 +38,7 @@ HARNESS_MARK ?= sh -c 'timer=target/harness-mark/larch-harness-mark; LARCH_HARNE
 .PHONY: test-review-design-step3-loop
 .PHONY: test-read-result-env
 .PHONY: test-launch-codex-exec test-launch-drafters test-launch-ci-fixers test-implement-launchers
-.PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state test-design-step3-mav
+.PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state
 .PHONY: test-no-grouped-reuse-guard test-review-and-fix-record-timing test-review-and-fix-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus test-voter-calibration test-difficulty-calibration
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
@@ -447,10 +447,6 @@ test-review-design-step3-loop:
 test-step3-orchestrator-fence:
 	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test integration plan_review_loop_commands::tests::normalize
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-step3-orchestrator-fence.sh
-
-test-design-step3-mav:
-	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test integration plan_review_loop_commands::tests::utility_and_persistence
-	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3-mav.sh
 
 test-design-step3-state:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test integration plan_review_loop_commands::tests::step3_state

@@ -74,7 +74,6 @@ fixtures/plan-commands/validate-plan-commands/demo-tier3-validate-only.sh
 skills/design/scripts/test-brainstorm-prompts.sh
 skills/design/scripts/test-design-clarify.sh
 skills/design/scripts/test-design-step3-entry.sh
-skills/design/scripts/test-design-step3-mav.sh
 skills/design/scripts/test-design-step3-review.sh
 skills/design/scripts/test-design-step3b-tail.sh
 skills/design/scripts/test-design-step5c.sh

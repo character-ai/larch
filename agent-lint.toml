@@ -203,10 +203,6 @@ exclude = [
   "skills/design/scripts/design-step3-review.md",
   "skills/design/scripts/test-design-step3-review.sh",
   "skills/design/scripts/test-design-step3-review.md",
-  "skills/design/scripts/design-step3-mav.sh",
-  "skills/design/scripts/design-step3-mav.md",
-  "skills/design/scripts/test-design-step3-mav.sh",
-  "skills/design/scripts/test-design-step3-mav.md",
   "skills/design/scripts/test-step3-review-cap.sh",
   "skills/design/scripts/test-step3-review-cap.md",
   "skills/design/scripts/design-step35.sh",
@@ -275,17 +271,12 @@ exclude = [
   "skills/implement/scripts/run-step-checks.md",
   "skills/implement/scripts/step-6-entry.md",
   "scripts/larch.sh plan-block read",
-  # read-result-env.sh is genuinely invoked at runtime from
-  # skills/design/scripts/design-step3-mav.sh (read_one_result_env), but that
-  # call site uses the unbraced "$CLAUDE_PLUGIN_ROOT/scripts/read-result-env.sh"
-  # form, which agent-lint's G004/dead-script reachability does not count as a
-  # structured invocation (it recognizes only the braced "${CLAUDE_PLUGIN_ROOT}/..."
-  # form). The prior braced reference in design-step3-review.sh was removed when
-  # Step 3 status normalization moved to the Rust plan-review owner, leaving mav.sh as
-  # the sole live caller, so exclude the helper explicitly as a false positive.
-  # Its regression harness is Makefile-only (test-read-result-env target) and
-  # follows the same G004/dead-script false-positive pattern as the other
-  # root scripts/test-* harnesses below.
+  # read-result-env.sh is a retained thin compatibility entrypoint for the
+  # Rust-owned `design read-result-env` verb. After #8929, no skill calls the
+  # shim directly. Agent-lint cannot infer its command-registry and shipped CLI
+  # surface, so keep this explicit reachability exception. Its regression
+  # harness is Makefile-only (test-read-result-env target) and follows the same
+  # G004/dead-script false-positive pattern as the other root test harnesses.
   "scripts/read-result-env.sh",
   "scripts/test-read-result-env.sh",
   "scripts/test-read-result-env.md",
