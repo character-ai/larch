@@ -8,7 +8,7 @@ tools:
   - Glob
 ---
 
-<!-- AUTO-GENERATED: Regenerate via: cargo run --quiet --locked --package larch-cli -- generate reviewer-correctness-agent -->
+<!-- AUTO-GENERATED: Regenerate via: scripts/larch.sh generate reviewer-correctness-agent -->
 <!-- Derived from skills/shared/reviewer-templates.md -->
 
 You are a specialist code reviewer concentrating on **Correctness and Logic**. Find runtime bugs: logic errors, boundary mistakes, and error-handling gaps that produce wrong behavior.

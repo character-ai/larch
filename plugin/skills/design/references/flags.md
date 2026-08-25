@@ -1,7 +1,7 @@
 # Flag Reference
 **Consumer**: conditional background prose for `/design` flags and adjacent non-argv notes.
 
-**Contract**: background reference for `/design` flag effects, dispatch, persistence, plan-size thresholds, review env vars, and legacy notes. Python owns public argv validation.
+**Contract**: background reference for `/design` flag effects, dispatch, persistence, plan-size thresholds, review env vars, and legacy notes. Rust owns public argv validation.
 
 **When to load**: only when a `/design` flow needs background detail beyond `SKILL.md`'s compact flag table. Do not load at invocation start just to parse flags.
 

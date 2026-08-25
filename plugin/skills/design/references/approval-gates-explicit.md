@@ -11,7 +11,7 @@
 **Explicit mode only (`approve_requested=true`).** Under default auto-apply (`approve_requested=false`) this entire prompt is skipped. Gate B runs `### Apply-all body` directly after the `ℹ 3.5: Gate B — auto-applying N accepted finding(s)` breadcrumb. When `--per-round-approval` is set, fire `AskUserQuestion` with exactly three options:
 
 - **Apply all**: Execute `### Apply-all body` verbatim. The dedup-sweep and shared post-apply pipeline run there.
-- **Go through each**: Iterate only the Python-emitted `FINDING_IDS` list. For each id, fire `AskUserQuestion` with three options: apply / skip / switch to discussion mode. If any per-finding prompt picks switch to discussion mode, stop the iteration immediately, discard any unapplied per-finding intent, and exit to Gate A. Otherwise, after the iteration completes, run the single post-iteration apply/update path documented below.
+- **Go through each**: Iterate only the Rust-emitted `FINDING_IDS` list. For each id, fire `AskUserQuestion` with three options: apply / skip / switch to discussion mode. If any per-finding prompt picks switch to discussion mode, stop the iteration immediately, discard any unapplied per-finding intent, and exit to Gate A. Otherwise, after the iteration completes, run the single post-iteration apply/update path documented below.
 - **Switch to discussion mode**: Skip plan revision entirely. Exit to Gate A. `plan.txt` remains as it was before Step 3.
 
 Run `scripts/larch.sh plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"` before asking. Bind all counts from stdout KVs. Do not inspect or classify finding blocks in the orchestrator.
@@ -25,7 +25,7 @@ Header: `"Plan findings"`. Substitute the bound counts before asking.
 
 ## One-by-one iteration prompt
 
-For **Go through each**, use Python-emitted fields only:
+For **Go through each**, use Rust-emitted fields only:
 
 1. Run `scripts/larch.sh plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"`. Parse `FINDING_IDS` and `ACCEPTED_COUNT`.
 2. Split `FINDING_IDS` on `,`. Skip empty tokens. Iterate the numeric ids in that order only. Never iterate `1..ACCEPTED_COUNT`.
@@ -33,7 +33,7 @@ For **Go through each**, use Python-emitted fields only:
 4. Parse `ONE_BY_ONE_PROMPT_LINE` and `ONE_BY_ONE_HEADER` from stdout KVs. You may also parse `ONE_BY_ONE_ORDINAL` and `ONE_BY_ONE_TOTAL` for diagnostics.
 5. Fire `AskUserQuestion` with question text exactly `ONE_BY_ONE_PROMPT_LINE` and header exactly `ONE_BY_ONE_HEADER`. The header is `Finding <ordinal>/<total>`, where ordinal is the list position, not the raw finding id.
 
-The orchestrator must not manually classify findings, invent severity labels, or re-read `### FINDING_N:` blocks for severity, reviewer, or concern text. It may only pass through Python-emitted display fields and the Python-emitted id list.
+The orchestrator must not manually classify findings, invent severity labels, or re-read `### FINDING_N:` blocks for severity, reviewer, or concern text. It may only pass through Rust-emitted display fields and the Rust-emitted id list.
 
 Options:
 

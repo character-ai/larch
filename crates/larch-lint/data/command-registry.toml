@@ -2183,6 +2183,7 @@ machine_stdout = false
 owner = "rust"
 planning_issue = 7685
 migration_issue = 8100
+clean_install_test = "clean-install-generate-codex-implementer"
 
 [[commands]]
 domain = "generate"
@@ -2191,6 +2192,7 @@ machine_stdout = false
 owner = "rust"
 planning_issue = 7685
 migration_issue = 8100
+clean_install_test = "clean-install-generate-cursor-implementer"
 
 [[commands]]
 domain = "generate"
@@ -2217,6 +2219,7 @@ machine_stdout = false
 owner = "rust"
 planning_issue = 7685
 migration_issue = 8100
+clean_install_test = "clean-install-generate-reviewer-correctness-agent"
 
 [[commands]]
 domain = "generate"
@@ -2225,6 +2228,7 @@ machine_stdout = false
 owner = "rust"
 planning_issue = 7685
 migration_issue = 8100
+clean_install_test = "clean-install-generate-reviewer-edge-cases-agent"
 
 [[commands]]
 domain = "generate"
@@ -2242,6 +2246,7 @@ machine_stdout = false
 owner = "rust"
 planning_issue = 7685
 migration_issue = 8100
+clean_install_test = "clean-install-generate-reviewer-security-agent"
 
 [[commands]]
 domain = "generate"
@@ -2259,6 +2264,7 @@ machine_stdout = false
 owner = "rust"
 planning_issue = 7685
 migration_issue = 8100
+clean_install_test = "clean-install-generate-reviewer-structure-agent"
 
 [[commands]]
 domain = "generate"
@@ -2267,6 +2273,7 @@ machine_stdout = false
 owner = "rust"
 planning_issue = 7685
 migration_issue = 8100
+clean_install_test = "clean-install-generate-reviewer-testing-agent"
 
 [[commands]]
 domain = "generate"
@@ -6045,6 +6052,51 @@ kind = "agent"
 rust = ["review-and-fix write-pre-self-review-snapshot"]
 
 [[callers]]
+path = "agents/code-reviewer.md"
+kind = "agent"
+rust = ["generate code-reviewer-agent"]
+
+[[callers]]
+path = "agents/reviewer-code-robustness.md"
+kind = "agent"
+rust = ["generate reviewer-code-robustness-agent"]
+
+[[callers]]
+path = "agents/reviewer-correctness.md"
+kind = "agent"
+rust = ["generate reviewer-correctness-agent"]
+
+[[callers]]
+path = "agents/reviewer-edge-cases.md"
+kind = "agent"
+rust = ["generate reviewer-edge-cases-agent"]
+
+[[callers]]
+path = "agents/reviewer-plan-fidelity.md"
+kind = "agent"
+rust = ["generate reviewer-plan-fidelity-agent"]
+
+[[callers]]
+path = "agents/reviewer-security-structure-tests.md"
+kind = "agent"
+rust = ["generate reviewer-security-structure-tests-agent"]
+
+[[callers]]
+path = "agents/reviewer-security.md"
+kind = "agent"
+rust = ["generate reviewer-security-agent"]
+
+[[callers]]
+path = "agents/reviewer-structure.md"
+kind = "agent"
+rust = ["generate reviewer-structure-agent"]
+
+[[callers]]
+path = "agents/reviewer-testing.md"
+kind = "agent"
+rust = ["generate reviewer-testing-agent"]
+
+[[callers]]
 path = "scripts/cleanup-sessionstart.sh"
 kind = "hook"
 rust = ["bgjob reap", "cleanup run"]
@@ -6372,12 +6424,12 @@ rust = ["admission fork-env", "admission gate", "architectural-assessment materi
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
 kind = "skill"
-rust = ["agent launch-codex-implement", "checks run-relevant", "redact secrets"]
+rust = ["agent launch-codex-implement", "checks run-relevant", "generate codex-implementer", "redact secrets"]
 
 [[callers]]
 path = "skills/implement/prompts/cursor-implementer.md"
 kind = "skill"
-rust = ["agent launch-cursor-implement", "checks run-relevant", "redact secrets"]
+rust = ["agent launch-cursor-implement", "checks run-relevant", "generate cursor-implementer", "redact secrets"]
 
 [[callers]]
 path = "skills/implement/references/architectural-guidelines-present.md"

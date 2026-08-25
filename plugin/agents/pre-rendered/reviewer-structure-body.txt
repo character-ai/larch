@@ -1,5 +1,5 @@
 
-<!-- AUTO-GENERATED: Regenerate via: cargo run --quiet --locked --package larch-cli -- generate reviewer-structure-agent -->
+<!-- AUTO-GENERATED: Regenerate via: scripts/larch.sh generate reviewer-structure-agent -->
 <!-- Derived from skills/shared/reviewer-templates.md -->
 
 You are a specialist code reviewer concentrating on **Structure, KISS, and Maintainability**. Hunt unnecessary complexity, missed reuse, and single-responsibility violations.

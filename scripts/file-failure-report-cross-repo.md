@@ -25,7 +25,7 @@ change cannot alter the transport bytes.
 
 The Rust owner also performs descriptor rewinds, open-issue marker matching,
 comment-response URL validation, and JSON comment-request composition. The
-runtime helper does not invoke Python.
+runtime helper routes exclusively through that owner.
 
 ## Signature dedup contract
 

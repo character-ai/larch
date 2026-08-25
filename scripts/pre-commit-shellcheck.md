@@ -22,7 +22,7 @@
 ## Edit-in-sync rules
 
 - Changing `-x` semantics, file-selection assumptions, or the parallelism scheme requires updating this file, the hook stanza in `.pre-commit-config.yaml`, the shellcheck CI job in `.github/workflows/ci.yaml`, and `docs/linting.md`.
-- `larch lint` is a Rust workspace command; do not add a Python dependency when editing shellcheck hook dependencies.
+- `larch lint` is a Rust workspace command; do not add another runtime dependency when editing shellcheck hook dependencies.
 - shellcheck-py pin: bumping `shellcheck-py==0.10.0.1` requires updating `.pre-commit-config.yaml` (`additional_dependencies` on the local shellcheck hook). The wrapper itself is version-agnostic; bumps should be validated by running the wrapper against `main` before merging.
 
 ## Local test wiring
@@ -37,4 +37,4 @@ All three should pass on a clean tree. `time make shellcheck` should be substant
 
 This check reads the residual Bash manifest through `scripts/larch.sh residual-bash paths --root "$ROOT"` or the equivalent root-local manifest read. The manifest covers kept hooks, linters, thin wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when present, and residual harnesses. Terminal shared libraries and retired non-thin helpers are out of scope.
 
-This wrapper is developer and CI tooling, not a runtime-projection file. Its manifest filtering is Bash-only and adds no Python requirement.
+This wrapper is developer and CI tooling, not a runtime-projection file. Its manifest filtering is Bash-only and adds no additional runtime requirement.

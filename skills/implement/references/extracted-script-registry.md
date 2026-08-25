@@ -2,7 +2,7 @@
 
 **Consumer**: `/implement` contributors editing extracted script contracts.
 
-**Contract**: Lazy catalog for wrapper/script docs and high-level Python surfaces delegated from `skills/implement/SKILL.md`. This reference is a reader index, not an agent-lint reachability anchor.
+**Contract**: Lazy catalog for wrapper/script docs and high-level Rust command surfaces delegated from `skills/implement/SKILL.md`. This reference is a reader index, not an agent-lint reachability anchor.
 
 **When to load**: Load only when editing or auditing extracted `/implement` script contracts. Normal `/implement` orchestration does not load this catalog.
 

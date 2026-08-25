@@ -15,7 +15,7 @@ Use the existing operational and architecture documents with this reference:
   structure, and release constraints.
 - The [GitHub service inventory](../github-service-inventory.md) and
   [Google service inventory](../google-service-inventory.md) record current
-  operation owners, consumer cutover, and mixed-runtime migration status.
+  operation owners and historical cutover evidence.
 
 ## Supply Chain
 
@@ -288,7 +288,7 @@ Authorization stays on `api.github.com` and is not attached to the bundle-store
 request. Errors retain only a fixed class and optional HTTP status. Tokens,
 authorization headers, signed query strings, certificate paths, and bundle
 content do not enter diagnostics. Release publication consumes this service
-directly in Rust. It has no Python or `gh` fallback.
+directly through its Rust owner. It has no `gh` fallback.
 
 GitHub provenance ties bytes to a commit and workflow, not source or
 infrastructure trust. Checksums index integrity, not trust. `/release` merges
@@ -318,7 +318,7 @@ separately at install time. See [`../../ARCHITECTURAL_INVARIANTS.md`](../../ARCH
 
 ### Bootstrap and atomic installation
 
-`scripts/larch.sh` is the only clean-install exec shim and uses no Python. It
+`scripts/larch.sh` is the only clean-install exec shim. It
 maps the host target for binary identity checks, installs releases only on
 Apple Silicon macOS (`aarch64-apple-darwin`) and fails release install and
 preflight closed on every other host, and verifies the exact immutable
@@ -368,8 +368,8 @@ fallback.
 edits Claude-managed plugin version directories. Claude Code owns orphan
 retention so active sessions keep their original roots. The installed Rust
 driver invokes only Claude, validated larch executables, and the bounded
-`scripts/larch.sh` bootstrap exception. It never invokes Python. Only bootstrap
-children inherit the GitHub CLI auth and config allowlist. Claude and self-check
+`scripts/larch.sh` bootstrap exception. Only bootstrap children inherit the
+GitHub CLI auth and config allowlist. Claude and self-check
 children do not.
 
 Before any marketplace mutation, the current root's bootstrap verifies the
@@ -394,7 +394,8 @@ dev-only `/release` flow builds the released working-tree binary and routes it
 through `scripts/larch.sh` with the validated `LARCH_BINARY` override. Its
 internal `--plugin-root` argument keeps upgrade state bound to the separately
 validated installed cache root. The `release-python-free` rule pins the final
-command set and rejects Python, direct-binary, and direct-`gh` fallback drift.
+command set and rejects restoration of the retired runtime, direct-binary, and
+direct-`gh` fallback drift.
 
 ### Release-version transaction
 
@@ -567,8 +568,8 @@ The provider-neutral transport accepts only validated bucket roots and object
 keys. Uploads are create-only. Downloads use a private temporary file and atomic
 promotion. Provider diagnostics are reduced to fixed, credential-free failure
 classes. The [Google service inventory](../google-service-inventory.md) records
-the Cloud Storage client, scope, permissions, operations, and mixed-runtime
-consumer path.
+the Cloud Storage client, scope, permissions, operations, and current consumer
+path.
 
 Rust owns the shared run lifecycle and standalone `run-log publish` and
 `run-log sync` commands, including terminal archive publication, cache
@@ -722,10 +723,8 @@ live-mutation context; direct recovery requires explicit operator mode.
 ## Typed Service Boundaries
 
 The [GitHub service inventory](../github-service-inventory.md) is the canonical
-mixed-runtime operation ledger. A Rust adapter does not transfer command
-ownership or authorize Python removal. Each command stays with its recorded
-owner until implementation parity, consumer cutover, Python removal, and
-clean-install execution land atomically.
+typed operation ledger. It records the adapter and command owner for each
+operation and the clean-install coverage that holds the final boundary.
 
 ### Release and asset operations
 
@@ -733,8 +732,9 @@ The release boundary exposes typed methods for bounded listing, duplicate-safe
 tag selection, policy reads and writes, draft create and update, publish,
 upload, and bounded download. Draft validation binds version, PR head, tag,
 exact run, mutable draft, three assets, digests, `LICENSE`, and attestations before
-merge. Tags use the closed typed Git adapter. Callers use `scripts/larch.sh`.
-They do not use Python, `gh`, raw Git, arbitrary HTTP, or a fallback.
+merge. Tags use the closed typed Git adapter. Callers use `scripts/larch.sh`
+and the typed service boundaries, with no raw `gh`, raw Git, arbitrary HTTP,
+or fallback.
 Publication and installation stay with their owning callers.
 
 Ambiguous create, upload, edit, publish, and Latest-promotion outcomes read back
@@ -782,7 +782,7 @@ checks ancestry through gix, and uses typed release and attestation services. It
 publishes without changing Latest, verifies the immutable release, and only
 then promotes it. Ambiguous promotion reads back Latest before a retry. The
 final Latest state is verified. The release commands expose no raw Git, `gh`,
-URL, GraphQL, or Python fallback.
+URL, GraphQL, or alternate implementation fallback.
 
 Release policy verification reads only the immutable-release setting. It does
 not enable merge commits or immutable releases, and it never writes repository
@@ -852,9 +852,8 @@ modes, IDs, and flags, but no file content or upstream diagnostic text.
 
 `git stage`, `git commit`, and `git amend-add` run through
 `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. The script is the sole production
-bootstrap and version-validation entrypoint. Remaining Python callers resolve
-that script. They do not select an implementation, execute `bin/larch`
-directly, invoke Cargo, or fall back to Python command behavior.
+bootstrap and version-validation entrypoint. Callers do not select an
+implementation, execute `bin/larch` directly, or invoke Cargo.
 
 Rust composes closed `AddRequest`, `CommitRequest`, and
 `InterpretTrailersRequest` operations. The installed Git executable remains the
@@ -876,7 +875,7 @@ repository-provided path as the `git` executable.
 `docs/git-operation-inventory.md` is the checked ownership boundary.
 `git-ownership` has no baseline or production suppression. It rejects inventory
 or `gix` drift, direct or aliased Git construction, bound executables, raw or
-generic argv, a widened typed surface, restored Python entrypoints or calls, and
+generic argv, a widened typed surface, restored retired-runtime entrypoints or calls, and
 the retired `push rebase` state machine. Only `#[cfg(test)]`,
 `larch-test-support` fixture oracles, and the lint bootstrap are bounded
 non-production exceptions.
@@ -913,7 +912,7 @@ non-timeout pull-request-state failure retains the legacy conservative
 `UNKNOWN` conflict state and queries the fixed `pull/<number>/head` selector,
 so the monitor can still consume independently validated check data; a deadline
 remains a status failure. The commands are read-only and have no `gh api` or
-Python fallback. `ci wait --output-file` publishes its bounded `KEY=value`
+alternate implementation fallback. `ci wait --output-file` publishes its bounded `KEY=value`
 result and completion marker through the shared private atomic wire writer.
 
 The Rust-owned `merge pr` and `merge wait` commands use the same credential and

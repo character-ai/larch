@@ -4,7 +4,7 @@ Rust-owned mechanical gate invoked from `/implement` Step 8+ after the Step 9a.1
 
 ## Ownership trace
 
-`skills/implement/scripts/oos-disposition-gate.sh` is a thin compatibility wrapper. It selects the active plugin root and executes `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos disposition-gate`. `crates/larch-cli/src/main.rs` dispatches that verb to `crates/larch-cli/src/oos_commands.rs`; `crates/larch-core/src/issue/oos_disposition.rs` and `crates/larch-core/src/issue/oos_record.rs` own its counters, state, and block grammar. No Python CLI participates in this command path.
+`skills/implement/scripts/oos-disposition-gate.sh` is a thin compatibility wrapper. It selects the active plugin root and executes `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos disposition-gate`. `crates/larch-cli/src/main.rs` dispatches that verb to `crates/larch-cli/src/oos_commands.rs`; `crates/larch-core/src/issue/oos_disposition.rs` and `crates/larch-core/src/issue/oos_record.rs` own its counters, state, and block grammar.
 
 ## Invocation
 

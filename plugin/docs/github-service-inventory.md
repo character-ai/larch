@@ -1,16 +1,14 @@
-# GitHub Service Migration Inventory
+# GitHub Service Inventory
 
-This inventory separates Rust implementation parity, production consumer
-cutover, and Python removal. A Rust adapter does not transfer command ownership
-or authorize deletion of the Python path. It records every GitHub service
-operation, the adapter method that owns it, the command that owns it today, and
-the roadmap issues responsible for planning later cutovers. Exact atomic leaf
-ownership lives separately in the command registry.
+This inventory records every GitHub service operation, its adapter method, its
+current command owner, and the issues that established the boundary. Historical
+completion columns remain in the linted matrix for audit continuity. Exact
+command and implementation-leaf ownership lives in the command registry.
 
 ## Checked scope
 
-The scan covered production Rust, Python, skills, agents, hooks, scripts, and CI
-configuration. It excluded documentation, fixtures, historical run logs, and the
+The scan covers production Rust, skills, agents, hooks, scripts, and CI
+configuration. It excludes documentation, fixtures, historical run logs, and the
 generated `plugin/` projection. `service-ownership` in `crates/larch-lint`
 mechanically holds the boundary this inventory records: concrete clients,
 service request surfaces, and `gcloud` stay inside `crates/larch-adapters`.
@@ -36,11 +34,11 @@ over that client and hide REST URLs, GraphQL documents, and the client. Only
 
 The tab-separated matrix below is the linted ownership contract. Operation
 groups are unique. Adapter paths must exist, planning owners must be concrete
-roadmap or completed-leaf issues, and every listed command must match the
-recorded owner and the three independent migration milestones. A command may
+roadmap or completed-leaf issues, and every listed command must match its final
+recorded owner and completed historical milestones. A command may
 appear in more than one row when it consumes several typed adapter operations.
 Issue-dependency adapter parity landed in #7841, and sub-issue adapter parity
-in #8164. The `issue-reads` row records the #7682 command cutovers so far: the
+in #8164. The `issue-reads` row records the #7682 command cutovers: the
 issue query verbs moved to Rust in #8167, and `issue list-issues` plus
 `issue fetch-issue-details` followed in #8168. The shared typed list operation
 returns a bounded result that separates returned issue rows from raw REST rows
@@ -115,12 +113,10 @@ read-back, so it also shares the comment read and mutation rows.
 Comment create and edit operations use the same mutation owner and verify both
 their mutation echo and a same-surface comment-list read-back; deletion verifies
 absence from that list. Issue creation verifies its response with an exact
-same-issue GET and names an unverified orphan for best-effort closure. Former
-in-process Python workflow callers and external command consumers enter through
-`scripts/larch.sh`; `final-report write` calls the same Rust tracking owner in
-process so its own output envelope stays unpolluted. The retained tracking
-module contains no GitHub behavior. The rows that still name Python-owned issue
-commands enumerate them instead of claiming the whole domain.
+same-issue GET and names an unverified orphan for best-effort closure. External
+command consumers enter through `scripts/larch.sh`; `final-report write` calls
+the same Rust tracking owner in process so its own output envelope stays
+unpolluted.
 
 The three `issue-backlog-*` rows record the #8183 cutover of
 `analyze-issues fetch` and `analyze-issues run`. They read bounded issue and
@@ -139,10 +135,9 @@ issue read plus the bounded merged-main history from the operations adapter),
 `label-check` (typed label list with an exact local match), `version-window`
 (local typed Git history only; no GitHub service), and `comment` (the shared
 issue-mutation owner's authorized, redacted, read-back-verified comment
-publication). These verbs were born Rust-owned with no Python predecessor, so
-the command registry — a Python-migration ledger requiring Python target
-metadata — carries no rows for them, and the matrix's linted command selectors
-cannot name them; their adapter owners are the already-listed
+publication). These verbs were born Rust-owned with no predecessor and remain
+recorded in the final command registry. Their adapter owners are the
+already-listed
 `crates/larch-adapters/src/github_rest.rs`,
 `crates/larch-adapters/src/github/operations.rs`, and
 `crates/larch-adapters/src/github/issue_mutation.rs` rows.
@@ -152,9 +147,7 @@ The #8577 cutover moved `design parse-flags`, `design route`, and
 title predicates run in-process and its pause bridge delegates to the
 Rust-owned `design pause-load`, whose typed marker read joined `issue-reads` in
 issue #8589. `design init-runparams` drives the shared tracking rename in
-process, so it joined the `tracking-issue-lifecycle` row; the remaining Python
-design verbs are enumerated on the `pull-requests` row instead of claiming the
-whole domain.
+process, so it joined the `tracking-issue-lifecycle` row.
 
 The #8592 cutover moved `design log-publish` to Rust. It publishes sanitized
 design session archives through the shared run-log lifecycle (object storage /
@@ -164,15 +157,13 @@ cache) and no longer creates a GitHub pull request, so it left the
 The #8591 cutover moved `design publish` to Rust. It reaches the pull-request
 service only through the Rust `design log-publish` bridge, and its own direct
 mutation is the published plan receipt through the shared issue-mutation owner,
-so it left the Python `pull-requests` row for the Rust
-`pull-request-design-migrated` row.
+so it moved from `pull-requests` to the `pull-request-design-migrated` row.
 
 Issue #8622 moved the four ship routing and pre-fix commands to Rust.
 `ship pre-fix-rebase` resolves the checked-out repository through the typed
 `gh resolve-repo` owner, so it joins `repository-metadata`. The other three
 commands reach no GitHub service. Issue #8628 moved `ship pr` and
-`ship reconcile-manual-merge` to the typed pull-request service. The broad
-Python row now lists only its surviving design and `pr` commands.
+`ship reconcile-manual-merge` to the typed pull-request service.
 
 Issue #8798 moved `forked-repo setup` to Rust. Its fork existence and immediate
 parent check use the typed repository-metadata read, whose bounded repository
@@ -188,7 +179,7 @@ merge commands through the reviewed process seam.
 Issue #8788 moved `merge pr` and `merge wait` to Rust. The command owner uses
 the typed pull-request, Actions, direct-merge, and fixed merge-queue operations.
 Every ship and release consumer now reaches that owner through verified larch
-dispatch, and the Python registrations and module were removed atomically.
+dispatch. The retired registrations and module were removed atomically.
 
 Issue #8797 moved `token check-budget`, `token compute-pr-line-counts`, and its
 `token compute-pr-lines` alias to Rust. Line counting uses the typed, bounded
@@ -245,24 +236,18 @@ umbrella-conversion	crates/larch-adapters/src/github/issue_mutation.rs	rust	#768
 <!-- markdownlint-enable MD010 -->
 
 `crates/larch-lint/data/command-registry.toml` is the authoritative per-command
-ledger. Its required `planning_issue` records roadmap placement, while optional
-`migration_issue` records only the exact executable leaf accountable for the
-atomic cutover. Pending rows without a filed leaf leave `migration_issue`
-absent instead of assigning a broad umbrella. Each eventual leaf implements
-Rust parity, switches every consumer, and removes the Python command in one PR.
-The `command-registry` rule rejects a Rust owner whose Python removal is
-incomplete, so a partial cutover cannot land.
+ledger. Its required `planning_issue` records historical roadmap placement and
+`migration_issue` records the exact executable leaf that established the final
+owner. The `command-registry` rule requires every live caller to match a Rust
+row and clean-install fixture, and rejects any retired row with a live caller.
 
 ## Completed shared cutovers
 
 `gh remote-repo`, `gh resolve-repo` (#7764), `gh run-logs`, `gh workflow-path`
-(#7765), and `ci-timing harness`, `ci-timing jobs` (#8098)
-have Rust parity, consumer cutover, and Python removal complete. No Python
-registration or superseded command implementation remains for them. Their
+(#7765), and `ci-timing harness`, `ci-timing jobs` (#8098) are Rust-owned. Their
 callers enter the single larch executable through `scripts/larch.sh`; the
 subcommands use typed Rust adapters rather than GitHub CLI API shell-outs.
-`ci-timing rust-jobs` (#8862) extends that same typed jobs owner without a
-Python predecessor.
+`ci-timing rust-jobs` (#8862) extends that same typed jobs owner.
 `rebalance-tests run` (#8343) likewise uses the typed Actions and pull-request
 owners for its complete Rust-only workflow.
 
@@ -271,10 +256,8 @@ owners for its complete Rust-only workflow.
 The only production Rust invocation of `gh` is the core-owned, fixed
 `gh auth token --hostname github.com` credential lookup. Rust performs GitHub
 API operations only through the authenticated Octocrab adapter, never through
-`gh api`; `gcloud` is never a runtime service fallback. Residual `gh` CLI
-callers in Python, scripts, skills, and CI belong to commands still owned by
-Python and migrate with their own leaves. The `gh-argv-literal` rule keeps raw
-`gh` construction inside approved wrappers. The clean-install `gh` usage in
+`gh api`; `gcloud` is never a runtime service fallback. The `gh-argv-literal`
+rule keeps raw `gh` construction inside approved wrappers. The clean-install `gh` usage in
 `scripts/larch.sh` downloads and verifies the release binary before runtime.
 
 ## Redaction and diagnostics

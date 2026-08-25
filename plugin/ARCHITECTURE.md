@@ -2,9 +2,8 @@
 
 Larch ships one released Rust executable named `larch`. The dependency-free
 `larch-harness-mark` and `larch-residual-bash-paths` developer/CI helpers are
-the narrow exceptions. The Rust workspace grows by domain, not by copying the
-Python package tree. Python remains migration code until each command moves
-directly to its Rust owner.
+the narrow exceptions. The Rust workspace grows by domain, with one owner for
+each runtime behavior.
 
 ## Crates
 
@@ -50,35 +49,32 @@ test boundaries, coverage, external access, and CI partitioning.
 - Preserve byte paths at repository boundaries. Parse external text once into
   typed data. Treat repository configuration, API responses, and workflow text
   as untrusted data.
-- Cut migrated commands directly to Rust. Do not add Python, `gh`, `gcloud`, or
-  Git fallbacks outside the approved compatibility boundaries.
+- Keep runtime commands in Rust. Do not add alternate language runtimes, `gh`,
+  `gcloud`, or Git fallbacks outside the approved compatibility boundaries.
 
 ## Command dispatch
 
 The executable parses `larch <domain> <verb> [arguments]` with Clap. Domains
 and verbs are closed enums. An unknown command is an error and never delegates
-to Python or another executable. The `example echo` command is non-production;
-it proves that the composition root dispatches into `larch-core` while command
-ports migrate incrementally.
+to another runtime or executable. The `example echo` command is non-production;
+it proves that the composition root dispatches into `larch-core`.
 
 The workspace package version is the compiled binary version. The CLI test
 suite checks it against `.claude-plugin/plugin.json`, which is the plugin
 release version selected by the release and installation decision in #7670.
 
-The migration-only command registry lives in
-`crates/larch-lint/data/command-registry.toml`. It records one owner and three
-independent milestones for each command: implementation parity, production
-consumer cutover, and Python removal. `larch-lint` imports the Python registry,
-inventories production callers, and blocks ownership or caller drift. The CLI
-composition root dispatches to this repository-only migration ledger but does
-not interpret it. See
+The final command registry lives in
+`crates/larch-lint/data/command-registry.toml`. It records each command's Rust
+or retired owner, machine-stdout contract, historical planning and migration
+issues, optional clean-install fixture, and production callers. `larch-lint`
+inventories production callers and blocks ownership or caller drift. The CLI
+composition root exposes this repository-policy surface through the `lint`
+domain but does not use the registry for runtime dispatch. See
 `docs/rust-command-registry.md` for the update workflow.
 
-Before a command advances to implementation parity, exercise its Python and
-Rust owners through the repository's [black-box parity
-harness](docs/rust-parity-harness.md). Cases run in isolated roots with live
-service credentials and endpoints disabled. They compare exit status, output,
-files, and declared side-effect records against reviewed goldens.
+Command contracts are covered by crate tests, isolated black-box tests, and
+reviewed goldens. Tests disable live service credentials and endpoints and
+check exit status, output, files, and declared side effects where applicable.
 
 ## Dependency policy
 
@@ -135,8 +131,8 @@ work:
   every production Git surface and its one owner. `larch-lint` rejects matrix
   drift, concrete `gix` use outside `larch-adapters`, duplicate Git owners,
   direct Rust Git processes, changes to the closed CLI operation set, and
-  non-atomic final rows for the #7675 commands. A later-domain row remains
-  Python-owned until its named migration issue performs the atomic cutover.
+  non-atomic final rows for the #7675 commands. Every live row names its final
+  Rust owner and exact implementation leaf.
 - Product child processes use the `ExternalProcessRunner` core port. Its closed
   enum permits typed Claude, Codex, Cursor, Git, the fixed GitHub credential
   lookup, and #7670 larch bootstrap or self-check operations. Larch program
@@ -150,8 +146,7 @@ work:
   `larch-core::process_identity` and one production host in
   `larch-adapters::process_identity`. CLI modules may only parse and compose
   that boundary. The review-and-fix and plan-review loop-identity commands use
-  this owner directly; those migrated commands retain neither a Python fallback
-  nor a duplicate Rust kill-log writer.
+  this owner directly and retain no duplicate kill-log writer.
 - GitHub code uses a larch-owned core service port. A single core resolver
   acquires the active GitHub CLI credential through the fixed
   `gh auth token --hostname github.com` process operation. The clean child

@@ -10,12 +10,12 @@ Behavioral guidelines for authoring Bash commands. Merge with project-specific i
 
 Inside an orchestrator Bash tool block, `grep` is a Claude Code shell function, not `/usr/bin/grep`. It rewrites to the `claude` CLI in `ugrep` mode. A non-zero top-level wrapper exit can terminate the whole Bash block even with `|| true`, `|| echo NO_MATCH`, `if grep ...; then`, or `{ grep ...; } || X`. The canonical issue #3104 shape is `grep -q PATTERN FILE || echo X` aborting before `echo X` runs.
 
-Two patterns are safe for the wrapper-exit trap. They solve only that trap. Producer probes still need an explicit path operand such as `.`, `python/`, or `docs/file.md`, or `< /dev/null` for intentional empty-stdin searches.
+Two patterns are safe for the wrapper-exit trap. They solve only that trap. Producer probes still need an explicit path operand such as `.`, `scripts/`, or `docs/file.md`, or `< /dev/null` for intentional empty-stdin searches.
 
 - **`command grep PATTERN FILE || X`**: bypasses the function and runs the system binary. Prefer it for `command grep -v ... > tmp` and other non-`if` probes. **Not safe in `if` conditions on bash 3.2**.
 - **`( grep PATTERN FILE ) || X`**: wraps the function's inner exec subshell so the harness sees a normal subshell exit. Use **`( command grep ... )`** for Bash 3.2 `if` probes. Use this when you want `ugrep` behavior; otherwise prefer `command grep`.
 
-Every grep-family producer probe needs an explicit path operand such as `.`, `python/`, or `docs/file.md`, or `< /dev/null`, including inside subshells and `command` forms. Wrapping does not prevent background stdin blocking.
+Every grep-family producer probe needs an explicit path operand such as `.`, `scripts/`, or `docs/file.md`, or `< /dev/null`, including inside subshells and `command` forms. Wrapping does not prevent background stdin blocking.
 
 > **`if command grep` is NOT safe on bash 3.2**: on macOS bash 3.2.57, `if command grep ...; then` triggers `set -e` when grep exits non-zero. For `if` probes, use `( command grep PATTERN FILE )`, and still pass a path or `< /dev/null`. Agent-lint G010 backstops committed shell scripts.
 
@@ -25,7 +25,7 @@ The pinned `agent-lint` rule S061 (bare-grep-probe) scans orchestrator-facing Ma
 
 ### Background stdin hangs
 
-Probe `rg`, `ripgrep`, and `grep` calls must pass an explicit path when they may run as the first command in an orchestrator Bash block. Use `.` or a concrete path such as `python/`, `skills/`, or `docs/file.md`.
+Probe `rg`, `ripgrep`, and `grep` calls must pass an explicit path when they may run as the first command in an orchestrator Bash block. Use `.` or a concrete path such as `scripts/`, `skills/`, or `docs/file.md`.
 
 Use `< /dev/null` only for intentional empty stdin. A no-path grep-family probe can block forever in background Bash mode because stdin may be an open pipe with no EOF.
 
@@ -35,7 +35,7 @@ The same agent-lint S061 exception mechanism covers rare intentional stdin-searc
 
 Background grep-family probes must use absolute paths or known bounded roots. Do not derive search roots with `../` or `..` segments from tmpdir variables such as `$IMPLEMENT_TMPDIR`.
 
-Prefer direct bounded commands over discovery greps when a CLI can answer the question, such as `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" ... --help`.
+Prefer direct bounded commands over discovery greps when a CLI can answer the question, such as `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" <domain> <verb> --help`.
 
 The same agent-lint S061 exception mechanism is only for rare fixtures or reviewed exceptions.
 

@@ -4,7 +4,7 @@
 mutable flushes, transcript capture, durable manifest updates, archive creation,
 materialization, publication, synchronization, storage preflight, and the five
 shared lifecycle verbs, historical layout migration, and retroactive repair
-sweeps. `python3 python/cli.py run-log ...` owns none of these verbs.
+sweeps.
 The language-neutral URI, provider, archive, cache, sync, and error rules live
 in [Run-log storage contracts](run-log-archive.md).
 
@@ -74,8 +74,8 @@ an empty corpus.
 `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. Archive success emits `ARCHIVE_PATH`,
 `ARCHIVE_SHA256`, `MANIFEST_SHA256`, and `MEMBER_COUNT`; materialization success
 emits `RUN_DIR`, `MANIFEST_SHA256`, `MEMBER_COUNT`, and `EXPANDED_SIZE`.
-Python consumers invoke those commands through the same verified bootstrap and
-do not retain an archive, publication, sync, or provider fallback.
+All external consumers invoke those commands through the same verified
+bootstrap and do not retain an archive, publication, sync, or provider fallback.
 
 ## Rust-owned initialization and entry writes
 
@@ -92,10 +92,10 @@ Exit codes preserve the retired owner's split: `1` for a refusal (unknown
 batch, wrong mode, sanitizer rejection, unsupported category, malformed
 integer flag) and `2` for an I/O failure.
 
-Two behaviors are stricter than the retired Python owner, both fail-closed:
+Two behaviors are stricter than the retired runtime owner, both fail-closed:
 `--log-root` is refused when it escapes a set `IMPLEMENT_TMPDIR` (shared with
 `run-log manifest`), and payload redaction covers every secret family the Rust
-redaction owner knows, which is a superset of the families the Python owner
+redaction owner knows, which is a superset of the families the retired owner
 scrubbed.
 
 `run-log append-entry` and `run-log append-failure` serialize on a
@@ -107,12 +107,10 @@ separate processes never interleave a record.
 `run-log checkpoint`, `refresh`, `prepare-terminal-snapshot`, and
 `capture-transcript` are Rust-owned. Every production caller enters through
 `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. Rust controls flush ordering, batch
-aggregation, and manifest reconciliation. It has no remaining Python payload
-dependency: `token mark`, `token report`, and `difficulty write-record` are
-Rust-owned in-process (#8506, #8507, #8501). `final-report write` additionally reads the #7679 model
-fallback and assessment payloads and the #7681 plan and PR payloads. Those
-Python payload commands never write a manifest, timing ledger, transcript,
-archive, or run-log batch directly.
+aggregation, and manifest reconciliation. `token mark`, `token report`, and
+`difficulty write-record` are Rust-owned in process (#8506, #8507, #8501).
+`final-report write` additionally reads the #7679 model fallback and assessment
+payloads and the #7681 plan and PR payloads.
 Batch replacement and append use same-directory temporary
 files, atomic renames, directory syncs, and the shared append lock. Repeating a
 flush replaces derived reports instead of duplicating their rows.
@@ -159,9 +157,8 @@ manifest writer. It publishes through `larch_adapters::atomic_write_utf8_in`,
 which writes and syncs a same-directory temporary file, atomically renames it,
 then syncs the containing directory.
 
-Python's manifest compatibility module is read-only: it parses existing
-manifests and exposes state readers, while every production mutation enters
-through `scripts/larch.sh run-log manifest`.
+Every manifest reader and production mutation uses the shared Rust manifest
+owner; external mutations enter through `scripts/larch.sh run-log manifest`.
 
 The Rust-owned archive lifecycle verbs use their own machine envelopes.
 Provider failures

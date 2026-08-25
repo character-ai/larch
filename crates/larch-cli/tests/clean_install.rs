@@ -203,10 +203,17 @@ impl CleanInstallCase {
             // selector rejects its unsupported extra argument.
             | "clean-install-generate-check"
             | "clean-install-generate-code-reviewer-agent"
+            | "clean-install-generate-codex-implementer"
+            | "clean-install-generate-cursor-implementer"
             | "clean-install-generate-pre-rendered-reviewer-prompts"
             | "clean-install-generate-reviewer-code-robustness-agent"
+            | "clean-install-generate-reviewer-correctness-agent"
+            | "clean-install-generate-reviewer-edge-cases-agent"
             | "clean-install-generate-reviewer-plan-fidelity-agent"
+            | "clean-install-generate-reviewer-security-agent"
             | "clean-install-generate-reviewer-security-structure-tests-agent"
+            | "clean-install-generate-reviewer-structure-agent"
+            | "clean-install-generate-reviewer-testing-agent"
             | "clean-install-voting-code-review-classification-header"
             | "clean-install-voting-compose-tally-record"
             | "clean-install-voting-findings-classification-header"
@@ -1179,6 +1186,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "code-reviewer-agent",
     ),
     CleanInstallCase::new(
+        "clean-install-generate-codex-implementer",
+        "generate",
+        "codex-implementer",
+    ),
+    CleanInstallCase::new(
+        "clean-install-generate-cursor-implementer",
+        "generate",
+        "cursor-implementer",
+    ),
+    CleanInstallCase::new(
         "clean-install-generate-pre-rendered-reviewer-prompts",
         "generate",
         "pre-rendered-reviewer-prompts",
@@ -1189,14 +1206,39 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "reviewer-code-robustness-agent",
     ),
     CleanInstallCase::new(
+        "clean-install-generate-reviewer-correctness-agent",
+        "generate",
+        "reviewer-correctness-agent",
+    ),
+    CleanInstallCase::new(
+        "clean-install-generate-reviewer-edge-cases-agent",
+        "generate",
+        "reviewer-edge-cases-agent",
+    ),
+    CleanInstallCase::new(
         "clean-install-generate-reviewer-plan-fidelity-agent",
         "generate",
         "reviewer-plan-fidelity-agent",
     ),
     CleanInstallCase::new(
+        "clean-install-generate-reviewer-security-agent",
+        "generate",
+        "reviewer-security-agent",
+    ),
+    CleanInstallCase::new(
         "clean-install-generate-reviewer-security-structure-tests-agent",
         "generate",
         "reviewer-security-structure-tests-agent",
+    ),
+    CleanInstallCase::new(
+        "clean-install-generate-reviewer-structure-agent",
+        "generate",
+        "reviewer-structure-agent",
+    ),
+    CleanInstallCase::new(
+        "clean-install-generate-reviewer-testing-agent",
+        "generate",
+        "reviewer-testing-agent",
     ),
     CleanInstallCase::new(
         "clean-install-block-issue-add-blocked-by",

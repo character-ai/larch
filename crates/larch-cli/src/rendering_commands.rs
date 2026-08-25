@@ -2199,7 +2199,7 @@ fn generate_one(
 }
 
 fn generator_invocation(verb: &str) -> String {
-    format!("cargo run --quiet --locked --package larch-cli -- generate {verb}")
+    format!("scripts/larch.sh generate {verb}")
 }
 
 fn reviewer_text(root: &Path, reviewer: &Reviewer) -> Result<String, String> {

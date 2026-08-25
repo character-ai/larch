@@ -11,7 +11,7 @@ SessionStart hook registered in `hooks/hooks.json` to idempotently install the l
 - Mutates only `~/.cache/larch/statusline.sh`, `<repo>/.claude/settings.local.json`, and the clone-local `current` pointer described above.
 - Honors `LARCH_STATUSLINE_DISABLE=1`.
 - The installed launcher caches each clone's larch render for 5 seconds by default. `LARCH_STATUSLINE_REFRESH_SECONDS` sets a positive override. The cache also stores empty renders.
-- Refuses symlinked target paths or ancestors through the Python runtime.
+- Refuses symlinked target paths or ancestors through the Rust runtime.
 - Performs no network calls and exits 0 with no stdout/stderr on every missing-tool or failure path.
 
 ## Harness

@@ -14,7 +14,7 @@
 
 ### Severity classification contract
 
-Gate B severity mode, counts, ordered ids, table rows, and per-finding prompt fields are Python-owned. Use these commands as authority:
+Gate B severity mode, counts, ordered ids, table rows, and per-finding prompt fields are Rust-owned. Use these commands as authority:
 
 - `scripts/larch.sh plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"`
 - `scripts/larch.sh plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant gate-b`

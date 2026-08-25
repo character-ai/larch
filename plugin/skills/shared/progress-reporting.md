@@ -90,7 +90,7 @@ Examples:
 
 ### Compact status tables (`📊` lines)
 
-**`/design` Step 3 exception**: Step 3 and Step 3 resume fences do not format reviewer tables in the orchestrator. Python writes the pre-rendered single line to `$DESIGN_TMPDIR/reviewer-status-table.txt`; the orchestrator Read tool emits that file verbatim after the completion gate. If the file is absent or a symlink, print the SKILL.md missing-table warning. Do not apply the manual formatting rules below to Step 3.
+**`/design` Step 3 exception**: Step 3 and Step 3 resume fences do not format reviewer tables in the orchestrator. The Rust owner writes the pre-rendered single line to `$DESIGN_TMPDIR/reviewer-status-table.txt`; the orchestrator Read tool emits that file verbatim after the completion gate. If the file is absent or a symlink, print the SKILL.md missing-table warning. Do not apply the manual formatting rules below to Step 3.
 
 For other skills and phases, include elapsed time immediately after each `✅` and `❌`. The timer for each entry starts when that agent/reviewer was launched.
 

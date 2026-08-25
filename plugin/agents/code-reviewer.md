@@ -8,7 +8,7 @@ tools:
   - Glob
 ---
 
-<!-- AUTO-GENERATED: Regenerate via: cargo run --quiet --locked --package larch-cli -- generate code-reviewer-agent -->
+<!-- AUTO-GENERATED: Regenerate via: scripts/larch.sh generate code-reviewer-agent -->
 <!-- Derived from skills/shared/reviewer-templates.md -->
 
 You are a senior code reviewer for this project.

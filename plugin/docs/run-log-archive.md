@@ -1,14 +1,11 @@
 # Run-log storage contracts
 
-This document defines the language-neutral run-log storage boundary. Rust owns
-the production lifecycle, archive, provider, synchronization, and publication
-paths. Python retains bounded readers, local compatibility types, and typed
-consumers of those Rust commands. Its legacy `object_store.py` adapter remains
-only for compatibility and test callers; it is not a production command owner.
+This document defines the run-log storage boundary. Rust owns the lifecycle,
+archive, provider, synchronization, publication, and reader paths.
 
 The shared provider fixture is `tests/fixtures/run-log-object-store-contract-v1.json`.
-Python and the Rust GCS transport both load it in tests. A later runtime
-migration must preserve this contract or version it explicitly.
+Rust storage tests load it directly. A later storage change must preserve this
+contract or version it explicitly.
 
 ## Configuration resolution
 
@@ -131,11 +128,10 @@ also requires `LARCH_R2_ACCOUNT_ID` and `LARCH_R2_ENDPOINT`. The endpoint must
 be `https://<account-id>.r2.cloudflarestorage.com`, and the account ID must
 match the host. GCS uses the narrow Rust transport through
 `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh` and standard Google Application Default
-Credentials. In a local `.git` checkout without `LARCH_BINARY`, the Python
-adapter first runs the locked `larch-cli` release build and supplies the result
-to the shim through a process-scoped override. Installed plugins and explicit
-`LARCH_BINARY` overrides do not build. Credentials should grant list, read, and
-write only to approved tool and client-repository prefixes.
+Credentials. Local development checkouts may supply a validated `LARCH_BINARY`
+override to the wrapper. Installed plugins use the release-matched executable
+and do not build. Credentials should grant list, read, and write only to
+approved tool and client-repository prefixes.
 
 ## Machine-readable errors
 
@@ -151,12 +147,10 @@ them to this closed set before orchestration consumes them:
 | `not-found` | The requested bucket or object does not exist | 5 |
 | `local-io` | A local source, destination, or atomic file operation failed | 6 |
 
-Python also uses `configuration` before transport selection. In memory, an
-error carries only `kind`, `provider`, and `operation`. The Rust GCS command
-uses the fixed exit mapping above. Its stderr label for `invalid-response` is
-`invalid-request-or-response`; Python normalizes exit 2 back to
-`invalid-response`. Do not parse provider stderr or expose it as the machine
-contract.
+Configuration failures occur before transport selection. In memory, an error
+carries only `kind`, `provider`, and `operation`. The GCS command uses the fixed
+exit mapping above and labels exit 2 as `invalid-request-or-response`. Do not
+parse provider stderr or expose it as the machine contract.
 
 ## Archive, publication, and synchronization
 
@@ -218,8 +212,8 @@ perform no archive, provider, pending-state, or cache operation and exit zero
 with `RUN_LOG_STORAGE=disabled`, `RUN_LOG_STORAGE_REASON=<token>`, and their
 normal `PUBLISH_OK=true` or `SYNC_OK=true` terminal field. Publish also emits
 `RUN_LOG_PUBLICATION=skipped-disabled`; sync emits zero archive counters and an
-empty `CORPUS_ROOT` and `INVENTORY_SHA256`. Python analyzer consumers reject
-that skipped sync as an empty corpus and return actionable storage guidance.
+empty `CORPUS_ROOT` and `INVENTORY_SHA256`. Analyzer consumers reject that
+skipped sync as an empty corpus and return actionable storage guidance.
 Analysis commands with an explicit `--log-root` continue to read that local
 corpus without storage or network access.
 
@@ -256,20 +250,12 @@ local file reads for all later files and waves in the same invocation.
 Cross-session `/design` pause and resume require this verified published cache.
 Pause rejects disabled storage before writing a GitHub pause marker.
 
-## Rust handoff
+## Ownership
 
 Rust owns `run-log archive`, `run-log materialize`, `run-log publish`,
 `run-log sync`, `run-log storage-preflight`, and the shared lifecycle verbs,
 including terminal archive publication and cache promotion. Configuration
 resolution lives in `larch-core`; GCS uses `GoogleCloudStorage`, while S3 and
-R2 use the official AWS SDK through `S3Storage`. Python keeps typed local-cache
-consumers and the compatibility/test `object_store.py` adapter; it has no
-production publication, synchronization, archive, provider, or layout-migration
-fallback. Both runtimes preserve the same credential-free error classes.
-
-The run-log command cutover is complete. Future removal of a bounded Python
-compatibility helper follows `docs/python-migration.md` and I-Cutover-1 without
-reopening a dual owner: preserve the shared fixtures, move its callers, and
-delete the helper only when its final consumer has moved. Do not add a
-compatibility shim, bridge, implementation selector, fallback, or dual-write
-period.
+R2 use the official AWS SDK through `S3Storage`. All providers preserve the
+same credential-free error classes. Do not add a compatibility shim, bridge,
+implementation selector, fallback, or dual-write period.

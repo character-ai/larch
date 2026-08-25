@@ -22,7 +22,7 @@ The Rust verb runs `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos disposition-check
 
 OOS-checkpoint `NEXT_ACTION=stall` is not the post-driver Step 16 stall path. It halts Step 8+ until the checkpoint gap or bookkeeping failure is resolved.
 
-The Rust command writes the machine contract directly, so inherited Python quiet mode cannot suppress `NEXT_ACTION`.
+The Rust command writes the machine contract directly, so inherited quiet mode cannot suppress `NEXT_ACTION`.
 
 ## Invariants
 

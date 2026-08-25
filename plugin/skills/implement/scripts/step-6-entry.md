@@ -19,7 +19,7 @@ Child mode receives the validated persisted `REPO_ROOT` and immutable launch ide
 
 ## KV grammar
 
-The Python entrypoint writes `$IMPLEMENT_TMPDIR/.review-boundary-passed` before child legs.
+The Rust entrypoint writes `$IMPLEMENT_TMPDIR/.review-boundary-passed` before child legs.
 
 Normal entry (`--force-checks false`) runs `review-and-fix check-changes` with these pinned baselines under `$IMPLEMENT_TMPDIR`:
 
@@ -56,7 +56,7 @@ Verified identity fields are appended to the merge-result env after child-side r
 - Step 6 relies on the telemetry contract in `skills/shared/session-setup-output.md` and reads the session-env copy under `$IMPLEMENT_TMPDIR`.
 - Uses bgjob step slug `implement-step6-checks` and routes completion through `bgjob/implement-step6-checks.result.env`.
 - The wrapper does not write legacy wait markers; bgjob owns completion state.
-- The wrapper does not call `review-and-fix check-changes` directly. Python owns the composite routing.
+- The wrapper does not call `review-and-fix check-changes` directly. Rust owns the composite routing.
 
 ## Edit-in-sync
 

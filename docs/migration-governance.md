@@ -22,9 +22,9 @@ per-field cap for historical plan bodies. Each page read, including its bounded
 retry sequence, keeps the ordinary 60-second deadline; the complete snapshot
 has a fixed three-minute aggregate deadline. A larger corpus, field, or
 deadline overrun refuses rather than silently narrowing the report. No
-production caller invokes a `target/` executable directly or falls back to
-Python behavior; the workflow supplies its freshly built path only to the
-bootstrap, which verifies it before execution.
+production caller invokes a `target/` executable directly. The workflow
+supplies its freshly built path only to the bootstrap, which verifies it before
+execution.
 
 The active GitHub CLI identity needs read access to issues, issue dependencies,
 and pull requests for `owner/name`. An explicit output file also needs a
@@ -100,9 +100,9 @@ owners in process:
 - `command-registry audit`
 - `rule production-cargo-run`
 
-The command-registry results cover registry state, caller surfaces, Python
-retirement, and clean-install coverage. The production rule covers runtime
-Cargo and `target/` escape hatches.
+The command-registry results cover registry state, caller surfaces,
+retired-runtime regression guards, and clean-install coverage. The production
+rule covers runtime Cargo and `target/` escape hatches.
 
 ### Reason tokens
 
