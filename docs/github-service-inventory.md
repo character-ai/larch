@@ -70,6 +70,10 @@ shape-restricted field that the owner validates. The same leaf moved `umbrella v
 `umbrella verify-completion` to Rust; both prove a completed run entirely from
 recorded artifacts and reach no GitHub service, so neither joins a row.
 
+Issue #8932 added `issue search-implementing` to the `issue-reads` row. It uses
+the typed, bounded issue search as a recall filter, then applies the exact path
+and lifecycle-title predicates locally before returning a match.
+
 The `design-issue-read` row records the #8578 cutover of `design step0-route`.
 Following the #7672 canonical GitHub-service result, its Step 0b issue read moved
 from the retired Python `gh issue view` to the typed `OctocrabGitHubService`
@@ -199,7 +203,7 @@ issue-dependencies	crates/larch-adapters/src/github/operations.rs	rust	#7682,#76
 issue-sub-issues	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	issue add-sub-issue
 issue-creation	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	issue cleanup-failed,issue create-one,issue write-sentinel
 issue-body-blocks	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7680,#7682	complete	complete	complete	named-block write,plan-block read,plan-block write
-issue-reads	crates/larch-adapters/src/github_rest.rs	rust	#7680,#7682,#7685	complete	complete	complete	design pause-load,design pause-save,gh agnix-issue,issue context,issue fetch-issue-details,issue info,issue list-issues,issue state,umbrella prepare
+issue-reads	crates/larch-adapters/src/github_rest.rs	rust	#7680,#7682,#7685,#8927	complete	complete	complete	design pause-load,design pause-save,gh agnix-issue,issue context,issue fetch-issue-details,issue info,issue list-issues,issue search-implementing,issue state,umbrella prepare
 design-issue-read	crates/larch-adapters/src/github/operations.rs	rust	#7680	complete	complete	complete	design step0-route
 issue-backlog-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
 issue-backlog-comments	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues run

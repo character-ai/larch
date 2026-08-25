@@ -126,6 +126,7 @@ mod plan_prompt_commands;
 mod plan_quality_commands;
 mod plan_quality_revise_commands;
 mod plan_review_commands;
+mod plan_review_mav_commands;
 mod plan_review_step3_review;
 mod pr_commands;
 mod progress_commands;
@@ -1136,6 +1137,9 @@ enum ImplementCommand {
     /// Remove one validated implementation session directory.
     #[command(disable_help_flag = true)]
     Cleanup(RawCompatibilityArguments),
+    /// Generate the committed-diff Mermaid code-flow diagram.
+    #[command(name = "code-flow-diagram", disable_help_flag = true)]
+    CodeFlowDiagram(RawCompatibilityArguments),
     /// Compute, classify, or validate the checks bgjob input identity.
     #[command(name = "checks-result-identity", disable_help_flag = true)]
     ChecksResultIdentity(RawCompatibilityArguments),
@@ -1387,6 +1391,9 @@ enum IssueCommand {
     /// Parse one batch-input file into per-item rows and body files.
     #[command(name = "parse-input", disable_help_flag = true)]
     ParseInput(RawCompatibilityArguments),
+    /// Find one open design or implementation issue that names a path.
+    #[command(name = "search-implementing", disable_help_flag = true)]
+    SearchImplementing(RawCompatibilityArguments),
     /// Emit one issue's state, URL, and pull-request discrimination.
     #[command(disable_help_flag = true)]
     State(RawCompatibilityArguments),
@@ -3203,6 +3210,9 @@ fn run(
             ImplementCommand::Cleanup(arguments) => {
                 implement_finalize_commands::cleanup(&arguments.arguments)
             }
+            ImplementCommand::CodeFlowDiagram(arguments) => {
+                diagram_commands::implement_code_flow_diagram(&arguments.arguments)
+            }
             ImplementCommand::ChecksResultIdentity(arguments) => {
                 checks_identity_commands::checks_result_identity(&arguments.arguments)
             }
@@ -3393,6 +3403,9 @@ fn run(
             }
             IssueCommand::ParseInput(arguments) => {
                 issue_input_commands::parse_input(&arguments.arguments)
+            }
+            IssueCommand::SearchImplementing(arguments) => {
+                issue_commands::search_implementing(&arguments.arguments)
             }
             IssueCommand::State(arguments) => issue_commands::state(&arguments.arguments),
             IssueCommand::WriteSentinel(arguments) => {

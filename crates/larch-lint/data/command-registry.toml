@@ -2555,6 +2555,15 @@ clean_install_test = "clean-install-implement-clone-tag"
 
 [[commands]]
 domain = "implement"
+verb = "code-flow-diagram"
+machine_stdout = true
+owner = "rust"
+planning_issue = 7681
+migration_issue = 8933
+clean_install_test = "clean-install-implement-code-flow-diagram"
+
+[[commands]]
+domain = "implement"
 verb = "commit"
 machine_stdout = false
 owner = "rust"
@@ -2946,6 +2955,15 @@ owner = "rust"
 planning_issue = 7682
 migration_issue = 8168
 clean_install_test = "clean-install-issue-parse-input"
+
+[[commands]]
+domain = "issue"
+verb = "search-implementing"
+machine_stdout = true
+owner = "rust"
+planning_issue = 8927
+migration_issue = 8932
+clean_install_test = "clean-install-issue-search-implementing"
 
 [[commands]]
 domain = "issue"
@@ -3607,7 +3625,7 @@ verb = "step3-mav"
 machine_stdout = true
 owner = "rust"
 planning_issue = 7679
-migration_issue = 8449
+migration_issue = 8929
 clean_install_test = "clean-install-plan-review-step3-mav"
 
 [[commands]]
@@ -6187,7 +6205,7 @@ rust = ["cleanup run"]
 [[callers]]
 path = "skills/combine-issues/SKILL.md"
 kind = "skill"
-rust = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues close-eligible", "combine-issues close-sources", "combine-issues close-stale", "combine-issues fetch", "combine-issues fetch-deps", "combine-issues list-open", "combine-issues plan-audit", "combine-issues plan-inherited", "combine-issues prose-audit", "gh resolve-repo", "issue add-blocked-by"]
+rust = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues close-eligible", "combine-issues close-sources", "combine-issues close-stale", "combine-issues fetch", "combine-issues fetch-deps", "combine-issues list-open", "combine-issues plan-audit", "combine-issues plan-inherited", "combine-issues prose-audit", "gh resolve-repo", "issue add-blocked-by", "issue search-implementing"]
 
 [[callers]]
 path = "skills/complete-umbrella/SKILL.md"
@@ -6227,7 +6245,7 @@ rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps 
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-rust = ["agent collect-results", "agent degraded-tools-gate", "architectural-guidelines read", "architectural-invariants read", "bgjob start", "bgjob wait", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "dirty-tree checkpoint", "mermaid sanitize", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
+rust = ["agent collect-results", "agent degraded-tools-gate", "architectural-guidelines read", "architectural-invariants read", "bgjob start", "bgjob wait", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "dirty-tree checkpoint", "mermaid sanitize", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-mav", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -6242,7 +6260,7 @@ rust = ["design render-gate"]
 [[callers]]
 path = "skills/design/references/approval-gates-gate-b.md"
 kind = "skill"
-rust = ["design postplan-emit", "design render-gate", "design step2b-postplan", "design step35-settle", "plan check-size", "plan revise-waterfall", "plan-review gate-b-counts", "plan-review gate-b-finding-line", "plan-review preview"]
+rust = ["design postplan-emit", "design render-gate", "design step2b-postplan", "design step35-settle", "plan check-size", "plan revise-waterfall", "plan-review gate-b-counts", "plan-review gate-b-finding-line", "plan-review preview", "plan-review step3-mav"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-gate-c.md"
@@ -6302,7 +6320,7 @@ rust = ["design step5b-prepare"]
 [[callers]]
 path = "skills/design/references/plan-review-runtime.md"
 kind = "skill"
-rust = ["agent launch-claude-review", "bgjob wait", "decompose panel-dispatch", "plan-review panel-dispatch", "plan-review run", "plan-review step3-entry-preview", "plan-review voter-dispatch", "render plan-review", "render specialist", "render voter", "scout filter-manifest"]
+rust = ["agent launch-claude-review", "bgjob wait", "decompose panel-dispatch", "plan-review panel-dispatch", "plan-review run", "plan-review step3-entry-preview", "plan-review step3-mav", "plan-review voter-dispatch", "render plan-review", "render specialist", "render voter", "scout filter-manifest"]
 
 [[callers]]
 path = "skills/design/references/plan-review.md"
@@ -6358,16 +6376,6 @@ rust = ["plan-review step3-entry-preview", "plan-review step3-entry-state"]
 path = "skills/design/scripts/design-step3-entry.sh"
 kind = "skill"
 rust = ["plan-block strip-body", "plan-review prelaunch-failure", "plan-review snapshot-pre-review", "plan-review step3-entry-preview", "plan-review step3-entry-state", "scope-anchor validate", "session validate-design-tmpdir"]
-
-[[callers]]
-path = "skills/design/scripts/design-step3-mav.md"
-kind = "skill"
-rust = ["design pause-save", "render scope-anchor"]
-
-[[callers]]
-path = "skills/design/scripts/design-step3-mav.sh"
-kind = "skill"
-rust = ["design pause-save", "kv get", "plan-review persist-retally-env", "render scope-anchor", "run-log append-failure", "session require-plugin-root", "session validate-design-tmpdir", "timing record-round", "voting findings-classification-header"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-review.md"
@@ -6573,16 +6581,6 @@ rust = ["execution-issues flush"]
 path = "skills/implement/scripts/flush-execution-issues.sh"
 kind = "skill"
 rust = ["execution-issues flush"]
-
-[[callers]]
-path = "skills/implement/scripts/generate-code-flow-diagram.md"
-kind = "skill"
-rust = ["mermaid sanitize"]
-
-[[callers]]
-path = "skills/implement/scripts/generate-code-flow-diagram.sh"
-kind = "skill"
-rust = ["agent launch-claude-subprocess", "mermaid sanitize"]
 
 [[callers]]
 path = "skills/implement/scripts/hook-stop-fail-close.md"

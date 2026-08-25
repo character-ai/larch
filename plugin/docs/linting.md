@@ -450,6 +450,7 @@ The PR creation surface now lives in `scripts/larch.sh pr create`. Before cuttin
 | `make test-invoke-plan-validator` | Run the Rust plan-quality contract harness, including validator dispatch, quoted plan paths, and the required `DESIGN_TMPDIR` guard. |
 | `make test-parse-plan-commands` | Run the Rust plan-quality migrated-parity suite, including parser TSV output for fenced blocks, allow-list rows, `parse_note` paths, and arithmetic versus command substitution. |
 | `make test-persist-retally-step3-env` | Run the Rust `/design` MainAgent re-tally persistence harness. Exercises Step 3 result-env refresh, scope-anchor filtering, tally-error cleanup, and count persistence. |
+| `cargo test --locked --package larch-cli --test integration plan_review_mav_commands::` | Run the Rust Step 3 MainAgent vote and re-tally contract suite. Covers pause preemption, allowlisted result-env rehydration, trusted KV frames, scope evidence, successful and failed tally routing, warning and timing side effects, and distinct artifact/resume round precedence. |
 | `make test-validate-plan-commands` | Run the Rust plan-quality migrated-parity suite for Tier 2 and Tier 3 validation contracts, composed-plan paths, registry dry runs, and unknown flags. |
 | `make test-emit-plan` | Run the Rust `/design` plan emission harness for valid and invalid `diff_lines`, empty plans, and idempotent re-invocation. |
 | `make test-emit-design-plan-preview` | Run the Rust Step 3 / Gate C plan-preview harness. It freezes headers, small and large plan rendering, threshold handling, empty-path warnings, and the Step 3 entry sentinel. |
@@ -481,6 +482,7 @@ The PR creation surface now lives in `scripts/larch.sh pr create`. Before cuttin
 | `make test-cache-root-validation` | Run the regression harness for cache-backed session root acceptance while preserving system temporary-root acceptance and unrelated-path rejection. A `make lint` prerequisite via `test-harnesses-2`. |
 | `make test-flush-execution-issues` | Run the delegation smoke for `/implement` Step 7a's thin `flush-execution-issues.sh` wrapper. Behavioral coverage, including empty input, section-split NDJSON records, replay idempotency, and failure retention, lives in the Rust execution-issue unit and process-contract suites. |
 | `make test-step-7a` | Run the thin `step-7a.sh` delegation smoke. Step 7a behavior is Rust-owned by `crates/larch-cli/src/implement_review_commands.rs` (orchestration, diagram outcomes, rebase exit propagation, the execution-issues checkpoint, terminal KVs, bgjob transport, and argument validation), with parity coverage in `crates/larch-cli/tests/implement_review_parity.rs`; the smoke checks plugin-root selection, exact `scripts/larch.sh` routing, argv forwarding, and stream/exit passthrough. |
+| `make test-generate-code-flow-diagram` | Run Rust black-box coverage for `implement code-flow-diagram`. It pins argument validation, prompt and artifact paths, launcher failures and retries, Mermaid rejection, and the `STATUS` / `DIAGRAM_FILE` / `SKIP_REASON` stdout contract. |
 | `make test-cache-key-discipline` | Run the structural guard for prompt cache-key discipline. It scans audited prompt-construction surfaces and requires legitimate per-session external-tool prompt paths to carry a nearby non-stable annotation. A `make lint` prerequisite via `test-harnesses-2`. |
 | `cargo test --locked --package larch-adapters session_lifecycle::tests::` | Run Rust resolver regression coverage for `/implement` and `/design` temporary-directory binding, confinement, and symlink refusal. |
 | `cargo test --locked --package larch-cli --test integration parity::cleanup_run_preserves_live_session_directory` | Run focused Rust regression coverage for `/cleanup` age-based session pruning and active-session preservation. Rust unit coverage also pins pattern matching and implement-pointer symlink refusal. |
@@ -550,9 +552,9 @@ shellcheck compiles the dependency-free `larch-residual-bash-paths` binary from
 the same canonical Rust module and enables existence checks unconditionally.
 
 The residual manifest covers kept hooks, thin wrappers, the approved
-`scripts/larch.sh` clean-install bootstrap, `scripts/sleep-seconds.sh`, the
-combine-issues helper, residual harnesses, and any standalone source `.awk`
-helper. Terminal shared libraries, retired non-thin helpers, and
+`scripts/larch.sh` clean-install bootstrap, `scripts/sleep-seconds.sh`,
+residual harnesses, and any standalone source `.awk` helper. Terminal shared
+libraries, retired non-thin helpers, and
 verified-zero-consumer includes are absent.
 
 Agent-lint G010/G011 treat `scripts/agent-lint-script-inventory.txt` as their authoritative explicit scope, even if another rule excludes one of its paths. Add standalone awk helpers to that inventory in the same change; its test enforces complete residual-Bash coverage. CI shellcheck continues to read `scripts/residual-bash-paths.txt`. Test shard rebalance is deferred to `/rebalance-tests`.

@@ -10,7 +10,6 @@ Prompt-side orchestration steps delegate to these script contracts:
 
 - `post-tracking-issue.md` (`skills/implement/scripts/post-tracking-issue.sh`)
 - `skills/implement/references/step2-dispatch.md`
-- `generate-code-flow-diagram.md` (`skills/implement/scripts/generate-code-flow-diagram.sh`)
 - `refresh-execution-issues.md` (`skills/implement/scripts/refresh-execution-issues.sh`)
 - `write-final-report.md` (`skills/implement/scripts/write-final-report.sh`)
 - `skills/implement/scripts/cleanup.md` (`skills/implement/scripts/cleanup.sh`)

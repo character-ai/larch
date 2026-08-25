@@ -711,6 +711,11 @@ a staged tree, validates every path and required artifact, and installs only
 after the complete snapshot verifies. GitHub issue markers remain editable by
 collaborators and are not an authenticity proof.
 
+The Rust `plan-review step3-mav` transaction reads only allowlisted session and
+result-envelope keys. PID-keyed current-session links must pass the shared
+trusted-link check, result envelopes must be regular files, and its warning,
+phase, and tally-support writes remain confined to the validated design root.
+
 Dialectic drafter, debater, judge, and assessor output is advisory model data.
 It cannot edit `plan.txt` or clear a gate by declaring itself safe. Compact
 digests reach approval surfaces through untrusted framing. Operator text uses a

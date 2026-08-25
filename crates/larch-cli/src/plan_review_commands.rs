@@ -90,7 +90,7 @@ pub enum PlanReviewCommand {
     /// Mutate Step 3 completion and re-entry state.
     #[command(name = "step3-state", disable_help_flag = true)]
     Step3State(AgentRawArguments),
-    /// Run the existing `MainAgent`-vote wrapper.
+    /// Run the Rust-owned `MainAgent` vote and re-tally transaction.
     #[command(name = "step3-mav", disable_help_flag = true)]
     Step3Mav(AgentRawArguments),
     /// Record a Gate B bypass unless Step 3.5 is already partial.
@@ -206,7 +206,7 @@ pub fn run(command: PlanReviewCommand) -> ExitCode {
             loop_implementation::step3_state(&arguments.arguments)
         }
         PlanReviewCommand::Step3Mav(arguments) => {
-            loop_implementation::delegate_script("design-step3-mav.sh", &arguments.arguments)
+            crate::plan_review_mav_commands::run(&arguments.arguments)
         }
         PlanReviewCommand::Step3GateBBypass(arguments) => {
             loop_implementation::step3_gate_b_bypass(&arguments.arguments)
@@ -276,6 +276,36 @@ pub fn run(command: PlanReviewCommand) -> ExitCode {
         PlanReviewCommand::Tally(arguments) => tally(&arguments.arguments),
     }
 }
+
+pub fn step3_round_timing_arguments(
+    root: &Path,
+    round: u64,
+    start: u64,
+    end: u64,
+) -> Vec<OsString> {
+    vec![
+        "timing".into(),
+        "record-round".into(),
+        "--ledger".into(),
+        root.join("timing-ledger.tsv").into_os_string(),
+        "--skill".into(),
+        "design".into(),
+        "--step".into(),
+        "design Step 3 — plan review".into(),
+        "--round".into(),
+        round.to_string().into(),
+        "--start-s".into(),
+        start.to_string().into(),
+        "--end-s".into(),
+        end.to_string().into(),
+        "--accepted".into(),
+        "0".into(),
+        "--rejected".into(),
+        "0".into(),
+        "--if-round-exists".into(),
+    ]
+}
+
 struct PanelOptions {
     design: PathBuf,
     round_num: i64,
@@ -2018,7 +2048,7 @@ mod loop_implementation {
     fn snapshot(root:&Path,round:u64)->PathBuf{let path=root.join(format!("plan-pre-apply-round-{round}.txt"));if !path.exists(){let _=fs::copy(root.join("plan.txt"),&path);}path}
     fn dedup(root:&Path,round:u64,values:&mut BTreeMap<String,String>)->i32{let before=snapshot(root,round);let args1=[OsString::from("--design-tmpdir"),root.as_os_str().into(),"--snapshot-trailers".into()];let args2=[OsString::from("--design-tmpdir"),root.as_os_str().into(),"--dedup".into()];let invoke=|args:&[OsString]|->i32{if let Some(path)=env::var_os("RUN_STEP3_DEDUP_PLAN_SH").map(PathBuf::from).filter(|p|!p.as_os_str().is_empty()){run_override(&path,args,root).0}else{child_owned(std::iter::once(OsString::from("plan-review")).chain(std::iter::once(OsString::from("gate-b-dedup"))).chain(args.iter().cloned()).collect()).map_or(1,|out|code(&out))}};progress_note(root,&format!("round {round}: plan-review dedup running"));let mut rc=invoke(&args1);if rc==0{rc=invoke(&args2);}if rc!=0{values.insert("DEDUP_RC".into(),rc.to_string());if before.is_file(){let _=fs::copy(before,root.join("plan.txt"));}write_phase(root,round,"awaiting-apply");return 22;}if let Ok(out)=child_owned(vec!["design".into(),"dialectic-clear-stale".into(),"--design-tmpdir".into(),root.as_os_str().into(),"--reason".into(),"plan-rewrite".into()]){if !out.status().success(){eprintln!("**⚠ plan-review: dialectic-clear-stale failed after dedup; stale clarifier artifacts may linger (Gate C fingerprint binding still gates debate).**");}}let _=touch(&root.join(format!(".gate-b-postapply-ready-{round}")));remove(&root.join(format!(".gate-b-per-round-approval-round-{round}.env")));0}
     fn gate_b_start(root:&Path,round_start:u64,end:u64,output:&str)->Option<u64>{let mut latest=None;for line in read(&root.join("timing-ledger.tsv")).lines(){let cols=line.split('\t').collect::<Vec<_>>();if cols.len()<13||cols[0]!="v1"||cols[1]!="vendor"{continue;}if cols[6]=="gate-b-apply"&&Path::new(cols[10]).file_name().and_then(|v|v.to_str())==Some(output){return None;}if cols[6]=="gate-b-apply"{continue;}let Ok(start)=cols[7].parse::<u64>()else{continue;};let Ok(row_end)=cols[8].parse::<u64>()else{continue;};if row_end<=round_start||start>=end{continue;}latest=Some(latest.map_or(row_end,|value:u64|value.max(row_end)));}latest.filter(|value|*value<end)}
-    fn write_round_meta(root:&Path,round:u64){let _=child_owned(vec!["progress".into(),"write-design-round-meta".into(),"--round-dir".into(),root.join(format!("plan-review/round-{round}")).into_os_string()]);let start=read(&root.join(format!("plan-review/round-{round}/round-start-s"))).trim().parse::<u64>().ok();if let Some(start)=start.filter(|v|*v>0){let end=now_s();let ledger=root.join("timing-ledger.tsv");let timing_env=[(ChildEnvironment::LarchTimingSkill,OsString::from("design")),(ChildEnvironment::LarchTimingLedger,ledger.clone().into_os_string()),(ChildEnvironment::DesignTmpdir,root.as_os_str().into())];if root.join(format!(".gate-b-postapply-ready-{round}")).is_file(){let output=format!("gate-b-apply-round-{round}.out");if let Some(gate_start)=gate_b_start(root,start,end,&output){let args=vec!["timing".into(),"record-vendor-task".into(),"--ledger".into(),ledger.clone().into_os_string(),"--vendor".into(),"claude".into(),"--task-kind".into(),"gate-b-apply".into(),"--start-s".into(),gate_start.to_string().into(),"--end-s".into(),end.to_string().into(),"--output".into(),output.into(),"--exit-code".into(),"0".into(),"--status".into(),"complete".into()];let _=run_verified_larch_with_environment(&args,&timing_env);}}let args=vec!["timing".into(),"record-round".into(),"--ledger".into(),ledger.into_os_string(),"--skill".into(),"design".into(),"--step".into(),"design Step 3 — plan review".into(),"--round".into(),round.to_string().into(),"--start-s".into(),start.to_string().into(),"--end-s".into(),end.to_string().into(),"--accepted".into(),"0".into(),"--rejected".into(),"0".into(),"--if-round-exists".into()];let _=run_verified_larch_with_environment(&args,&timing_env);}}
+    fn write_round_meta(root:&Path,round:u64){let _=child_owned(vec!["progress".into(),"write-design-round-meta".into(),"--round-dir".into(),root.join(format!("plan-review/round-{round}")).into_os_string()]);let start=read(&root.join(format!("plan-review/round-{round}/round-start-s"))).trim().parse::<u64>().ok();if let Some(start)=start.filter(|v|*v>0){let end=now_s();let ledger=root.join("timing-ledger.tsv");let timing_env=[(ChildEnvironment::LarchTimingSkill,OsString::from("design")),(ChildEnvironment::LarchTimingLedger,ledger.clone().into_os_string()),(ChildEnvironment::DesignTmpdir,root.as_os_str().into())];if root.join(format!(".gate-b-postapply-ready-{round}")).is_file(){let output=format!("gate-b-apply-round-{round}.out");if let Some(gate_start)=gate_b_start(root,start,end,&output){let args=vec!["timing".into(),"record-vendor-task".into(),"--ledger".into(),ledger.clone().into_os_string(),"--vendor".into(),"claude".into(),"--task-kind".into(),"gate-b-apply".into(),"--start-s".into(),gate_start.to_string().into(),"--end-s".into(),end.to_string().into(),"--output".into(),output.into(),"--exit-code".into(),"0".into(),"--status".into(),"complete".into()];let _=run_verified_larch_with_environment(&args,&timing_env);}}let args=super::step3_round_timing_arguments(root,round,start,end);let _=run_verified_larch_with_environment(&args,&timing_env);}}
     fn clear_scout(root:&Path){if let Ok(entries)=fs::read_dir(root){for entry in entries.flatten(){let name=entry.file_name().to_string_lossy().into_owned();if name=="scout-plan-manifest.json"||name.starts_with("scout-plan-manifest.json.candidate.")||name.starts_with("scout-plan-manifest.json.filtered."){remove(&entry.path());}}}}
     fn revise(root:&Path,round:u64,values:&mut BTreeMap<String,String>)->i32{let before=snapshot(root,round);let current=phase(root,round);let ready=root.join(format!(".gate-b-postapply-ready-{round}")).is_file();if before.is_file()&&root.join("plan.txt").is_file()&&fs::read(&before).ok()!=fs::read(root.join("plan.txt")).ok(){if current=="awaiting-post-apply"||ready{return dedup(root,round,values);}if current=="awaiting-revise"{let _=fs::copy(&before,root.join("plan.txt"));}}write_phase(root,round,"awaiting-revise");clear_scout(root);let args=vec!["--design-tmpdir".into(),root.as_os_str().into(),"--plan-file".into(),root.join("plan.txt").into_os_string(),"--findings-file".into(),root.join("accepted-plan-findings.md").into_os_string(),"--feature-file".into(),root.join("feature-description.txt").into_os_string(),"--round-num".into(),round.to_string().into(),"--codex-binary-found".into(),env::var_os("CODEX_BINARY_FOUND").unwrap_or_default(),"--cursor-binary-found".into(),env::var_os("CURSOR_BINARY_FOUND").unwrap_or_default(),"--patch-format".into(),"file-replacement".into()];let(rc,stdout)=if let Some(path)=env::var_os("RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH").map(PathBuf::from).filter(|p|!p.as_os_str().is_empty()){let(rc,out,_)=run_override(&path,&args,root);(rc,out)}else{match run_verified_larch_with_timeout(&std::iter::once(OsString::from("plan")).chain(std::iter::once(OsString::from("revise-waterfall"))).chain(args).collect::<Vec<_>>(),Duration::from_secs(900)){Ok(out)=>(code(&out),String::from_utf8_lossy(out.stdout()).into_owned()),Err(_)=>(1,String::new())}};let status=kv_text(&stdout).get("REVISE_STATUS").cloned().unwrap_or_default();if rc!=0||!matches!(status.as_str(),"ok"|"ok-fallback"){write_phase(root,round,"awaiting-apply");return 21;}write_round_meta(root,round);write_phase(root,round,"awaiting-post-apply");dedup(root,round,values)}
     fn pause_env(root:&Path)->i32{if let Some(path)=env::var_os("RUN_STEP3_DESIGN_PAUSE_SAVE_SH").map(PathBuf::from).filter(|p|!p.as_os_str().is_empty()){let mut args=vec!["--design-tmpdir".into(),root.as_os_str().into()];if let Some(issue)=env::var_os("ISSUE_NUMBER").filter(|v|!v.is_empty()){args.extend(["--issue".into(),issue]);}return run_override(&path,&args,root).0;}let mut args=vec!["design".into(),"pause-save".into(),"--design-tmpdir".into(),root.as_os_str().into()];if let Some(issue)=env::var_os("ISSUE_NUMBER").filter(|v|!v.is_empty()){args.extend(["--issue".into(),issue]);}run_verified_larch(&args).map_or(1,|out|code(&out))}

@@ -447,15 +447,15 @@ else
     fail "SCOPE_ANCHOR_FILE expected /tmp/should-not-win.txt got ${SCOPE_ANCHOR_FILE:-}"
 fi
 
-echo "=== MainAgent MAV wrapper prose pins ==="
+echo "=== MainAgent MAV Rust-command prose pins ==="
 SKILL_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/SKILL.md"
 PLAN_REVIEW_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/references/plan-review-runtime.md"
 APPROVAL_GATES_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/references/approval-gates-gate-c.md"
 # shellcheck disable=SC2016 # Literal documentation probe contains backticks.
-if ( command grep -Fq '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase pre' "$SKILL_FILE" ); then
-    pass 'SKILL pins MAV pre launcher fence'
+if ( command grep -Fq '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" plan-review step3-mav --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" --claude-pid "$PPID" --phase pre' "$SKILL_FILE" ); then
+    pass 'SKILL pins MAV pre Rust-command fence'
 else
-    fail 'SKILL missing MAV pre launcher fence'
+    fail 'SKILL missing MAV pre Rust-command fence'
 fi
 # shellcheck disable=SC2016 # Literal documentation probe contains backticks.
 if ( command grep -Fq 'Parse trusted scalars only from the final `DESIGN_STEP3_MAV_KV_BEGIN` / `DESIGN_STEP3_MAV_KV_END` frame.' "$SKILL_FILE" ); then
@@ -464,10 +464,10 @@ else
     fail 'SKILL missing MAV trusted KV frame parsing'
 fi
 # shellcheck disable=SC2016 # Literal documentation probe contains backticks.
-if ( command grep -Fq '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase post' "$SKILL_FILE" ); then
-    pass 'SKILL pins MAV post launcher fence'
+if ( command grep -Fq '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" plan-review step3-mav --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" --claude-pid "$PPID" --phase post' "$SKILL_FILE" ); then
+    pass 'SKILL pins MAV post Rust-command fence'
 else
-    fail 'SKILL missing MAV post launcher fence'
+    fail 'SKILL missing MAV post Rust-command fence'
 fi
 # shellcheck disable=SC2016 # Literal documentation probe contains backticks.
 if ( command grep -Fq 'Abort on any non-zero post exit' "$SKILL_FILE" ); then

@@ -73,7 +73,7 @@ fn crate_process_passes_with_vendor_and_documented_exceptions() {
     let repository = TempRepo::new();
     repository.write(
         "scripts/residual-bash-paths.txt",
-        b"scripts/larch.sh\nscripts/file-failure-report-cross-repo.sh\nskills/combine-issues/scripts/search-implementing-issue.sh\nskills/implement/scripts/step-architectural-guidelines-write-staged.sh\n",
+        b"scripts/larch.sh\nscripts/file-failure-report-cross-repo.sh\nskills/implement/scripts/step-architectural-guidelines-write-staged.sh\n",
     );
     repository.write(
         "scripts/larch.sh",
@@ -82,10 +82,6 @@ fn crate_process_passes_with_vendor_and_documented_exceptions() {
     repository.write(
         "scripts/file-failure-report-cross-repo.sh",
         b"#!/usr/bin/env bash\ngh issue create --title report\n",
-    );
-    repository.write(
-        "skills/combine-issues/scripts/search-implementing-issue.sh",
-        b"#!/usr/bin/env bash\ngh issue list --state open\n",
     );
     repository.write(
         "skills/implement/scripts/step-architectural-guidelines-write-staged.sh",

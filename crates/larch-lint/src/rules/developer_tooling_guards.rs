@@ -44,8 +44,6 @@ const FAILURE_REPORT_PATH: &str = "scripts/file-failure-report-cross-repo.sh";
 const SUBMODULE_GUARD_PATH: &str = "scripts/block-submodule-edit.sh";
 const STALE_PLUGIN_PATH: &str = "scripts/check-stale-plugin.sh";
 const SESSIONSTART_HEALTH_PATH: &str = "scripts/sessionstart-health.sh";
-const COMBINE_ISSUES_SEARCH_PATH: &str =
-    "skills/combine-issues/scripts/search-implementing-issue.sh";
 const STAGED_GUIDELINES_PATH: &str =
     "skills/implement/scripts/step-architectural-guidelines-write-staged.sh";
 const MAKEFILE_PATH: &str = "Makefile";
@@ -493,8 +491,7 @@ fn documented_process_exception(path: &str, program: &str, residual: &BTreeSet<S
             RELEASE_WORKFLOW_PATH
                 | GITHUB_AUTH_CONFIG_PATH
                 | CLEAN_INSTALL_BOOTSTRAP_PATH
-                | FAILURE_REPORT_PATH
-                | COMBINE_ISSUES_SEARCH_PATH,
+                | FAILURE_REPORT_PATH,
             "gh"
         ) | (
             SUBMODULE_GUARD_PATH
