@@ -11,10 +11,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use larch_adapters::{ensure_directory_chain, validate_design_tmpdir};
+use larch_adapters::ensure_directory_chain;
 use larch_core::{
-    ChildEnvironment, DuplicatePolicy, KvDocument, ParseOptions, ProcessOutput,
-    cleanup_cache_sessions_root, emit_kv, positive_integer, private_atomic_write,
+    ChildEnvironment, DuplicatePolicy, KvDocument, ParseOptions, ProcessOutput, emit_kv,
+    positive_integer, private_atomic_write,
 };
 use tempfile::NamedTempFile;
 
@@ -155,30 +155,11 @@ fn state_value<'a>(state: &'a BTreeMap<String, String>, key: &str) -> &'a str {
 
 fn design_tmpdir(state: &BTreeMap<String, String>) -> Result<PathBuf, ExitCode> {
     let raw = state_value(state, "DESIGN_TMPDIR");
-    let path = Path::new(raw);
-    if raw.is_empty() || !path.is_dir() {
+    if raw.is_empty() || !Path::new(raw).is_dir() {
         eprintln!("/design Step 3 MAV: DESIGN_TMPDIR required");
         return Err(ExitCode::FAILURE);
     }
-    if path.is_symlink() {
-        eprintln!("/design Step 3 MAV: DESIGN_TMPDIR must not be a symlink");
-        return Err(ExitCode::from(2));
-    }
-    if let Err(error) = validate_design_tmpdir(
-        raw,
-        env::var_os("TMPDIR").as_deref(),
-        &cleanup_cache_sessions_root(
-            env::var_os("XDG_CACHE_HOME").as_deref(),
-            env::var_os("HOME").as_deref(),
-        ),
-    ) {
-        eprintln!("/design Step 3 MAV: {error}");
-        return Err(ExitCode::from(2));
-    }
-    fs::canonicalize(path).map_err(|error| {
-        eprintln!("/design Step 3 MAV: {error}");
-        ExitCode::FAILURE
-    })
+    crate::plan_review_step3_review::resolve_design_dir(raw, "/design Step 3 MAV")
 }
 
 fn child_environment(root: &Path) -> [(ChildEnvironment, OsString); 1] {

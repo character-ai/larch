@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Adapter-backed `/design` Step 3 launcher and plan-review child.
+Thin wrapper for the Rust `/design` Step 3 launcher and plan-review child.
 
 ## Primary callers
 
@@ -10,6 +10,7 @@ Adapter-backed `/design` Step 3 launcher and plan-review child.
 
 ## Invariants
 
+- Delegates to `scripts/larch.sh plan-review step3-review`.
 - Resolves a supplied `--session-env-path` through `scripts/larch.sh bgjob adapt --resolve-session-env` before result reads, resume state, pause handling, or tmpdir use. It never sources the file.
 - Validates `--starting-round`, `--phase`, and `--findings-file` before writing resume state. `awaiting-vote` remains internal.
 - Keeps `--read-result-env`, resume writes, and parent pause-save outside child mode.
@@ -24,4 +25,4 @@ Adapter-backed `/design` Step 3 launcher and plan-review child.
 
 ## Harness
 
-Covered by `make test-design-structure`, `skills/design/scripts/test-design-step3-review.sh`, and `make test-step3-orchestrator-fence`.
+Covered by `make test-design-structure`, `cargo test --locked --package larch-cli --bin larch plan_review_step3_review::`, and `make test-step3-orchestrator-fence`.

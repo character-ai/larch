@@ -536,7 +536,7 @@ Focused harnesses cover the /design auto-reporting port:
 
 - `test-design-stage-terminal-state` runs the Rust terminal-command migrated-parity suite, including terminal-state staging and generic-token validation.
 - `test-design-failure-report` runs the Rust terminal-command migrated-parity suite for teardown gates, operator-action skips, fallback chat output, and successful escalation reports.
-- `test-design-step3-review` validates Step 3 terminal and escalation evidence ownership (`test-harnesses-2`).
+- `test-design-step3-review` validates Step 3 resume-state, bgjob adapter, and merge-envelope ownership in the Rust `plan_review_step3_review` suite.
 - `test-stall-recovery-report` includes design-prefix Tier B corpus coverage, generic-profile `/design` validation, prefixed artifacts, and skill-aware dedup signatures.
 
 `scripts/larch.sh checks run-relevant --site <site> --tmpdir "$IMPLEMENT_TMPDIR"` maps the Rust `file-report` verb, its docs, render-final-summary, publish, Split-path prose, Step 3 review, cross-repo filing, and stall-report changes to these focused targets.
