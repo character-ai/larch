@@ -505,8 +505,7 @@ const SESSION_ENV_KEYS: &[&str] = &[
 fn apply_export_rows(bytes: &[u8], parsed: &mut Step3ReviewArgs) {
     let text = String::from_utf8_lossy(bytes);
     for line in text.lines() {
-        let Some((key, value)) =
-            parse_allowlisted_env_line(line, SESSION_ENV_KEYS, None, true)
+        let Some((key, value)) = parse_allowlisted_env_line(line, SESSION_ENV_KEYS, None, true)
         else {
             continue;
         };
