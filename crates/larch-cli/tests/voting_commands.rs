@@ -46,7 +46,7 @@ fn run(arguments: &[String], sandbox: &Path, environment: &BTreeMap<String, Stri
 #[rustfmt::skip]
 #[test]
 fn every_migrated_voting_verb_matches_its_recorded_python_transcript() {
-    let cases: Vec<Transcript> = serde_json::from_str(include_str!("../../../fixtures/rust-parity/voting-transcripts.json")).expect("valid recorded voting transcripts");
+    let cases: Vec<Transcript> = serde_json::from_str(include_str!("fixtures/voting-transcripts.json")).expect("valid recorded voting transcripts");
     let mut names = Vec::new();
     for case in cases {
         let sandbox = TempDir::new().expect("create transcript sandbox");

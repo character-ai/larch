@@ -132,7 +132,7 @@ fn lint_command(_arguments: &[String]) -> ExitCode {
         Ok(root) => root,
         Err(message) => return command_error(&message),
     };
-    let tsv_path = root.join("python/stall-recovery-report-allowlists.tsv");
+    let tsv_path = root.join("docs/stall-recovery-report-allowlists.tsv");
     let Ok(tsv) = fs::read_to_string(&tsv_path) else {
         eprintln!(
             "stall-recovery: missing allowlist TSV: {}",
@@ -145,7 +145,7 @@ fn lint_command(_arguments: &[String]) -> ExitCode {
     if tsv_lines != code_lines {
         return command_error("allowlist drift between TSV and code");
     }
-    let contract_path = root.join("python/stall-recovery-report.md");
+    let contract_path = root.join("docs/stall-recovery-report.md");
     let contract = fs::read_to_string(contract_path).unwrap_or_default();
     let doc_allowlist = document_allowlist_lines(&contract);
     if !doc_allowlist.is_empty() && tsv_lines != doc_allowlist {

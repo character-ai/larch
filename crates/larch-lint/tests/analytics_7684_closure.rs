@@ -21,7 +21,7 @@ fn service_inventory(rows: &str) -> String {
 
 fn closure_registry(rows: &str) -> String {
     format!(
-        "schema_version = 2\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\npython_module = \"fixture\"\npython_function = \"main\"\nmachine_stdout = false\nowner = \"python\"\nimplementation_parity = \"pending\"\nconsumer_cutover = \"pending\"\npython_removal = \"pending\"\nplanning_issue = 7681\nmigration_issue = 7681\n\n{rows}"
+        "schema_version = 3\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\nmachine_stdout = false\nowner = \"rust\"\nplanning_issue = 7681\nmigration_issue = 7681\n\n{rows}"
     )
 }
 
@@ -29,17 +29,17 @@ fn closure_command(
     domain: &str,
     verb: &str,
     owner: &str,
-    parity: &str,
-    cutover: &str,
-    removal: &str,
+    _parity: &str,
+    _cutover: &str,
+    _removal: &str,
     migration_issue: Option<u64>,
 ) -> String {
-    let python_module = domain.replace('-', "_");
-    let migration_issue = migration_issue
-        .map(|issue| format!("migration_issue = {issue}\n"))
-        .unwrap_or_default();
+    let migration_issue = migration_issue.map_or_else(
+        || "migration_issue = 7684\n".to_owned(),
+        |issue| format!("migration_issue = {issue}\n"),
+    );
     format!(
-        "[[commands]]\ndomain = \"{domain}\"\nverb = \"{verb}\"\npython_module = \"larch.analytics.{python_module}\"\npython_function = \"main\"\nmachine_stdout = false\nowner = \"{owner}\"\nimplementation_parity = \"{parity}\"\nconsumer_cutover = \"{cutover}\"\npython_removal = \"{removal}\"\nplanning_issue = 7684\n{migration_issue}\n"
+        "[[commands]]\ndomain = \"{domain}\"\nverb = \"{verb}\"\nmachine_stdout = false\nowner = \"{owner}\"\nplanning_issue = 7684\n{migration_issue}\n"
     )
 }
 
@@ -58,10 +58,6 @@ fn write_baseline(
     repository.write(
         "crates/larch-lint/data/command-registry.toml",
         closure_registry(registry_rows).as_bytes(),
-    );
-    repository.write(
-        "python/larch/cli.py",
-        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n}\n",
     );
     repository.write("hooks/hooks.json", b"{}\n");
     if let Some(service) = service {
@@ -139,14 +135,14 @@ fn accepts_closed_analytics_boundary() {
 }
 
 #[test]
-fn rejects_incomplete_analytics_command_phases() {
+fn rejects_non_rust_analytics_command_ownership() {
     let repository = TempRepo::new();
     write_baseline(
         &repository,
         &closure_command(
             "fluff-analysis",
             "analyze",
-            "python",
+            "retired",
             "pending",
             "pending",
             "pending",
@@ -163,15 +159,6 @@ fn rejects_incomplete_analytics_command_phases() {
         .code(1)
         .stdout(predicate::str::contains(
             "planning issue #7684 command fluff-analysis analyze is not Rust-owned",
-        ))
-        .stdout(predicate::str::contains(
-            "planning issue #7684 command fluff-analysis analyze has incomplete implementation parity",
-        ))
-        .stdout(predicate::str::contains(
-            "planning issue #7684 command fluff-analysis analyze has incomplete consumer cutover",
-        ))
-        .stdout(predicate::str::contains(
-            "planning issue #7684 command fluff-analysis analyze has incomplete Python removal",
         ))
         .stderr(predicate::str::is_empty());
 }
@@ -214,45 +201,6 @@ fn rejects_missing_and_umbrella_analytics_migration_leaves() {
         ))
         .stdout(predicate::str::contains(
             "planning issue #7684 command voter-calibration analyze lacks an exact non-umbrella migration leaf",
-        ))
-        .stderr(predicate::str::is_empty());
-}
-
-#[test]
-fn rejects_restored_analytics_python_module_registration_and_caller() {
-    let repository = TempRepo::new();
-    write_baseline(
-        &repository,
-        &complete_rows(),
-        Some(&completed_service_inventory()),
-        Some(&git_inventory("")),
-    );
-    repository.write(
-        "python/larch/analytics/fluff_analysis.py",
-        b"def main() -> int:\n    return 0\n",
-    );
-    repository.write(
-        "python/larch/cli.py",
-        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n    (\"fluff-analysis\", \"analyze\"): (\"larch.analytics.fluff_analysis\", \"main\", False),\n}\n",
-    );
-    repository.write(
-        "Makefile",
-        b"analytics:\n\tpython3 python/cli.py fluff-analysis analyze\n",
-    );
-    repository.commit_all();
-
-    TempRepo::command_from(repository.path())
-        .args(["rule", RULE])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::contains(
-            "python-entrypoint-still-present fluff-analysis analyze: python/larch/cli.py",
-        ))
-        .stdout(predicate::str::contains(
-            "python-entrypoint-still-present fluff-analysis analyze: python/larch/analytics/fluff_analysis.py",
-        ))
-        .stdout(predicate::str::contains(
-            "planning issue #7684 command fluff-analysis analyze retains a Python production caller: Makefile",
         ))
         .stderr(predicate::str::is_empty());
 }
@@ -322,39 +270,29 @@ fn rejects_unresolved_analytics_service_and_git_inventory_rows() {
 
 #[test]
 fn fails_closed_on_malformed_or_unavailable_analytics_evidence() {
-    for (service, git, registry, message) in [
+    for (service, git, message) in [
         (
             Some(
                 "<!-- github-service-ownership:start -->\nissues\n<!-- github-service-ownership:end -->\n"
                     .to_owned(),
             ),
             Some(git_inventory("")),
-            None,
             "docs/github-service-inventory.md: invalid GitHub service ownership header",
         ),
         (
             None,
             Some(git_inventory("")),
-            None,
             "docs/github-service-inventory.md: required GitHub service ownership matrix is missing",
         ),
         (
             Some(completed_service_inventory()),
-            None,
             None,
             "docs/git-operation-inventory.md: required Git operation ownership matrix is missing",
         ),
         (
             Some(completed_service_inventory()),
             Some("not an inventory\n".to_owned()),
-            None,
             "docs/git-operation-inventory.md: missing <!-- git-ownership-matrix:start -->",
-        ),
-        (
-            Some(completed_service_inventory()),
-            Some(git_inventory("")),
-            Some("NOT_A_REGISTRY = {}\n".to_owned()),
-            "python/larch/cli.py: missing _REGISTRY declaration",
         ),
     ] {
         let repository = TempRepo::new();
@@ -367,9 +305,6 @@ fn fails_closed_on_malformed_or_unavailable_analytics_evidence() {
         if service.is_none() {
             fs::remove_file(repository.path().join("docs/github-service-inventory.md"))
                 .expect("remove seeded GitHub-service inventory");
-        }
-        if let Some(registry) = registry {
-            repository.write("python/larch/cli.py", registry.as_bytes());
         }
         repository.commit_all();
 

@@ -5,62 +5,24 @@ use std::fmt::Write as _;
 use predicates::prelude::*;
 use support::TempRepo;
 
-const COMMANDS: [(&str, &str, u64, &str, &str, &str); 4] = [
-    (
-        "run-log",
-        "init",
-        8073,
-        "rust",
-        "larch.report.run_logs",
-        "larch_log_init_main",
-    ),
-    (
-        "run-log",
-        "flush",
-        7995,
-        "retired",
-        "larch.report.run_log_flush",
-        "larch_log_flush_main",
-    ),
-    (
-        "timing",
-        "report",
-        8083,
-        "rust",
-        "larch.report.timing",
-        "timing_report_main",
-    ),
-    (
-        "gantt",
-        "render",
-        8092,
-        "rust",
-        "larch.rendering.gantt",
-        "gantt_render_main",
-    ),
+const COMMANDS: [(&str, &str, u64, &str); 4] = [
+    ("run-log", "init", 8073, "rust"),
+    ("run-log", "flush", 7995, "retired"),
+    ("timing", "report", 8083, "rust"),
+    ("gantt", "render", 8092, "rust"),
 ];
 
 fn registry() -> String {
-    let mut output = String::from("schema_version = 2\n");
-    for (domain, verb, issue, owner, python_module, python_function) in COMMANDS {
-        let parity = if owner == "retired" {
-            "not-applicable"
-        } else {
-            "complete"
-        };
+    let mut output = String::from("schema_version = 3\n");
+    for (domain, verb, issue, owner) in COMMANDS {
         let _ = write!(
             output,
             r#"
 [[commands]]
 domain = "{domain}"
 verb = "{verb}"
-python_module = "{python_module}"
-python_function = "{python_function}"
 machine_stdout = false
 owner = "{owner}"
-implementation_parity = "{parity}"
-consumer_cutover = "complete"
-python_removal = "complete"
 planning_issue = 7683
 migration_issue = {issue}
 "#,
@@ -241,7 +203,7 @@ fn rejects_non_final_missing_and_unclosed_rows() {
     let repository = TempRepo::new();
     prepare(&repository);
     let drifted = registry()
-        .replacen("owner = \"rust\"", "owner = \"python\"", 1)
+        .replacen("owner = \"rust\"", "owner = \"retired\"", 1)
         .replacen("migration_issue = 8083", "migration_issue = 8084", 1)
         .replace(
             r#"[[commands]]
@@ -249,13 +211,8 @@ domain = "gantt""#,
             r#"[[commands]]
 domain = "token"
 verb = "cost"
-python_module = "larch.report.tokens"
-python_function = "token_cost_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
 planning_issue = 7683
 
 [[commands]]

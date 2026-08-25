@@ -28,7 +28,6 @@ const DIRECT_FILES: &[&str] = &[
     "docs/issue-anchored-plan.md",
     "docs/linting.md",
     "docs/progress-reporting.md",
-    "docs/python-migration.md",
     "docs/review-agents.md",
     "docs/run-log-archive.md",
     "docs/run-log-batches.md",
@@ -37,14 +36,12 @@ const DIRECT_FILES: &[&str] = &[
     "docs/run-logs-required-files.tsv",
     "docs/run-logs.md",
     "docs/rust-async-runtime.md",
-    "docs/rust-parity-harness.md",
     "docs/rust-ci-selection-observation.md",
     "docs/rust-testing.md",
     "docs/security/README.md",
     "docs/skills.md",
-    "python/cli.py",
-    "python/stall-recovery-report.md",
-    "python/stall-recovery-report-allowlists.tsv",
+    "docs/stall-recovery-report.md",
+    "docs/stall-recovery-report-allowlists.tsv",
     "scripts/block-submodule-edit.sh",
     "scripts/check-stale-plugin.sh",
     "scripts/cleanup-sessionstart.sh",
@@ -61,8 +58,6 @@ const DIRECT_FILES: &[&str] = &[
     "scripts/sessionstart-statusline.sh",
     "scripts/sleep-seconds.sh",
 ];
-
-const DEV_ONLY_PYTHON: &[&str] = &[];
 
 const INDEX_ERROR: &str = "plugin runtime projection requires a readable git index";
 const ROOT_ERROR: &str = "plugin runtime projection requires the larch repository root";
@@ -115,7 +110,7 @@ fn runtime_paths(root: &RepositoryRoot) -> Result<BTreeSet<String>, String> {
             .map_err(|_| INDEX_ERROR.to_owned())?;
         if path.is_empty()
             || path.starts_with("plugin/")
-            || DEV_ONLY_PYTHON.contains(&path.as_str())
+            || is_python_path(&path)
             || Path::new(&path)
                 .components()
                 .any(|part| part.as_os_str() == "__pycache__")
@@ -127,7 +122,6 @@ fn runtime_paths(root: &RepositoryRoot) -> Result<BTreeSet<String>, String> {
             || (path.starts_with("docs/security/") && is_markdown_path(&path))
             || path.starts_with("hooks/")
             || (path.starts_with("skills/") && !is_test_path(&path))
-            || is_runtime_python_path(&path)
         {
             selected.insert(path);
         }
@@ -222,17 +216,10 @@ fn is_test_path(path: &str) -> bool {
     })
 }
 
-fn is_runtime_python_path(path: &str) -> bool {
-    let Some(remainder) = path.strip_prefix("python/larch/") else {
-        return false;
-    };
-    if is_test_path(path) {
-        return false;
-    }
-    let Some(package) = remainder.split('/').next() else {
-        return false;
-    };
-    !matches!(package, "lint" | "release")
+fn is_python_path(path: &str) -> bool {
+    Path::new(path)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
 }
 
 fn validate_root(root: &RepositoryRoot) -> Result<(), String> {
@@ -421,7 +408,7 @@ fn create_real_directories(root: &Path, destination: &Path) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::{
-        DEV_ONLY_PYTHON, DIRECT_FILES, ROOT_ERROR, focused_security_references, projection_errors,
+        DIRECT_FILES, ROOT_ERROR, focused_security_references, is_python_path, projection_errors,
         runtime_paths, sync, validate_root, verify_projection_worktree,
     };
     use larch_adapters::RepositoryRoot;
@@ -451,20 +438,15 @@ mod tests {
         assert!(paths.contains("docs/progress-reporting.md"));
         assert!(paths.contains("docs/run-log-corpus-audit-2026-08-09.md"));
         assert!(paths.contains("docs/rust-async-runtime.md"));
-        assert!(paths.contains("docs/rust-parity-harness.md"));
         assert!(paths.contains("docs/rust-ci-selection-observation.md"));
         assert!(paths.contains("docs/rust-testing.md"));
         assert!(paths.contains("docs/security/README.md"));
         assert!(paths.contains("docs/security/workflow.md"));
         assert!(paths.contains("hooks/hooks.json"));
         assert!(paths.contains("skills/implement/SKILL.md"));
-        assert!(paths.contains("python/larch/core/runtime.py"));
         assert!(!paths.contains("skills/implement/test-helper.md"));
-        assert!(!paths.contains("python/larch/release/runtime.py"));
-        assert!(!paths.contains("python/larch/lint/runtime.py"));
-        for path in DEV_ONLY_PYTHON {
-            assert!(!paths.contains(*path));
-        }
+        assert!(!paths.contains("skills/design/scripts/tool.py"));
+        assert!(paths.iter().all(|path| !is_python_path(path)));
     }
 
     #[test]
@@ -494,7 +476,7 @@ mod tests {
 
         let paths = runtime_paths(&root).expect("runtime path selection");
 
-        assert!(paths.contains("python/stall-recovery-report-allowlists.tsv"));
+        assert!(paths.contains("docs/stall-recovery-report-allowlists.tsv"));
     }
 
     #[test]
@@ -634,7 +616,6 @@ mod tests {
                 "docs/dev-hook-audit.md",
                 "docs/progress-reporting.md",
                 "docs/rust-async-runtime.md",
-                "docs/rust-parity-harness.md",
                 "docs/rust-ci-selection-observation.md",
                 "docs/rust-testing.md",
             ],
@@ -644,7 +625,7 @@ mod tests {
         assert_eq!(
             runtime_paths(&root),
             Err(
-                "plugin runtime projection inputs are missing: docs/ci-latency-evidence.md, docs/dev-hook-audit.md, docs/progress-reporting.md, docs/rust-async-runtime.md, docs/rust-parity-harness.md, docs/rust-ci-selection-observation.md, docs/rust-testing.md"
+                "plugin runtime projection inputs are missing: docs/ci-latency-evidence.md, docs/dev-hook-audit.md, docs/progress-reporting.md, docs/rust-async-runtime.md, docs/rust-ci-selection-observation.md, docs/rust-testing.md"
                     .to_owned()
             )
         );
@@ -706,16 +687,11 @@ mod tests {
             ("hooks/hooks.json", "{}\n"),
             ("skills/implement/SKILL.md", "skill\n"),
             ("skills/implement/test-helper.md", "test\n"),
+            ("skills/design/scripts/tool.py", "development helper\n"),
             ("docs/security/workflow.md", "focused security\n"),
-            ("python/larch/core/runtime.py", "runtime\n"),
-            ("python/larch/release/runtime.py", "release\n"),
-            ("python/larch/lint/runtime.py", "lint\n"),
             ("plugin/ignored.txt", "ignored\n"),
         ] {
             write(fixture.path(), path, contents);
-        }
-        for path in DEV_ONLY_PYTHON {
-            write(fixture.path(), path, "development-only\n");
         }
         run_git(fixture.path(), ["init", "--quiet"]);
         run_git(

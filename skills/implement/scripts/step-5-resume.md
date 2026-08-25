@@ -31,4 +31,4 @@ Normal continuation requires `BGJOB_RC=0` plus the required checks/resume KVs in
 
 ## Edit-in-sync
 
-Update `skills/implement/SKILL.md`, `skills/implement/references/step5-review-branches.md`, `make test-implement-structure`, and `crates/larch-cli/tests/implement_review_parity.rs` when this contract or argv changes.
+Update `skills/implement/SKILL.md`, `skills/implement/references/step5-review-branches.md`, `make test-implement-structure`, and the inline tests in `crates/larch-cli/src/implement_review_commands.rs` when this contract or argv changes.

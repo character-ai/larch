@@ -284,7 +284,7 @@ fn step4_commit_failure(
         ctx.tmpdir,
         "step4",
         STEP4_COMMIT_SITE.failure_log_label,
-        "python/cli.py implement commit",
+        "scripts/larch.sh implement commit",
         exit_code,
         &failure_log,
     );

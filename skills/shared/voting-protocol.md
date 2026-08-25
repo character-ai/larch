@@ -54,7 +54,7 @@ Valid vote tokens are `YES` and `NO`; legacy stray `EXONERATE` maps to `NO`. If 
 
 Dispatchers warn when effective voters fall below the expected panel size. For `/design`, `/review`, and `/implement` Step 5, expected size is three when Cursor or Codex lanes are available, or **one Claude fallback voter** when neither external lane is active. Voters waterfall Codex, then Cursor, then Claude. The code-review single-Claude floor warns only if that expected judge fails; plan review preserves its `1/3 ... quota hit` warning even when the floor succeeds. `effective` means not `failed` and substantive enough to contribute valid vote lines after retries. On the three-slot path, `ELIGIBLE_VOTERS` and `EFFECTIVE_VOTERS` count only substantive non-empty voter files after parse-rate removal; empty placeholders keep `vN_tool` attribution but do not inflate quorum.
 
-After thresholding, each finding becomes `accepted`, `neutral` (≥1 YES but below threshold; -0.25 points unless neutral rescue routes it to OOS), or `rejected` (0 YES; −1 point). `python/voting.py::classify_result` owns classification; tally scripts map labels to KV and JSON at emission. Neutral rescue keeps `Result=neutral` in the vote table, but routes a single-YES `major` neutral to OOS artifacts with `scope=oos`. Single-YES `minor`, `nit`, missing, or invalid severities stay dropped.
+After thresholding, each finding becomes `accepted`, `neutral` (≥1 YES but below threshold; -0.25 points unless neutral rescue routes it to OOS), or `rejected` (0 YES; −1 point). `crates/larch-core/src/review/voting.rs::classify_result` owns classification; tally commands map labels to KV and JSON at emission. Neutral rescue keeps `Result=neutral` in the vote table, but routes a single-YES `major` neutral to OOS artifacts with `scope=oos`. Single-YES `minor`, `nit`, missing, or invalid severities stay dropped.
 
 ## Voter Panel Composition
 
@@ -192,7 +192,7 @@ OOS uses OOS-specific thresholds: one YES accepts in a one-judge panel, one or m
 
 ### OOS Scoring
 
-Out-of-scope items stay flat in the live voting classifier: accepted OOS earns a provisional +1, non-accepted OOS with a split-panel or OOS neutral (≥1 YES, not accepted) vote pattern scores 0, and dismissed OOS costs −1. `python/voting.py::classify_result` is the live classifier and does not inspect GitHub issue fate.
+Out-of-scope items stay flat in the live voting classifier: accepted OOS earns a provisional +1, non-accepted OOS with a split-panel or OOS neutral (≥1 YES, not accepted) vote pattern scores 0, and dismissed OOS costs −1. `crates/larch-core/src/review/voting.rs::classify_result` is the live classifier and does not inspect GitHub issue fate.
 
 | OOS vote pattern | Points | Description |
 |---|---|---|

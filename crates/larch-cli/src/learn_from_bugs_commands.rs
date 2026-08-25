@@ -2335,17 +2335,26 @@ fn proposal_target_adopted(proposal: &Proposal, root: &Path) -> Result<bool, Str
 }
 
 fn lint_registration_adopted(name: &str, root: &Path) -> bool {
-    let Ok(text) = fs::read_to_string(root.join("python/larch/cli.py")) else {
-        return false;
-    };
-    let registry = Regex::new(r"(?m)^\s*_REGISTRY(?:\s*:[^=\n]+)?\s*=")
-        .expect("registry assignment regex compiles");
-    let entry = Regex::new(&format!(
-        r#"(?m)^(?:\s*_REGISTRY(?:\s*:[^=\n]+)?\s*=\s*\{{\s*)?\(\s*[\"']lint[\"']\s*,\s*[\"']{}[\"']\s*\)\s*:"#,
+    let declaration = Regex::new(&format!(
+        r#"(?m)^const (?:NAME|[A-Z][A-Z0-9_]*_NAME): &str = "{}";$"#,
         regex::escape(name)
     ))
-    .expect("registry entry regex compiles");
-    registry.is_match(&text) && entry.is_match(&text)
+    .expect("Rust lint name declaration regex compiles");
+    ["crates/larch-lint/src", "crates/larch-lint/src/rules"]
+        .into_iter()
+        .any(|relative| {
+            let Ok(entries) = fs::read_dir(root.join(relative)) else {
+                return false;
+            };
+            entries.filter_map(Result::ok).any(|entry| {
+                let path = entry.path();
+                path.extension().is_some_and(|extension| extension == "rs")
+                    && entry.file_type().is_ok_and(|file_type| file_type.is_file())
+                    && fs::read_to_string(path).is_ok_and(|text| {
+                        text.contains("crate::register_rule!") && declaration.is_match(&text)
+                    })
+            })
+        })
 }
 
 fn target_file(root: &Path, relative: &str) -> Option<PathBuf> {

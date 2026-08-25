@@ -12,4 +12,4 @@ Offline smoke harness for the `design-step5c.sh` thin wrapper.
 
 ## Edit-in-sync rules
 
-Update this harness when `design-step5c.sh` changes its delegation target or accepted wrapper argv contract. Step 5c orchestration behavior is covered in `crates/larch-cli/tests/design_settle_migrated_parity.rs`.
+Update this harness when `design-step5c.sh` changes its delegation target or accepted wrapper argv contract. Step 5c orchestration behavior is covered by the inline tests in `crates/larch-cli/src/design_settle_commands.rs`.

@@ -33,4 +33,4 @@ Thin launcher-compat wrapper for the `/design` Step 5b prepare block.
 
 ## Harness
 
-Covered by `crates/larch-cli/tests/design_oos_migrated_parity.rs`, the in-crate design OOS tests, and `make test-design-structure`.
+Covered by the inline tests in `crates/larch-cli/src/design_oos_commands.rs` and `make test-design-structure`.

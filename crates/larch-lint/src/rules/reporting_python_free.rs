@@ -126,12 +126,6 @@ impl ExpectedOwner {
         }
     }
 
-    const fn parity(self) -> &'static str {
-        match self {
-            Self::Rust => "complete",
-            Self::Retired => "not-applicable",
-        }
-    }
 }
 
 struct ExpectedCommand {
@@ -490,13 +484,9 @@ fn check_registry_rows(commands: &[Value], findings: &mut Vec<Finding>) {
             continue;
         };
         found.insert(selector.clone());
-        if field("owner") != expected.owner.owner()
-            || field("implementation_parity") != expected.owner.parity()
-            || field("consumer_cutover") != "complete"
-            || field("python_removal") != "complete"
-        {
+        if field("owner") != expected.owner.owner() {
             findings.push(registry_finding(format!(
-                "non-final reporting command row: {selector}; expected owner {} with complete cutover and Python removal",
+                "non-final reporting command row: {selector}; expected owner {}",
                 expected.owner.owner()
             )));
         }
@@ -505,14 +495,6 @@ fn check_registry_rows(commands: &[Value], findings: &mut Vec<Finding>) {
             findings.push(registry_finding(format!(
                 "reporting command migration issue drift: {selector}; expected #{}",
                 expected.migration_issue
-            )));
-        }
-        if field("python_module") != expected.python_module
-            || field("python_function") != expected.python_function
-        {
-            findings.push(registry_finding(format!(
-                "reporting retired Python target drift: {selector}; expected {}.{}",
-                expected.python_module, expected.python_function
             )));
         }
     }

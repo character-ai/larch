@@ -883,7 +883,7 @@ mod tests {
             targets: vec![
                 target("larch-cli", &["lib"], "crates/larch-cli/src/lib.rs"),
                 target("larch", &["bin"], "crates/larch-cli/src/main.rs"),
-                target("parity", &["test"], "crates/larch-cli/tests/parity.rs"),
+                target("integration", &["test"], "crates/larch-cli/tests/main.rs"),
             ],
         }
     }
@@ -971,8 +971,11 @@ mod tests {
 
     #[test]
     fn test_source_selects_that_test_target() {
-        let plan = plan_over(&[cli_package()], &["crates/larch-cli/tests/parity.rs"]);
-        assert_eq!(plan.selected_targets(), vec!["larch-cli:test:parity"]);
+        let plan = plan_over(
+            &[cli_package()],
+            &["crates/larch-cli/tests/clean_install.rs"],
+        );
+        assert_eq!(plan.selected_targets(), vec!["larch-cli:test:integration"]);
         assert_eq!(
             plan.commands(),
             vec![vec![
@@ -982,7 +985,7 @@ mod tests {
                 "--package",
                 "larch-cli",
                 "--test",
-                "parity",
+                "integration",
                 "--",
                 "-D",
                 "warnings",
@@ -996,7 +999,7 @@ mod tests {
             &[cli_package()],
             &[
                 "crates/larch-cli/src/lib.rs",
-                "crates/larch-cli/tests/parity.rs",
+                "crates/larch-cli/tests/clean_install.rs",
             ],
         );
         let selection: &PackageSelection = &plan.packages[0];
@@ -1013,7 +1016,7 @@ mod tests {
                 "--bin",
                 "larch",
                 "--test",
-                "parity",
+                "integration",
                 "--",
                 "-D",
                 "warnings",
@@ -1021,7 +1024,7 @@ mod tests {
         );
         assert_eq!(
             plan.selected_targets(),
-            vec!["larch-cli:default-production", "larch-cli:test:parity"]
+            vec!["larch-cli:default-production", "larch-cli:test:integration"]
         );
     }
 

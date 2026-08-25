@@ -144,9 +144,6 @@ struct OwnershipCommand {
     domain: String,
     verb: String,
     owner: String,
-    implementation_parity: String,
-    consumer_cutover: String,
-    python_removal: String,
     planning_issue: u64,
 }
 
@@ -376,7 +373,7 @@ fn validate_operation_row(
             findings,
         );
     }
-    if !matches!(owner, "python" | "rust" | "retired") {
+    if !matches!(owner, "rust" | "retired") {
         inventory_finding(
             line_number,
             "GitHub service current owner is invalid",
@@ -399,9 +396,12 @@ fn validate_operation_row(
             findings,
         );
     }
-    if !matches!(parity, "pending" | "complete" | "not-applicable")
-        || !matches!(cutover, "pending" | "complete")
-        || !matches!(removal, "pending" | "complete")
+    let expected_phases = match owner {
+        "rust" => Some(("complete", "complete", "complete")),
+        "retired" => Some(("not-applicable", "complete", "complete")),
+        _ => None,
+    };
+    if expected_phases != Some((parity, cutover, removal))
     {
         inventory_finding(
             line_number,
@@ -426,11 +426,7 @@ fn validate_operation_row(
         return;
     }
     for command in commands {
-        if command.owner != owner
-            || command.implementation_parity != parity
-            || command.consumer_cutover != cutover
-            || command.python_removal != removal
-            || !issues.contains(&command.planning_issue)
+        if command.owner != owner || !issues.contains(&command.planning_issue)
         {
             inventory_finding(
                 line_number,

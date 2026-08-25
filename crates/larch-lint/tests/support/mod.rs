@@ -176,23 +176,14 @@ fn seed_tracked_tree(repository: &TempRepo) {
         "scripts/lint-readability-preamble.tsv",
         b"__metadata__\tmetadata-min-count\t0\t\nskills/design/SKILL.md\tskill-exempt\t0\tfixture\t\nskills/review/SKILL.md\tskill-exempt\t0\tfixture\t\n",
     );
-    repository.write("python/migrated-scripts.tsv", b"# retired paths\n");
-    repository.write(
-        "crates/larch-lint/data/python-lint-disposition.tsv",
-        b"# verb\tdisposition\ttarget_surface\trationale\n",
-    );
-    repository.write(
-        "python/larch/cli.py",
-        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n}\n",
-    );
     repository.write("hooks/hooks.json", b"{\"hooks\": {}}\n");
     repository.write(
-        "crates/larch-cli/tests/parity.rs",
+        "crates/larch-cli/tests/clean_install.rs",
         b"const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[CleanInstallCase::new(\"clean-install-fixture-run\", \"fixture\", \"run\")];\n",
     );
     repository.write(
         "crates/larch-lint/data/command-registry.toml",
-        b"schema_version = 2\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\npython_module = \"fixture\"\npython_function = \"main\"\nmachine_stdout = false\nowner = \"python\"\nimplementation_parity = \"pending\"\nconsumer_cutover = \"pending\"\npython_removal = \"pending\"\nplanning_issue = 7661\nmigration_issue = 7661\n",
+        b"schema_version = 3\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\nmachine_stdout = false\nowner = \"rust\"\nplanning_issue = 7661\nmigration_issue = 7661\n",
     );
     // The all-rule fixture must carry a structurally valid GitHub matrix: the
     // #7685 closure guard consumes it fail-closed even when this fixture has
@@ -203,7 +194,7 @@ fn seed_tracked_tree(repository: &TempRepo) {
     );
     repository.write(
         "docs/github-service-inventory.md",
-        b"<!-- github-service-ownership:start -->\n```text\noperation\tadapter_owner\tcurrent_owner\tplanning_issues\timplementation_parity\tconsumer_cutover\tpython_removal\tcommands\nactions\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\nattestations\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\ncomments\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\nissue-dependencies\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\nissue-sub-issues\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\nissues\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\nlabels\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\npull-requests\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\nreleases\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\nrepository-metadata\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\n```\n<!-- github-service-ownership:end -->\n",
+        b"<!-- github-service-ownership:start -->\n```text\noperation\tadapter_owner\tcurrent_owner\tplanning_issues\timplementation_parity\tconsumer_cutover\tpython_removal\tcommands\nactions\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run\nattestations\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run\ncomments\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run\nissue-dependencies\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run\nissue-sub-issues\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run\nissues\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run\nlabels\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run\npull-requests\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run\nreleases\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run\nrepository-metadata\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run\n```\n<!-- github-service-ownership:end -->\n",
     );
     repository.write(
         "crates/larch-core/src/report/timing.rs",

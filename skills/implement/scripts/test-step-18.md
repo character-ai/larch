@@ -1,7 +1,7 @@
 # Step 18 coverage (Rust parity)
 
 Offline coverage for `step-18.sh` lives in
-`crates/larch-cli/tests/implement_terminal_parity.rs` (Step 18 gate,
+`crates/larch-cli/src/implement_terminal_commands.rs` (Step 18 gate,
 snapshot, publication, and marker nodes plus Step 19 restore, teardown, and
 ordering nodes).
 
@@ -24,4 +24,4 @@ ordering nodes).
 
 ## Edit in sync
 
-Update `crates/larch-cli/tests/implement_terminal_parity.rs` with `step-18.sh`, `step-18.md`, `skills/implement/SKILL.md`, `make test-implement-structure`, `scripts/test-implement-timing-rehydration.sh`, and `scripts/test-render-cost-line-callsites.sh`.
+Update the Step 18 tests in `crates/larch-cli/src/implement_terminal_commands.rs` with `step-18.sh`, `step-18.md`, `skills/implement/SKILL.md`, `make test-implement-structure`, `scripts/test-implement-timing-rehydration.sh`, and `scripts/test-render-cost-line-callsites.sh`.

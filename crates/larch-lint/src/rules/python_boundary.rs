@@ -54,14 +54,8 @@ impl<'a> RegistryCommand<'a> {
     }
 
     pub(super) fn has_final_cutover(&self) -> bool {
-        [
-            ("owner", "rust"),
-            ("implementation_parity", "complete"),
-            ("consumer_cutover", "complete"),
-            ("python_removal", "complete"),
-        ]
-        .into_iter()
-        .all(|(key, expected)| self.text(key) == Some(expected))
+        self.text("owner") == Some("rust")
+            && self.integer("migration_issue").is_some_and(|issue| issue > 0)
     }
 }
 

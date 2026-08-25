@@ -4,7 +4,7 @@
 name: f
 description: "Use when forcing an implementation with Claude subagent implement + self-review. Shortcut for /implement --force --self-review --self-implement."
 argument-hint: "<arguments>"
-allowed-tools: Bash(python3:*), Skill, Read
+allowed-tools: Bash(*scripts/larch.sh:*), Skill, Read
 ---
 
 **MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `f`.**

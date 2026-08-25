@@ -1,9 +1,7 @@
-//! Golden parity for the `/issue` input grammar and candidate allocator.
+//! Golden coverage for the `/issue` input grammar and candidate allocator.
 //!
-//! Every expectation is the output the Python owners
-//! (`larch.issue.issue_create.parse_issue_input` and `allocate_candidates`)
-//! produced for the same input, taken from the pinned regression cases in
-//! `python/tests/issue/test_issue_create.py`.
+//! Every expectation pins the public parser and allocation contracts for the
+//! same input.
 
 use std::fmt::Write as _;
 

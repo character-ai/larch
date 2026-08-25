@@ -7,13 +7,8 @@ const fn final_command() -> &'static str {
     r#"[[commands]]
 domain = "review"
 verb = "core"
-python_module = "larch.review.review_core_body"
-python_function = "review_core_main"
 machine_stdout = true
 owner = "rust"
-implementation_parity = "complete"
-consumer_cutover = "complete"
-python_removal = "complete"
 planning_issue = 7679
 migration_issue = 8445
 "#
@@ -24,14 +19,10 @@ fn handoff_command(planning_issue: u64) -> String {
         r#"[[commands]]
 domain = "render"
 verb = "voter"
-python_module = "larch.rendering.rendering"
-python_function = "render_voter_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
 planning_issue = {planning_issue}
+migration_issue = 8560
 "#
     )
 }
@@ -40,15 +31,11 @@ fn prepare(repository: &TempRepo, planning_issue: u64) {
     repository.write(
         "crates/larch-lint/data/command-registry.toml",
         format!(
-            "schema_version = 2\n\n{}\n{}",
+            "schema_version = 3\n\n{}\n{}",
             final_command(),
             handoff_command(planning_issue)
         )
         .as_bytes(),
-    );
-    repository.write(
-        "python/larch/cli.py",
-        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"render\", \"voter\"): (\"larch.rendering.rendering\", \"render_voter_main\", False),\n}\n",
     );
 }
 
@@ -83,12 +70,9 @@ fn rejects_handoff_drift_and_unclosed_review_rows() {
         .args(["rule", "review-python-free"])
         .assert()
         .code(1)
-        .stdout(
-            predicate::str::contains("review-command hand-off drift: render voter; expected #7686")
-                .and(predicate::str::contains(
-                    "planning issue #7679 command render voter is not Rust-owned",
-                )),
-        )
+        .stdout(predicate::str::contains(
+            "review-command hand-off drift: render voter; expected #7686",
+        ))
         .stderr(predicate::str::is_empty());
 }
 

@@ -199,7 +199,7 @@ fn check_registry_rows(
         found.insert(selector.clone());
         if !row_has_final_state(table) {
             findings.push(registry_finding(format!(
-                "non-final release Python-free command row: {selector}"
+                "non-final release command row: {selector}"
             )));
         }
         if table.get("migration_issue").and_then(Value::as_integer) != Some(expected.issue) {
@@ -210,13 +210,6 @@ fn check_registry_rows(
         }
         let (python_module, python_function) = expected_python_target(domain, verb)
             .expect("every final release command has retired Python metadata");
-        if table.get("python_module").and_then(Value::as_str) != Some(python_module)
-            || table.get("python_function").and_then(Value::as_str) != Some(python_function)
-        {
-            findings.push(registry_finding(format!(
-                "release retired Python target drift: {selector}; expected {python_module}.{python_function}"
-            )));
-        }
         if let Some(fixture) = expected.clean_install_test
             && table.get("clean_install_test").and_then(Value::as_str) != Some(fixture)
         {
@@ -276,14 +269,7 @@ fn check_python_registrations(
 }
 
 fn row_has_final_state(table: &toml::Table) -> bool {
-    [
-        ("owner", "rust"),
-        ("implementation_parity", "complete"),
-        ("consumer_cutover", "complete"),
-        ("python_removal", "complete"),
-    ]
-    .into_iter()
-    .all(|(field, expected)| table.get(field).and_then(Value::as_str) == Some(expected))
+    table.get("owner").and_then(Value::as_str) == Some("rust")
 }
 
 fn check_python_implementations(
@@ -439,4 +425,3 @@ fn registry_finding(message: String) -> Finding {
 fn line_number(index: usize) -> u32 {
     u32::try_from(index + 1).unwrap_or(u32::MAX)
 }
-

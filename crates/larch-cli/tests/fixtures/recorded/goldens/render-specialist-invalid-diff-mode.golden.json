@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "specialist-agent.md": {
+      "text": "---\nname: specialist-agent\n---\n# Fixture specialist body\n\nKeep this body line.\n\n## Calibration examples\n\nRemove this example.\n\n## Review contract\n\nKeep this contract line.\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "render-specialist-prompt.sh: --diff-mode must be one of generic, docs-only, test-only, generated-only (got: 'source-only')\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

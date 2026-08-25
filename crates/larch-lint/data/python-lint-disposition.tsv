@@ -1,5 +1,0 @@
-# Python lint-verb disposition ledger (#8095).
-# Columns: verb<TAB>disposition<TAB>target_surface<TAB>rationale
-# disposition is one of: port, retire, rust-owned
-# target_surface is a repo-relative path (comma-separated when a verb spans multiple roots).
-# Confirm surfaces by reading the owning Python module, not by verb name alone.

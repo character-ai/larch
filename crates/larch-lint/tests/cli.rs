@@ -61,7 +61,7 @@ fn command_registry_report_validates_a_fixture_repository() {
         .assert()
         .success()
         .stdout(predicate::str::starts_with(
-            "## Rust command migration progress\n",
+            "## Rust command registry\n",
         ))
         .stderr(predicate::str::is_empty());
 }
@@ -93,7 +93,7 @@ fn rules_lists_registered_rules_in_name_order() {
             "bg-wait-coverage\tReject unallowlisted background-launch prose in skills\n",
         ))
         .stdout(predicate::str::contains(
-            "command-registry\tValidate command ownership, migration state, and production caller inventory\n",
+            "command-registry\tValidate Rust command ownership and production caller inventory\n",
         ))
         .stdout(predicate::str::contains(
             "git-push-refspec\tRequire Git push commands to name a destination refspec\n",
@@ -160,9 +160,6 @@ fn rules_lists_registered_rules_in_name_order() {
         ))
         .stdout(predicate::str::contains(
             "run-log-corpus-walkers\tReject raw committed run-log corpus walkers outside the shared owner\n",
-        ))
-        .stdout(predicate::str::contains(
-            "retired-scripts\tReject references to retired script paths\n",
         ))
         .stdout(predicate::str::contains(
             "topology-rule-paths\tValidate topology TSV runtime authorities\n",

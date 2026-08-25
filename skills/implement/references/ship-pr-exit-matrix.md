@@ -57,7 +57,7 @@ The ci-fixer subagent round loop is prose-owned in `skills/implement/SKILL.md`. 
 
 ## Initial state seeder contract
 
-The Rust-owned `ship seed-initial-state` command owns the canonical initial `ship-pr-state.sh` key set, including `OOS_PENDING=false`; `ship_state_parity.rs` pins the ordered bytes. Rust resolves durable inputs and assembles the request behind the sole `step-8-seed-initial.sh` shell wrapper. Inputs come from `$IMPLEMENT_TMPDIR/bootstrap-routing.env`, `$IMPLEMENT_TMPDIR/ship-seed-input.env`, and session readers documented in `step-8-seed-initial.md`.
+The Rust-owned `ship seed-initial-state` command owns the canonical initial `ship-pr-state.sh` key set, including `OOS_PENDING=false`; `crates/larch-cli/tests/ship_state.rs` pins the ordered bytes. Rust resolves durable inputs and assembles the request behind the sole `step-8-seed-initial.sh` shell wrapper. Inputs come from `$IMPLEMENT_TMPDIR/bootstrap-routing.env`, `$IMPLEMENT_TMPDIR/ship-seed-input.env`, and session readers documented in `step-8-seed-initial.md`.
 
 `MANIFEST_PATH` MUST be empty unless `/implement` Step 2 returned `STATUS=complete` with a readable JSON manifest. The `/design` Step 5 manifest (`design-export/manifest.env`, a shell KV file) is NEVER a valid value for `MANIFEST_PATH`. The bash ship path is retired, so `LARCH_SHIP_PR_IMPL=bash` prose is moot.
 

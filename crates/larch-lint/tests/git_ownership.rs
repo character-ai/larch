@@ -5,39 +5,29 @@ use std::fmt::Write as _;
 use predicates::prelude::*;
 use support::TempRepo;
 
-const COMMANDS: [(&str, &str, &str, u64); 22] = [
-    ("git", "amend-add", "amend_add_main", 7735),
-    ("git", "branch-info", "branch_info_main", 7734),
-    ("git", "check-main-sync", "check_main_sync_main", 7758),
-    (
-        "git",
-        "check-phantom-dirty",
-        "check_phantom_dirty_main",
-        7757,
-    ),
-    (
-        "git",
-        "check-remote-branch",
-        "check_remote_branch_main",
-        7734,
-    ),
-    ("git", "checkout-ours", "checkout_ours_main", 7759),
-    ("git", "clean-tree", "clean_tree_main", 7756),
-    ("git", "commit", "commit_main", 7735),
-    ("git", "conflict-files", "conflict_files_main", 7756),
-    ("git", "count-commits", "count_commits_main", 7734),
-    ("git", "current-branch", "current_branch_main", 7734),
-    ("git", "phantom-probe", "phantom_probe_main", 7757),
-    ("git", "rebase-abort", "rebase_abort_main", 7759),
-    ("git", "rebase-skip", "rebase_skip_main", 7759),
-    ("git", "show-stage", "show_stage_main", 7734),
-    ("git", "snapshot-untracked", "snapshot_untracked_main", 7756),
-    ("git", "stage", "stage_main", 7735),
-    ("git", "sync-local-main", "sync_local_main_main", 7758),
-    ("push", "branch", "branch_main", 7760),
-    ("push", "checkpoint-probe", "checkpoint_probe_main", 7762),
-    ("push", "force", "force_main", 7760),
-    ("push", "rebase", "rebase_main", 7762),
+const COMMANDS: [(&str, &str, u64); 22] = [
+    ("git", "amend-add", 7735),
+    ("git", "branch-info", 7734),
+    ("git", "check-main-sync", 7758),
+    ("git", "check-phantom-dirty", 7757),
+    ("git", "check-remote-branch", 7734),
+    ("git", "checkout-ours", 7759),
+    ("git", "clean-tree", 7756),
+    ("git", "commit", 7735),
+    ("git", "conflict-files", 7756),
+    ("git", "count-commits", 7734),
+    ("git", "current-branch", 7734),
+    ("git", "phantom-probe", 7757),
+    ("git", "rebase-abort", 7759),
+    ("git", "rebase-skip", 7759),
+    ("git", "show-stage", 7734),
+    ("git", "snapshot-untracked", 7756),
+    ("git", "stage", 7735),
+    ("git", "sync-local-main", 7758),
+    ("push", "branch", 7760),
+    ("push", "checkpoint-probe", 7762),
+    ("push", "force", 7760),
+    ("push", "rebase", 7762),
 ];
 
 const OPERATIONS: &str = r"pub enum GitCliOperation {
@@ -149,26 +139,16 @@ impl GitCli {
 ";
 
 fn command_registry() -> String {
-    let mut output = String::from("schema_version = 2\n");
-    for (domain, verb, python_function, issue) in COMMANDS {
-        let python_module = if domain == "git" {
-            "larch.git.git"
-        } else {
-            "larch.git.push"
-        };
+    let mut output = String::from("schema_version = 3\n");
+    for (domain, verb, issue) in COMMANDS {
         let _ = write!(
             output,
             r#"
 [[commands]]
 domain = "{domain}"
 verb = "{verb}"
-python_module = "{python_module}"
-python_function = "{python_function}"
 machine_stdout = false
 owner = "rust"
-implementation_parity = "complete"
-consumer_cutover = "complete"
-python_removal = "complete"
 planning_issue = 7675
 migration_issue = {issue}
 "#,
@@ -426,10 +406,7 @@ fn rejects_retired_git_python_entrypoints_and_calls() {
         .assert()
         .code(1)
         .stdout(predicate::str::contains(
-            "python-entrypoint-still-present git commit",
-        ))
-        .stdout(predicate::str::contains(
-            "python-entrypoint-still-called git commit",
+            "python/larch/git/git.py:1: retired Git Python runtime source returned",
         ))
         .stderr("");
 }

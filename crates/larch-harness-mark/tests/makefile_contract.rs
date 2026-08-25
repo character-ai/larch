@@ -33,6 +33,7 @@ fn harness_mark_uses_the_dependency_free_timer_and_separate_target_directory() {
     assert!(!definition.contains("cargo run"), "{definition}");
     assert!(!definition.contains("larch-cli"), "{definition}");
     assert!(!definition.contains("target/debug/larch"), "{definition}");
+    assert!(!definition.contains("python"), "{definition}");
 }
 
 #[test]

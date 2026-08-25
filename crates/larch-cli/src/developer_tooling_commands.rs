@@ -29,6 +29,7 @@ use regex::bytes::RegexBuilder;
 const MAX_U64_DECIMAL: &str = "18446744073709551615";
 const PUBLIC_STYLE_LINE: &str = "**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**";
 const DEV_STYLE_LINE: &str = "**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**";
+const ALIAS_ALLOWED_TOOLS: &str = "allowed-tools: Bash(*scripts/larch.sh:*), Read, Skill";
 const VERIFY_SKILL_USAGE: &str = "Usage: verify skill-called (--sentinel-file PATH | --stdout-line RE --stdout-file PATH | --commit-delta N --before-count N)";
 
 /// Alias-generation helpers used by `/alias`.
@@ -163,7 +164,7 @@ fn alias_generate(arguments: &[OsString]) -> u8 {
     let _ = writeln!(output, "name: {name}");
     let _ = writeln!(output, "description: \"{description}\"");
     let _ = writeln!(output, "argument-hint: \"<arguments>\"");
-    let _ = writeln!(output, "allowed-tools: Bash(python3:*), Read, Skill");
+    let _ = writeln!(output, "{ALIAS_ALLOWED_TOOLS}");
     let _ = writeln!(output, "---");
     let _ = writeln!(output);
     let _ = writeln!(

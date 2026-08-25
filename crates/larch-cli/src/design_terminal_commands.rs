@@ -1,10 +1,8 @@
 //! Rust owner for the four `/design` terminal-state and failure-report verbs
 //! (#8580).
 //!
-//! Atomically replaces the Python registrations for `design read-result-env`,
-//! `design stage-terminal-state`, `design failure-report`, and `design
-//! step-final-summary`. The frozen Python reference lives under
-//! `fixtures/rust-parity/design_terminal_frozen/`.
+//! Owns `design read-result-env`, `design stage-terminal-state`, `design
+//! failure-report`, and `design step-final-summary`.
 //!
 //! The port follows the byte-frozen parity precedent of the sibling
 //! `design_step1_commands.rs` (#8579) and reuses the Step 0 wrapper library

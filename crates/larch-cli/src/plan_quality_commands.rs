@@ -143,13 +143,12 @@ fn sha256_text(text: &str) -> String {
 /// `plan parse-commands`
 pub fn parse_commands(arguments: &[OsString]) -> ExitCode {
     const PROGRAM: &str = "cli.py plan parse-commands";
-    const USAGE: &str =
-        include_str!("../../../fixtures/rust-parity/plan_quality_help/parse-commands.usage.txt");
+    const USAGE: &str = include_str!("../assets/plan-quality-help/parse-commands.usage.txt");
     let parsed = match parse_required_with_help(
         arguments,
         PROGRAM,
         USAGE,
-        include_str!("../../../fixtures/rust-parity/plan_quality_help/parse-commands.txt"),
+        include_str!("../assets/plan-quality-help/parse-commands.txt"),
         &["--plan-file", "--output", "--repo-root"],
         &[],
         &["--plan-file", "--output"],
@@ -528,8 +527,7 @@ fn validate_plan_command_rows(
 /// `plan validate-commands`
 pub fn validate_commands(arguments: &[OsString]) -> ExitCode {
     const PROGRAM: &str = "cli.py plan validate-commands";
-    const USAGE: &str =
-        include_str!("../../../fixtures/rust-parity/plan_quality_help/validate-commands.usage.txt");
+    const USAGE: &str = include_str!("../assets/plan-quality-help/validate-commands.usage.txt");
     if let Some(error) = crate::argparse_compat::choice_error(
         arguments,
         &[
@@ -549,7 +547,7 @@ pub fn validate_commands(arguments: &[OsString]) -> ExitCode {
         arguments,
         PROGRAM,
         USAGE,
-        include_str!("../../../fixtures/rust-parity/plan_quality_help/validate-commands.txt"),
+        include_str!("../assets/plan-quality-help/validate-commands.txt"),
         &[
             "--tsv-file",
             "--log-file",
@@ -648,8 +646,7 @@ fn plan_validation_outcome(
 /// `plan validate`
 pub fn validate(arguments: &[OsString]) -> ExitCode {
     const PROGRAM: &str = "cli.py plan validate";
-    const USAGE: &str =
-        include_str!("../../../fixtures/rust-parity/plan_quality_help/validate.usage.txt");
+    const USAGE: &str = include_str!("../assets/plan-quality-help/validate.usage.txt");
     if let Some(error) = crate::argparse_compat::choice_error(
         arguments,
         &[
@@ -666,7 +663,7 @@ pub fn validate(arguments: &[OsString]) -> ExitCode {
         arguments,
         PROGRAM,
         USAGE,
-        include_str!("../../../fixtures/rust-parity/plan_quality_help/validate.txt"),
+        include_str!("../assets/plan-quality-help/validate.txt"),
         &[
             "--plan-file",
             "--repo-root",
@@ -814,9 +811,7 @@ pub fn optional_trailers(arguments: &[OsString]) -> ExitCode {
     if arguments.is_empty() {
         eprintln!(
             "{}\ncli.py plan optional-trailers: error: the following arguments are required: cmd",
-            include_str!(
-                "../../../fixtures/rust-parity/plan_quality_help/optional-trailers.usage.txt"
-            )
+            include_str!("../assets/plan-quality-help/optional-trailers.usage.txt")
         );
         return ExitCode::from(RC2);
     }
@@ -828,9 +823,7 @@ pub fn optional_trailers(arguments: &[OsString]) -> ExitCode {
         "-h" | "--help" => {
             print!(
                 "{}",
-                include_str!(
-                    "../../../fixtures/rust-parity/plan_quality_help/optional-trailers.txt"
-                )
+                include_str!("../assets/plan-quality-help/optional-trailers.txt")
             );
             return ExitCode::SUCCESS;
         }
@@ -1010,14 +1003,12 @@ fn canonical_plan_for_override(
 /// `plan set-oversize-override`
 pub fn set_oversize_override(arguments: &[OsString]) -> ExitCode {
     const PROGRAM: &str = "cli.py plan set-oversize-override";
-    const USAGE: &str = include_str!(
-        "../../../fixtures/rust-parity/plan_quality_help/set-oversize-override.usage.txt"
-    );
+    const USAGE: &str = include_str!("../assets/plan-quality-help/set-oversize-override.usage.txt");
     let parsed = match parse_required_with_help(
         arguments,
         PROGRAM,
         USAGE,
-        include_str!("../../../fixtures/rust-parity/plan_quality_help/set-oversize-override.txt"),
+        include_str!("../assets/plan-quality-help/set-oversize-override.txt"),
         &["--design-tmpdir", "--plan-file"],
         &["--remove"],
         &["--design-tmpdir"],
@@ -1101,13 +1092,12 @@ fn plan_counts_from_file(path: &Path) -> Option<(i64, i64)> {
 /// `plan check-size`
 pub fn check_size(arguments: &[OsString]) -> ExitCode {
     const PROGRAM: &str = "cli.py plan check-size";
-    const USAGE: &str =
-        include_str!("../../../fixtures/rust-parity/plan_quality_help/check-size.usage.txt");
+    const USAGE: &str = include_str!("../assets/plan-quality-help/check-size.usage.txt");
     let parsed = match parse_required_with_help(
         arguments,
         PROGRAM,
         USAGE,
-        include_str!("../../../fixtures/rust-parity/plan_quality_help/check-size.txt"),
+        include_str!("../assets/plan-quality-help/check-size.txt"),
         &["--design-tmpdir", "--plan-file"],
         &[],
         &["--design-tmpdir"],
@@ -1358,14 +1348,12 @@ pub fn check_size(arguments: &[OsString]) -> ExitCode {
 /// `plan compose-goals-test`
 pub fn compose_goals_test(arguments: &[OsString]) -> ExitCode {
     const PROGRAM: &str = "cli.py plan compose-goals-test";
-    const USAGE: &str = include_str!(
-        "../../../fixtures/rust-parity/plan_quality_help/compose-goals-test.usage.txt"
-    );
+    const USAGE: &str = include_str!("../assets/plan-quality-help/compose-goals-test.usage.txt");
     let parsed = match parse_required_with_help(
         arguments,
         PROGRAM,
         USAGE,
-        include_str!("../../../fixtures/rust-parity/plan_quality_help/compose-goals-test.txt"),
+        include_str!("../assets/plan-quality-help/compose-goals-test.txt"),
         &["--plan-file", "--goal-text"],
         &[],
         &["--plan-file"],

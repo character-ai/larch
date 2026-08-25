@@ -71,4 +71,4 @@ Keep this file aligned with:
 
 - `skills/implement/SKILL.md` Step 7a
 - `skills/implement/scripts/test-step-7a.sh`
-- `crates/larch-cli/src/implement_review_commands.rs` (behavioral authority) and its parity test `crates/larch-cli/tests/implement_review_parity.rs`
+- `crates/larch-cli/src/implement_review_commands.rs` (behavioral authority and inline tests)

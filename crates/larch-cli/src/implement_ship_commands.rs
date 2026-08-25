@@ -1,10 +1,8 @@
-//! Rust owners for the four `/implement` Step 8 ship-routing commands.
+//! Rust owners for the three `/implement` Step 8 ship-routing commands.
 //!
-//! These commands own the retained Python dependency fence, durable input
-//! reconstruction, initial state, bgjob adapter, and post-OOS checkpoint
-//! bookkeeping. Rust owns ship, merge, and finalization. Retained Python state
-//! serializers remain behind the reviewed migration seam. Rust subprocesses
-//! enter through the verified bootstrap.
+//! These commands own durable input reconstruction, initial state, the bgjob
+//! adapter, and post-OOS checkpoint bookkeeping. Rust owns ship, merge, and
+//! finalization. Rust subprocesses enter through the verified bootstrap.
 
 use std::{
     env,
@@ -12,18 +10,16 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::ExitCode,
-    time::Duration,
 };
 
 use larch_core::{
-    DuplicatePolicy, HostUtilityProgram, KvDocument, ParseOptions, ProcessOutput, ShipState,
-    ndjson_filed_evidence, private_atomic_write, read_universal_newlines, report::RunLogCorpus,
-    state_file_has_kv, validate_run_id, validate_ship_result_env,
+    DuplicatePolicy, KvDocument, ParseOptions, ProcessOutput, ShipState, ndjson_filed_evidence,
+    private_atomic_write, read_universal_newlines, report::RunLogCorpus, state_file_has_kv,
+    validate_run_id, validate_ship_result_env,
 };
 
 use crate::{
     argparse_compat::{ParsedCommandLine, parse_required_with_help},
-    child_process::run_host_utility,
     implement_child_seam::resolve_plugin_root,
     implement_commands::expected_tmpdir_basename_prefix,
     implement_dispatch_commands::{
@@ -33,9 +29,6 @@ use crate::{
     tracking_issue_commands::adoption_sentinel_identity,
 };
 
-const GUARD_PROGRAM: &str = "cli.py implement step-8-python-guard";
-const GUARD_USAGE: &str = "usage: cli.py implement step-8-python-guard [-h]";
-const GUARD_HELP: &str = "usage: cli.py implement step-8-python-guard [-h]\n\noptions:\n  -h, --help  show this help message and exit";
 const SEED_PROGRAM: &str = "cli.py implement step-8-seed-initial";
 const SEED_USAGE: &str = concat!(
     "usage: cli.py implement step-8-seed-initial [-h] [--merge MERGE]\n",
@@ -93,9 +86,6 @@ const OOS_USAGE: &str = "usage: cli.py implement step-8-oos-checkpoint [-h]";
 const OOS_HELP: &str = "usage: cli.py implement step-8-oos-checkpoint [-h]\n\noptions:\n  -h, --help  show this help message and exit";
 const SHIP_STEP: &str = "implement-step8-ship";
 const SHIP_BUDGET_SECONDS: u32 = 21_600;
-const PYTHON_GUARD_DETAIL: &str =
-    "Ship merge and finalize dependencies require Python 3.11 or newer";
-const PYTHON_GUARD_JSON: &str = "{\"detail\":\"Ship merge and finalize dependencies require Python 3.11 or newer\",\"failed_run_id\":\"\",\"ledger_dispatcher\":\"\",\"ledger_exit_code\":null,\"ledger_failure_detail_log\":\"\",\"ledger_phase\":\"\",\"ledger_ready\":false,\"ledger_site\":\"\",\"ledger_step\":\"\",\"ledger_trigger\":\"\",\"merge_result\":\"\",\"needs_user_reason\":\"\",\"outcome\":\"STALLED\",\"pr_number\":null,\"pr_url\":\"\"}";
 const SEED_OPTIONS: [&str; 10] = [
     "--merge",
     "--draft",
@@ -108,39 +98,6 @@ const SEED_OPTIONS: [&str; 10] = [
     "--bail-reason",
     "--bail-failure-detail-log",
 ];
-/// Refuse a host whose `python3` cannot run retained state serializers.
-pub fn step8_python_guard(arguments: &[OsString]) -> ExitCode {
-    if let Err(code) = parse_required_with_help(
-        arguments,
-        GUARD_PROGRAM,
-        GUARD_USAGE,
-        GUARD_HELP,
-        &[],
-        &[],
-        &[],
-    ) {
-        return code;
-    }
-    ExitCode::from(run_python_guard())
-}
-
-fn run_python_guard() -> u8 {
-    let probe = run_host_utility(
-        HostUtilityProgram::Python3,
-        [
-            OsString::from("-c"),
-            OsString::from("import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)"),
-        ],
-        Duration::from_secs(10),
-    );
-    if probe.is_ok_and(|output| output.status().success()) {
-        return 0;
-    }
-    eprintln!("ERROR: {PYTHON_GUARD_DETAIL}");
-    println!("{PYTHON_GUARD_JSON}");
-    4
-}
-
 /// Reconstruct and invoke the canonical create-if-absent ship-state seed.
 pub fn step8_seed_initial(arguments: &[OsString]) -> ExitCode {
     let (parsed, tmpdir) = match parse_command_with_tmpdir(
@@ -433,10 +390,6 @@ fn step8_ship_child(tmpdir: &Path, merge_result_env: &str) -> ExitCode {
     if let Err(error) = validate_ship_result_env(Path::new(merge_result_env), tmpdir) {
         eprintln!("step-8-ship: invalid result env: {error}");
         return ExitCode::from(1);
-    }
-    let guard = run_python_guard();
-    if guard != 0 {
-        return ExitCode::from(guard);
     }
     emit_phantom_probe();
     #[rustfmt::skip]

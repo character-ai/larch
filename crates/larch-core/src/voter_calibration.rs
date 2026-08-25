@@ -2,11 +2,9 @@
 //!
 //! Byte-for-byte port of the retired Python analyzer
 //! (`skills/voter-calibration/scripts/voter-calibration.py`) plus the
-//! `larch.calibration.voting` helpers it consumed. The frozen Python
-//! reference lives in `fixtures/rust-parity/voter_calibration_frozen/` and
-//! `crates/larch-cli/tests/voter_calibration_parity.rs` pins black-box
-//! parity. Corpus discovery, era-boundary resolution, and realized-outcome
-//! enrichment stay with the CLI owner in
+//! `larch.calibration.voting` helpers it consumed. In-crate tests pin the
+//! calculation and rendering contract. Corpus discovery, era-boundary
+//! resolution, and realized-outcome enrichment stay with the CLI owner in
 //! `crates/larch-cli/src/voter_calibration_commands.rs`.
 
 use std::collections::BTreeMap;

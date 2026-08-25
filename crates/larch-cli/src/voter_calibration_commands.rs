@@ -1,9 +1,8 @@
 //! Rust owner for the `/voter-calibration` analyzer CLI surface.
 //!
-//! Mirrors the retired Python analyzer's argparse contract, report bytes, exit
-//! codes, and degradation tokens (frozen reference:
-//! `fixtures/rust-parity/voter_calibration_frozen/`). Pure math and rendering
-//! live in `larch_core::voter_calibration`; this module owns argument parsing,
+//! Preserves the analyzer's argument contract, report bytes, exit codes, and
+//! degradation tokens. Pure math and rendering live in
+//! `larch_core::voter_calibration`; this module owns argument parsing,
 //! corpus discovery, era-boundary resolution through the typed GitHub owner,
 //! and optional realized-outcome enrichment reusing the analyze-issues
 //! helpers. Repository identity comes from `--repo` or gix-typed ambient

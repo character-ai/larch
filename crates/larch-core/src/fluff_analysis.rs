@@ -1,8 +1,7 @@
 //! Rust owner for the `/fluff-analysis` report.
 //!
-//! Bug-for-bug port of `skills/fluff-analysis/scripts/fluff-analysis.py`
-//! (frozen as `fixtures/rust-parity/fluff_analysis_reference.py`): extraction,
-//! the multi-label semantic classifier, acceptance aggregation, assessment and
+//! Bug-for-bug port of the retired fluff-analysis owner: extraction, the
+//! multi-label semantic classifier, acceptance aggregation, assessment and
 //! ship-outcome coverage, false-negative diagnostics, and markdown rendering.
 //! Corpus walks route through `report::run_log_corpus`; the in-progress
 //! session scan is a session-cache surface and reads its directory directly.

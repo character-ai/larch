@@ -179,8 +179,6 @@ for start, end, body in fences:
     body_text = '\n'.join(raw for _, raw in body)
     if '8-pre-ship' in body_text and 'step-8-ship.sh' not in body_text:
         errors.append(f'fence {start}-{end}: standalone orchestrator 8-pre-ship fence is forbidden')
-    if 'step-8' in body_text and 'sys.version_info' in body_text:
-        errors.append(f'fence {start}-{end}: Step 8 python version checks must delegate to step-8-python-guard.sh')
     if 'python/cli.py ship seed-initial-state' in body_text:
         errors.append(f'fence {start}-{end}: Step 8 seed fences must delegate to step-8-seed-initial.sh')
     for _, raw in body:

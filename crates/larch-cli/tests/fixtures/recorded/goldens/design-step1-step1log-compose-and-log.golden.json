@@ -1,0 +1,24 @@
+{
+  "exit_code": 0,
+  "files": {
+    "impl/larch-logs/implement/testrun/plan-goals-test.md": {
+      "text": "## Goal\nShip the widget\n\n## Implementation Plan\n- build the widget\n- wire the launcher\n- preserve the command contract\n\n\n## Test plan\n\n- cargo test\n"
+    },
+    "impl/plan-goals-test.md": {
+      "text": "## Goal\nShip the widget\n\n## Implementation Plan\n- build the widget\n- wire the launcher\n- preserve the command contract\n\n\n## Test plan\n\n- cargo test\n"
+    },
+    "impl/plan.txt": {
+      "text": "## Implementation Plan\n\n- build the widget\n- wire the launcher\n- preserve the command contract\n\n## Test plan\n\n- cargo test\n"
+    },
+    "impl/session-env.sh": {
+      "text": "RUN_ID=testrun\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "LOG_WRITTEN=true\nLOG_PATH=<SANDBOX>/impl/larch-logs/implement/testrun/plan-goals-test.md\nBYTES=148\nSHA256=e52a3c4eeee4f7f3f1718e13cad53520cef3a23765cdfb2141360bf63604be20\nCOMMIT_SHA=\nUNCHANGED=false\n"
+  }
+}

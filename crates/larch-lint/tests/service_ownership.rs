@@ -17,7 +17,7 @@ fn ownership_matrix(adapter: &str) -> String {
         "repository-metadata",
     ]
     .map(|operation| {
-        format!("{operation}\t{adapter}\tpython\t#7661\tpending\tpending\tpending\tfixture run")
+        format!("{operation}\t{adapter}\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run")
     })
     .join("\n");
     format!(
@@ -198,12 +198,12 @@ fn rejects_inventory_omissions_duplicate_rows_and_false_cutover_claims() {
     );
     let inventory = ownership_matrix("crates/larch-adapters/src/github/mod.rs")
         .replace(
-            "labels\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run\n",
+            "labels\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run\n",
             "",
         )
         .replace(
-            "issues\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run",
-            "issues\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run,missing command\nissues\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run",
+            "issues\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run",
+            "issues\tcrates/larch-adapters/src/github/mod.rs\tretired\t#7661\tnot-applicable\tcomplete\tcomplete\tfixture run,missing command\nissues\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run",
         );
     repository.write("docs/github-service-inventory.md", inventory.as_bytes());
     repository.commit_all();
@@ -231,7 +231,7 @@ fn rejects_inventory_omissions_duplicate_rows_and_false_cutover_claims() {
 fn rejects_every_untrustworthy_field_in_a_github_service_ownership_row() {
     let repository = TempRepo::new();
     let inventory = ownership_matrix("crates/larch-adapters/src/github/mod.rs").replace(
-        "actions\tcrates/larch-adapters/src/github/mod.rs\tpython\t#7661\tpending\tpending\tpending\tfixture run",
+        "actions\tcrates/larch-adapters/src/github/mod.rs\trust\t#7661\tcomplete\tcomplete\tcomplete\tfixture run",
         "Actions\tnot-an-adapter\tunknown\t#7687\tinvalid\tinvalid\tinvalid\tmissing *",
     );
     repository.write("docs/github-service-inventory.md", inventory.as_bytes());

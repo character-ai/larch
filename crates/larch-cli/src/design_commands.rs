@@ -1,9 +1,7 @@
 //! Rust owner for the `/design` Step 0 argv, route, and run-params verbs (#8577).
 //!
-//! Atomically replaces the Python registrations for `design parse-flags`,
-//! `design route`, and `design init-runparams`. The frozen Python reference
-//! lives at `fixtures/rust-parity/design_router_frozen/` behind
-//! `fixtures/rust-parity/design_router_migrated_reference.py`.
+//! Owns `design parse-flags`, `design route`, and `design init-runparams`.
+//! Inline tests pin the compatibility contract.
 //!
 //! Retired branch note (design decision D3, leaf #8577): the Python router
 //! shelled out to `issue title-eligibility` and mapped a non-zero subprocess

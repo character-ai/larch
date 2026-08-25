@@ -157,8 +157,10 @@ fn run(request: &Request) -> ExitCode {
         return refuse("preflight tmpdir is not writable.");
     }
     let _removed = fs::remove_file(&probe);
-    if !resolve_plugin_root().is_ok_and(|root| root.join("python").join("cli.py").is_file()) {
-        return refuse("cannot resolve CLAUDE_PLUGIN_ROOT/python/cli.py.");
+    if !resolve_plugin_root()
+        .is_ok_and(|root| root.join(".claude-plugin").join("plugin.json").is_file())
+    {
+        return refuse("cannot resolve CLAUDE_PLUGIN_ROOT plugin manifest.");
     }
     let environment = session_environment();
     let admission = match admit(request, &environment) {

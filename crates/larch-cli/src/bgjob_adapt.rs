@@ -1221,7 +1221,7 @@ fn rehydrate_plugin_root_from(
         return Err(DecisionError::token("plugin-root-invalid"));
     }
     let root = fs::canonicalize(root).map_err(|_| DecisionError::token("plugin-root-invalid"))?;
-    fs::symlink_metadata(root.join("python/cli.py"))
+    fs::symlink_metadata(root.join(".claude-plugin/plugin.json"))
         .is_ok_and(|metadata| metadata.is_file())
         .then_some(root)
         .ok_or_else(|| DecisionError::token("plugin-root-invalid"))

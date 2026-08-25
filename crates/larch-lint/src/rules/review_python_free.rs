@@ -8,7 +8,7 @@ use crate::{
     Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput, command_registry,
 };
 
-use super::python_boundary::RegistryCommand;
+use super::python_boundary::{RegistryCommand, check_python_registry};
 
 const NAME: &str = "review-python-free";
 const DESCRIPTION: &str =
@@ -237,6 +237,14 @@ impl Rule for ReviewPythonFreeRule {
             REVIEW_PLANNING_ISSUE as u64,
         )?;
         check_registry_rows(commands, &mut findings);
+        check_python_registry(
+            repository,
+            &|domain, verb| expected_command(domain, verb).is_some(),
+            &|domain, verb| {
+                format!("python-entrypoint-still-present {domain} {verb}: python/larch/cli.py")
+            },
+            &mut findings,
+        )?;
         check_retired_review_package(repository, &mut findings);
         check_live_runtime_references(repository, &mut findings)?;
         findings.sort();

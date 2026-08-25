@@ -20,4 +20,4 @@ summary names how many were skipped; they never silently pass. Parity for those
 rows lives in `crates/larch-core/src/vendor_usage.rs` (which keeps this
 harness's exact fixtures), `crates/larch-adapters/tests/vendor_diagnostics.rs`,
 and the `clean-install-agent-parse-codex-usage` case in
-`crates/larch-cli/tests/parity.rs`.
+`crates/larch-cli/tests/clean_install.rs`.

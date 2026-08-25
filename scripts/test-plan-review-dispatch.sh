@@ -10,7 +10,6 @@ trap 'rm -rf -- "$tmpdir"' EXIT
 
 launcher="$tmpdir/plugin/scripts/larch.sh"
 mkdir -p "$(dirname "$launcher")"
-ln -s "$repo_root/python" "$tmpdir/plugin/python"
 ln -s "$repo_root/skills" "$tmpdir/plugin/skills"
 cat >"$launcher" <<'EOF'
 #!/usr/bin/env bash
@@ -239,12 +238,6 @@ grep -qx 'VOTER_1_RETRIED=true' <<<"$retry_output"
 grep -qx 'VOTER_1_STATUS=launched' <<<"$retry_output"
 grep -qx 'DISPATCH_OK=true' <<<"$retry_output"
 
-set +e
-python3 "$repo_root/python/cli.py" plan-review panel-dispatch --help >/dev/null 2>&1
-python_panel_rc=$?
-python3 "$repo_root/python/cli.py" plan-review voter-dispatch --help >/dev/null 2>&1
-python_voter_rc=$?
-set -e
-[[ "$python_panel_rc" == 2 && "$python_voter_rc" == 2 ]]
+[[ -z "$(git -C "$repo_root" ls-files 'python/**')" ]]
 
 printf '%s\n' 'PASS: test-plan-review-dispatch.sh'

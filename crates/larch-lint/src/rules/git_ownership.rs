@@ -18,10 +18,7 @@ use syn::{
 use toml::Value;
 use tree_sitter::Node;
 
-use crate::{
-    Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput, command_registry,
-    syntax,
-};
+use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput, syntax};
 
 use super::syn_helpers;
 
@@ -198,10 +195,6 @@ impl Rule for GitOwnershipRule {
         check_concrete_gix_boundary(repository, &mut findings)?;
         check_closed_cli_operations(repository, &mut findings)?;
         check_atomic_command_rows(repository, &mut findings)?;
-        findings.extend(command_registry::python_retirement_findings_for_issues(
-            repository,
-            &GIT_UMBRELLA_ISSUES,
-        )?);
         check_retired_push_rebase_symbols(repository, &mut findings)?;
         check_inventory(repository, &mut findings)?;
         findings.sort();
@@ -865,10 +858,7 @@ fn check_atomic_command_rows(
         let domain = table.get("domain").and_then(Value::as_str).unwrap_or_default();
         let verb = table.get("verb").and_then(Value::as_str).unwrap_or_default();
         let selector = format!("{domain} {verb}");
-        let final_state = table.get("owner").and_then(Value::as_str) == Some("rust")
-            && table.get("implementation_parity").and_then(Value::as_str) == Some("complete")
-            && table.get("consumer_cutover").and_then(Value::as_str) == Some("complete")
-            && table.get("python_removal").and_then(Value::as_str) == Some("complete");
+        let final_state = table.get("owner").and_then(Value::as_str) == Some("rust");
         if !final_state {
             findings.push(Finding::new(
                 COMMAND_REGISTRY_PATH,
@@ -899,6 +889,13 @@ fn check_retired_push_rebase_symbols(
         let path_text = path.as_str();
         if !syntax::is_production_python_path(path_text) {
             continue;
+        }
+        if path_text.starts_with("python/larch/git/") {
+            findings.push(Finding::new(
+                path_text,
+                1,
+                "retired Git Python runtime source returned",
+            ));
         }
         let source = repository.read_utf8(path)?;
         if !RETIRED_PUSH_REBASE_SYMBOLS

@@ -52,4 +52,4 @@ On success, stdout begins with `# Voter Calibration Report`. A missing resolved 
 
 ## Implementation
 
-The analyzer is Rust-owned: `crates/larch-core/src/voter_calibration.rs` (TSV parsing, shared agreement and severity math, false-negative rates, and markdown rendering) behind the `crates/larch-cli/src/voter_calibration_commands.rs` CLI shim, reached only through `scripts/larch.sh voter-calibration analyze`. GitHub reads route through the typed service owner; no path shells out to `gh` or raw Git. Parity against the frozen Python reference is proven by `crates/larch-cli/tests/voter_calibration_parity.rs` (`make test-voter-calibration`).
+The analyzer is Rust-owned: `crates/larch-core/src/voter_calibration.rs` (TSV parsing, shared agreement and severity math, false-negative rates, and markdown rendering) behind the `crates/larch-cli/src/voter_calibration_commands.rs` CLI shim, reached only through `scripts/larch.sh voter-calibration analyze`. GitHub reads route through the typed service owner; no path shells out to `gh` or raw Git. The inline command tests run through `make test-voter-calibration`.

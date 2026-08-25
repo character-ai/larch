@@ -339,16 +339,31 @@ fn proposal_targets_keep_python_validation_boundaries() {
 #[test]
 fn lint_registration_probe_ignores_comments_and_string_literals() {
     let root = tempfile::tempdir().unwrap();
-    let cli = root.path().join("python/larch/cli.py");
-    fs::create_dir_all(cli.parent().unwrap()).unwrap();
-    fs::write(&cli, "# (\"lint\", \"audit\"): ignored\n_REGISTRY = {}\n").unwrap();
+    let rule = root.path().join("crates/larch-lint/src/rules/audit.rs");
+    fs::create_dir_all(rule.parent().unwrap()).unwrap();
+    fs::write(
+        &rule,
+        "// const NAME: &str = \"audit\";\nconst OTHER: &str = \"audit\";\n",
+    )
+    .unwrap();
     assert!(!lint_registration_adopted("audit", root.path()));
     fs::write(
-        &cli,
-        "_REGISTRY = {(\"lint\", \"audit\"): (\"module\", \"main\")}\n",
+        &rule,
+        "const NAME: &str = \"audit\";\ncrate::register_rule!(METADATA, RULE);\n",
     )
     .unwrap();
     assert!(lint_registration_adopted("audit", root.path()));
+
+    fs::remove_file(&rule).unwrap();
+    let root_rule = root
+        .path()
+        .join("crates/larch-lint/src/command_registry.rs");
+    fs::write(
+        root_rule,
+        "const NAME: &str = \"command-registry\";\ncrate::register_rule!(METADATA, RULE);\n",
+    )
+    .unwrap();
+    assert!(lint_registration_adopted("command-registry", root.path()));
 }
 
 #[cfg(unix)]

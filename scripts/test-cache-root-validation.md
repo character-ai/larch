@@ -10,7 +10,7 @@ cache-backed session roots:
 
 `session cleanup-tmpdir` moved to the Rust owner in issue #8057. Its cache-root
 acceptance, `/tmp` acceptance, and unrelated-path rejection are pinned by the
-`session-cleanup-tmpdir-*` cases in `crates/larch-cli/tests/parity.rs`.
+`session-cleanup-tmpdir-*` cases in `crates/larch-cli/tests/clean_install.rs`.
 
 Primary contract owner: `crates/larch-cli/src/implement_finalize_commands.rs`
 and the Rust token commands reached through `scripts/larch.sh`.

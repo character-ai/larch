@@ -1041,7 +1041,7 @@ mod tests {
         .expect_err("duplicate marker must refuse");
 
         let golden: Value = serde_json::from_str(include_str!(
-            "../../../fixtures/rust-parity/goldens/diagrams-upsert-conflict-replay.golden.json"
+            "../tests/fixtures/diagrams-upsert-conflict-replay.golden.json"
         ))
         .expect("conflict replay golden");
         assert_eq!(golden["exit_code"], failure.1);

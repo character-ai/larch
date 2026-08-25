@@ -2455,7 +2455,7 @@ fn plugin_root_directory() -> Option<PathBuf> {
         return Some(root);
     }
     let cwd = env::current_dir().ok()?;
-    if cwd.join("python/cli.py").is_file() {
+    if cwd.join(".claude-plugin/plugin.json").is_file() {
         return Some(cwd);
     }
     env::current_exe()

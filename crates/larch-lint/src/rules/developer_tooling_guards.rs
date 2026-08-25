@@ -21,7 +21,6 @@ use crate::{
     syntax,
 };
 
-use super::python_lint_disposition::is_verb_token;
 use super::{
     git_ownership, issue_python_free,
     production_cargo_run::{executable_index, python_subprocess_call_lines},
@@ -37,11 +36,6 @@ const PROCESS_DESCRIPTION: &str =
 const INVENTORY_CLOSURE_NAME: &str = "developer-tooling-7685-closure";
 const INVENTORY_CLOSURE_DESCRIPTION: &str =
     "Reject incomplete command, GitHub-service, and Git inventory migration evidence for #7685";
-const RETIRED_NAME: &str = "retired-disposition-module";
-const RETIRED_DESCRIPTION: &str =
-    "Reject leftover modules for unregistered retire disposition rows";
-
-const DISPOSITION_PATH: &str = "crates/larch-lint/data/python-lint-disposition.tsv";
 const RESIDUAL_BASH_PATH: &str = "scripts/residual-bash-paths.txt";
 const RELEASE_WORKFLOW_PATH: &str = ".github/workflows/rust-release-assets.yaml";
 const GITHUB_AUTH_CONFIG_PATH: &str = ".github/actions/github-auth-config/action.yaml";
@@ -81,12 +75,6 @@ pub static INVENTORY_CLOSURE_METADATA: RuleMetadata = RuleMetadata::new(
     "crates/larch-lint/migration-ledger/developer-tooling-7685-closure.toml",
 );
 
-pub static RETIRED_METADATA: RuleMetadata = RuleMetadata::new(
-    RETIRED_NAME,
-    RETIRED_DESCRIPTION,
-    "crates/larch-lint/migration-ledger/retired-disposition-module.toml",
-);
-
 #[derive(Debug)]
 pub struct DeveloperToolingRustOwnedPythonRule;
 
@@ -104,15 +92,9 @@ pub struct DeveloperTooling7685ClosureRule;
 pub static INVENTORY_CLOSURE_RULE: DeveloperTooling7685ClosureRule =
     DeveloperTooling7685ClosureRule;
 
-#[derive(Debug)]
-pub struct RetiredDispositionModuleRule;
-
-pub static RETIRED_RULE: RetiredDispositionModuleRule = RetiredDispositionModuleRule;
-
 crate::register_rule!(RUST_OWNED_METADATA, RUST_OWNED_RULE);
 crate::register_rule!(PROCESS_METADATA, PROCESS_RULE);
 crate::register_rule!(INVENTORY_CLOSURE_METADATA, INVENTORY_CLOSURE_RULE);
-crate::register_rule!(RETIRED_METADATA, RETIRED_RULE);
 
 impl Rule for DeveloperToolingRustOwnedPythonRule {
     fn name(&self) -> &'static str {
@@ -257,58 +239,10 @@ fn retained_module_closure_findings(
         .collect()
 }
 
-impl Rule for RetiredDispositionModuleRule {
-    fn name(&self) -> &'static str {
-        RETIRED_NAME
-    }
-
-    fn description(&self) -> &'static str {
-        RETIRED_DESCRIPTION
-    }
-
-    fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
-        let registered = command_registry::registered_python_lint_verbs(repository)?;
-        let rows = read_retire_rows(repository)?;
-        let mut findings = Vec::new();
-        for row in rows {
-            if registered.contains(&row.verb) {
-                continue;
-            }
-            let mut modules = BTreeSet::new();
-            modules.insert(lint_module_path(&row.verb));
-            for surface in &row.surfaces {
-                if looks_like_file(surface) {
-                    modules.insert(surface.clone());
-                }
-            }
-            for module in modules {
-                if repository.root().join(&module).exists() {
-                    findings.push(Finding::new(
-                        DISPOSITION_PATH,
-                        row.line,
-                        format!(
-                            "retired disposition module still exists for unregistered lint verb {}: {module}",
-                            row.verb
-                        ),
-                    ));
-                }
-            }
-        }
-        Ok(RuleOutput::from_findings(findings))
-    }
-}
-
 #[derive(Debug)]
 struct ProcessHit {
     line: u32,
     program: String,
-}
-
-#[derive(Debug)]
-struct RetireRow {
-    line: u32,
-    verb: String,
-    surfaces: Vec<String>,
 }
 
 fn developer_tooling_paths<'repository>(
@@ -584,51 +518,6 @@ fn first_selector_line(source: &str, selector: &str) -> Option<u32> {
     None
 }
 
-fn read_retire_rows(repository: &Repository) -> Result<Vec<RetireRow>, LintError> {
-    let path = RepoPath::from_trusted(DISPOSITION_PATH);
-    if repository.paths().binary_search(&path).is_err() {
-        return Ok(Vec::new());
-    }
-    let source = repository.read_utf8(&path)?;
-    let mut rows = Vec::new();
-    for (index, raw_line) in source.split('\n').enumerate() {
-        let line = line_u32(DISPOSITION_PATH, index + 1)?;
-        if raw_line.is_empty() || raw_line.starts_with('#') {
-            continue;
-        }
-        let fields: Vec<&str> = raw_line.split('\t').collect();
-        if fields.len() < 3 || fields[1] != "retire" {
-            continue;
-        }
-        let verb = fields[0].to_owned();
-        if !is_verb_token(&verb) {
-            return Err(LintError::new(format!(
-                "{DISPOSITION_PATH}:{line}: invalid lint verb token {verb:?}"
-            )));
-        }
-        let surfaces = fields[2]
-            .split(',')
-            .map(str::trim)
-            .filter(|part| !part.is_empty())
-            .map(str::to_owned)
-            .collect();
-        rows.push(RetireRow {
-            line,
-            verb,
-            surfaces,
-        });
-    }
-    Ok(rows)
-}
-
-fn lint_module_path(verb: &str) -> String {
-    format!("python/larch/lint/lint_{}.py", verb.replace('-', "_"))
-}
-
-fn looks_like_file(surface: &str) -> bool {
-    Path::new(surface).extension().is_some()
-}
-
 fn line_u32(path: &str, line: usize) -> Result<u32, LintError> {
     u32::try_from(line).map_err(|_| LintError::new(format!("{path}: line number exceeds u32")))
 }
@@ -637,8 +526,8 @@ fn line_u32(path: &str, line: usize) -> Result<u32, LintError> {
 mod tests {
     use super::{
         DeveloperTooling7685ClosureRule, executable_index, is_developer_tooling_surface,
-        is_manifest_runtime_surface, lint_module_path, looks_like_file, prohibited_program,
-        retained_module_closure_findings, yaml_shell_blocks,
+        is_manifest_runtime_surface, prohibited_program, retained_module_closure_findings,
+        yaml_shell_blocks,
     };
     use crate::{GitCli, Repository, Rule};
     use std::{collections::BTreeSet, path::PathBuf};
@@ -719,13 +608,7 @@ mod tests {
     }
 
     #[test]
-    fn derives_retire_module_paths() {
-        assert_eq!(
-            lint_module_path("self-disarmable-gate"),
-            "python/larch/lint/lint_self_disarmable_gate.py"
-        );
-        assert!(looks_like_file("python/larch/lint/lint_flat_tests.py"));
-        assert!(!looks_like_file("python/larch/lint"));
+    fn finds_executable_after_a_wrapper() {
         assert_eq!(executable_index(&["sudo".into(), "gh".into()]), Some(1));
     }
 

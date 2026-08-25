@@ -2743,7 +2743,7 @@ mod tests {
         let path = fixture.path().join("issues.json");
         fs::write(
             &path,
-            include_str!("../../../python/analyze-issues-fixture.json"),
+            include_str!("../../../fixtures/analyze-issues-fixture.json"),
         )
         .expect("write fixture");
         let issues = load_issues(&path, false).expect("load fixture");

@@ -10,7 +10,6 @@ use toml::Value;
 
 use crate::{
     Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
-    command_registry::issue_in_process_python_findings,
 };
 
 use super::python_boundary::{
@@ -19,7 +18,7 @@ use super::python_boundary::{
 
 const NAME: &str = "issue-python-free";
 const DESCRIPTION: &str =
-    "Enforce Rust-only completed issue-domain commands and explicit Python hand-offs for umbrella #7682";
+    "Enforce Rust-only completed issue-domain commands and reject restored issue Python for umbrella #7682";
 const COMMAND_REGISTRY_PATH: &str = "crates/larch-lint/data/command-registry.toml";
 const ISSUE_AUTHORITY_PATH: &str = "crates/larch-cli/src/issue_commands.rs";
 const UMBRELLA_ISSUE: i64 = 7682;
@@ -266,7 +265,6 @@ impl Rule for IssuePythonFreeRule {
         check_registry_rows(commands, &mut findings);
         check_python_registrations(repository, &mut findings)?;
         check_python_entrypoints(repository, &mut findings)?;
-        findings.extend(issue_in_process_python_findings(repository)?);
         check_execution_python_boundary(repository, &mut findings)?;
         check_tracking_python_callers(repository, &mut findings)?;
         check_retained_modules(repository, &mut findings);
@@ -396,7 +394,7 @@ fn check_registry_rows(commands: &[Value], findings: &mut Vec<Finding>) {
             found.insert(command.selector.clone());
             if !command.has_final_cutover() {
                 findings.push(registry_finding(format!(
-                    "non-final issue-domain command row: {}; expected Rust ownership with complete parity, cutover, and Python removal",
+                    "non-final issue-domain command row: {}; expected Rust ownership and an exact migration leaf",
                     command.selector
                 )));
             }
@@ -412,15 +410,6 @@ fn check_registry_rows(commands: &[Value], findings: &mut Vec<Finding>) {
                     "issue-domain planning owner drift: {}; expected #{}",
                     command.selector,
                     expected.planning_issue
-                )));
-            }
-            if command.text("python_module") != Some(expected.python_module)
-                || command.text("python_function") != Some(expected.python_function)
-            {
-                findings.push(registry_finding(format!(
-                    "issue-domain retired Python target drift: {}; expected {}.{}",
-                    command.selector,
-                    expected.python_module, expected.python_function
                 )));
             }
             continue;

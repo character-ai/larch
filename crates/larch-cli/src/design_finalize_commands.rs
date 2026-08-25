@@ -3,8 +3,7 @@
 //! The five lifecycle verbs and the temporary `compose-plan-md` helper move as
 //! one ownership unit. Publish, terminal-state, summary, pause, progress, and
 //! cleanup work reuse their existing Rust command owners through the verified
-//! larch entrypoint. The frozen Python reference lives under
-//! `fixtures/rust-parity/design_finalize_frozen/`.
+//! larch entrypoint. Inline tests pin the lifecycle contract.
 
 use std::{
     collections::BTreeMap,

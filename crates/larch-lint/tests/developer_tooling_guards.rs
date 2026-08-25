@@ -7,31 +7,21 @@ fn write_rust_owned_registry(repository: &TempRepo, domain: &str, verb: &str) {
     repository.write(
         "crates/larch-lint/data/command-registry.toml",
         format!(
-            r#"schema_version = 2
+            r#"schema_version = 3
 
 [[commands]]
 domain = "fixture"
 verb = "run"
-python_module = "fixture"
-python_function = "main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
 planning_issue = 7661
 migration_issue = 7661
 
 [[commands]]
 domain = "{domain}"
 verb = "{verb}"
-python_module = "larch.example"
-python_function = "main"
 machine_stdout = false
 owner = "rust"
-implementation_parity = "complete"
-consumer_cutover = "complete"
-python_removal = "complete"
 planning_issue = 8094
 migration_issue = 8094
 "#
@@ -350,22 +340,23 @@ fn service_inventory(rows: &str) -> String {
 
 fn closure_registry(rows: &str) -> String {
     format!(
-        "schema_version = 2\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\npython_module = \"fixture\"\npython_function = \"main\"\nmachine_stdout = false\nowner = \"python\"\nimplementation_parity = \"pending\"\nconsumer_cutover = \"pending\"\npython_removal = \"pending\"\nplanning_issue = 7681\n\n{rows}"
+        "schema_version = 3\n\n[[commands]]\ndomain = \"fixture\"\nverb = \"run\"\nmachine_stdout = false\nowner = \"rust\"\nplanning_issue = 7681\nmigration_issue = 7681\n\n{rows}"
     )
 }
 
 fn closure_command(
     owner: &str,
-    parity: &str,
-    cutover: &str,
-    removal: &str,
+    _parity: &str,
+    _cutover: &str,
+    _removal: &str,
     migration_issue: Option<u64>,
 ) -> String {
-    let migration_issue = migration_issue
-        .map(|issue| format!("migration_issue = {issue}\n"))
-        .unwrap_or_default();
+    let migration_issue = migration_issue.map_or_else(
+        || "migration_issue = 7685\n".to_owned(),
+        |issue| format!("migration_issue = {issue}\n"),
+    );
     format!(
-        "[[commands]]\ndomain = \"issue\"\nverb = \"migration-audit\"\npython_module = \"larch.issue.migration_governance\"\npython_function = \"migration_audit_main\"\nmachine_stdout = true\nowner = \"{owner}\"\nimplementation_parity = \"{parity}\"\nconsumer_cutover = \"{cutover}\"\npython_removal = \"{removal}\"\nplanning_issue = 7685\n{migration_issue}\n"
+        "[[commands]]\ndomain = \"issue\"\nverb = \"migration-audit\"\nmachine_stdout = true\nowner = \"{owner}\"\nplanning_issue = 7685\n{migration_issue}\n"
     )
 }
 
@@ -373,10 +364,6 @@ fn write_closure_baseline(repository: &TempRepo, registry_rows: &str) {
     repository.write(
         "crates/larch-lint/data/command-registry.toml",
         closure_registry(registry_rows).as_bytes(),
-    );
-    repository.write(
-        "python/larch/cli.py",
-        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n}\n",
     );
     repository.write("hooks/hooks.json", b"{}\n");
     repository.write(
@@ -427,11 +414,11 @@ fn developer_tooling_closure_allows_other_later_domain_rows() {
 }
 
 #[test]
-fn developer_tooling_closure_rejects_pending_7685_command_phase() {
+fn developer_tooling_closure_rejects_non_rust_7685_command() {
     let repository = TempRepo::new();
     write_closure_baseline(
         &repository,
-        &closure_command("python", "pending", "pending", "pending", None),
+        &closure_command("retired", "pending", "pending", "pending", None),
     );
     repository.commit_all();
 
@@ -441,9 +428,6 @@ fn developer_tooling_closure_rejects_pending_7685_command_phase() {
         .code(1)
         .stdout(predicate::str::contains(
             "planning issue #7685 command issue migration-audit is not Rust-owned",
-        ))
-        .stdout(predicate::str::contains(
-            "planning issue #7685 command issue migration-audit has incomplete implementation parity",
         ))
         .stderr(predicate::str::is_empty());
 }
@@ -466,75 +450,6 @@ fn developer_tooling_closure_rejects_missing_and_umbrella_migration_leaves() {
         ))
         .stdout(predicate::str::contains(
             "planning issue #7685 command issue migration-report lacks an exact non-umbrella migration leaf",
-        ))
-        .stderr(predicate::str::is_empty());
-}
-
-#[test]
-fn developer_tooling_closure_rejects_retained_7685_python_module() {
-    let repository = TempRepo::new();
-    write_closure_baseline(
-        &repository,
-        &closure_command("rust", "complete", "complete", "complete", Some(8392)),
-    );
-    repository.write(
-        "python/larch/issue/migration_governance.py",
-        b"def migration_audit_main(argv: list[str]) -> int:\n    return 0\n",
-    );
-    repository.commit_all();
-
-    TempRepo::command_from(repository.path())
-        .args(["rule", "developer-tooling-7685-closure"])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::contains(
-            "python-entrypoint-still-present issue migration-audit: python/larch/issue/migration_governance.py",
-        ))
-        .stderr(predicate::str::is_empty());
-}
-
-#[test]
-fn developer_tooling_closure_rejects_retained_7685_python_registration() {
-    let repository = TempRepo::new();
-    write_closure_baseline(
-        &repository,
-        &closure_command("rust", "complete", "complete", "complete", Some(8392)),
-    );
-    repository.write(
-        "python/larch/cli.py",
-        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n    (\"issue\", \"migration-audit\"): (\"larch.issue.migration_governance\", \"migration_audit_main\", True),\n}\n",
-    );
-    repository.commit_all();
-
-    TempRepo::command_from(repository.path())
-        .args(["rule", "developer-tooling-7685-closure"])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::contains(
-            "python-entrypoint-still-present issue migration-audit: python/larch/cli.py",
-        ))
-        .stderr(predicate::str::is_empty());
-}
-
-#[test]
-fn developer_tooling_closure_rejects_retained_7685_python_caller() {
-    let repository = TempRepo::new();
-    write_closure_baseline(
-        &repository,
-        &closure_command("rust", "complete", "complete", "complete", Some(8392)),
-    );
-    repository.write(
-        "Makefile",
-        b"audit:\n\tpython3 python/cli.py issue migration-audit\n",
-    );
-    repository.commit_all();
-
-    TempRepo::command_from(repository.path())
-        .args(["rule", "developer-tooling-7685-closure"])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::contains(
-            "planning issue #7685 command issue migration-audit retains a Python production caller: Makefile",
         ))
         .stderr(predicate::str::is_empty());
 }
@@ -607,86 +522,4 @@ fn developer_tooling_closure_fails_closed_on_malformed_service_matrix_evidence()
             .stdout(predicate::str::is_empty())
             .stderr(predicate::str::contains(message));
     }
-}
-
-#[test]
-fn developer_tooling_closure_requires_a_parseable_python_registry_proof() {
-    for (source, message) in [
-        (
-            "NOT_A_REGISTRY = {}\n",
-            "python/larch/cli.py: missing _REGISTRY declaration",
-        ),
-        (
-            "_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n",
-            "python/larch/cli.py: unterminated _REGISTRY declaration",
-        ),
-        (
-            "_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n}\n",
-            "python/larch/cli.py: duplicate command fixture run",
-        ),
-    ] {
-        let repository = TempRepo::new();
-        write_closure_baseline(&repository, "");
-        repository.write("python/larch/cli.py", source.as_bytes());
-        repository.commit_all();
-
-        TempRepo::command_from(repository.path())
-            .args(["rule", "developer-tooling-7685-closure"])
-            .assert()
-            .code(2)
-            .stdout(predicate::str::is_empty())
-            .stderr(predicate::str::contains(message));
-    }
-}
-
-#[test]
-fn retired_module_passes_while_verb_still_registered() {
-    let repository = TempRepo::new();
-    repository.write(
-        "python/larch/cli.py",
-        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n    (\"lint\", \"flat-tests\"): (\"larch.lint.lint_flat_tests\", \"main\", False),\n}\n",
-    );
-    repository.write(
-        "crates/larch-lint/data/python-lint-disposition.tsv",
-        b"# verb\tdisposition\ttarget_surface\trationale\nflat-tests\tretire\tpython\tscans python only\n",
-    );
-    repository.write(
-        "python/larch/lint/lint_flat_tests.py",
-        b"def main() -> None:\n    return None\n",
-    );
-    repository.commit_all();
-
-    TempRepo::command_from(repository.path())
-        .args(["rule", "retired-disposition-module"])
-        .assert()
-        .success()
-        .stdout(predicate::str::is_empty())
-        .stderr(predicate::str::is_empty());
-}
-
-#[test]
-fn retired_module_fails_when_unregistered_module_remains() {
-    let repository = TempRepo::new();
-    repository.write(
-        "python/larch/cli.py",
-        b"_REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {\n    (\"fixture\", \"run\"): (\"fixture\", \"main\", False),\n}\n",
-    );
-    repository.write(
-        "crates/larch-lint/data/python-lint-disposition.tsv",
-        b"# verb\tdisposition\ttarget_surface\trationale\nobsolete-check\tretire\tpython/larch/lint/lint_obsolete_check.py\talready removed from registry\n",
-    );
-    repository.write(
-        "python/larch/lint/lint_obsolete_check.py",
-        b"def main() -> None:\n    return None\n",
-    );
-    repository.commit_all();
-
-    TempRepo::command_from(repository.path())
-        .args(["rule", "retired-disposition-module"])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::contains(
-            "retired disposition module still exists for unregistered lint verb obsolete-check: python/larch/lint/lint_obsolete_check.py",
-        ))
-        .stderr(predicate::str::is_empty());
 }
