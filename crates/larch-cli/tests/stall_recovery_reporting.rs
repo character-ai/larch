@@ -80,47 +80,6 @@ impl Fixture {
             .expect("run legacy stall-recovery command")
     }
 
-    fn run_authorized(&self, verb: &str, arguments: &[String]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_larch"))
-            .args(["stall-recovery", verb])
-            .args(arguments)
-            .env("CLAUDE_PROJECT_DIR", &self.project)
-            .env("CLAUDE_PLUGIN_ROOT", &self.project)
-            .env_remove("LARCH_STALL_RECOVERY_DRY_RUN")
-            .env_remove("DRY_RUN_DECISION")
-            .env_remove("LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES")
-            .env_remove("LARCH_STALL_RECOVERY_ENABLE_TEST_FILING")
-            .env_remove("LARCH_ISSUE_MUTATION_DENY")
-            .output()
-            .expect("run authorized stall-recovery command")
-    }
-
-    #[cfg(unix)]
-    fn install_filing_helpers(&self) {
-        use std::os::unix::fs::PermissionsExt as _;
-
-        let scripts = self.project.join("scripts");
-        fs::create_dir_all(&scripts).expect("helper directory");
-        for (name, contents) in [
-            (
-                "resolve-upstream-larch-repo.sh",
-                "#!/bin/sh\nprintf '%s\\n' character-ai/larch\n",
-            ),
-            (
-                "file-failure-report-cross-repo.sh",
-                "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CLAUDE_PLUGIN_ROOT/file-helper-arguments.txt\"\nprintf '%s\\n' FILE_FAILURE_REPORT_STATUS=filed FILE_FAILURE_REPORT_URL=https://github.com/character-ai/larch/issues/8066\n",
-            ),
-        ] {
-            let helper = scripts.join(name);
-            fs::write(&helper, contents).expect("write filing helper");
-            let mut permissions = fs::metadata(&helper)
-                .expect("helper metadata")
-                .permissions();
-            permissions.set_mode(0o700);
-            fs::set_permissions(&helper, permissions).expect("make helper executable");
-        }
-    }
-
     fn base_report_inputs(&self) {
         self.write(
             "stall-recovery-classification.env",
@@ -656,65 +615,52 @@ fn cross_repo_response_helpers_preserve_stdout_and_exit_contracts() {
     assert!(absent.stderr.is_empty());
 }
 
-#[cfg(unix)]
 #[test]
-fn authorized_filing_helpers_use_validated_tier_boundaries() {
+fn file_report_honors_the_test_mutation_deny_before_github_setup() {
     let fixture = Fixture::new();
-    fixture.base_report_inputs();
-    fixture.write("stall-recovery-sensitive-corpus.env", "");
+    let marker = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     fixture.write(
-        "stall-recovery-bounded-root-cause.md",
-        "verdict=larch-defect\nconfidence=high\nsummary=Safe summary\n\nBounded evidence.\n",
+        "report.md",
+        &format!(
+            "### [BUG] /implement terminal: fixture\n\n<!-- larch-stall:signature={marker} -->\n"
+        ),
     );
     fixture.write(
         "session-env.sh",
         "LARCH_LIVE_MUTATION_OK=true\nLARCH_RUN_ID=report-8066\n",
     );
-    fixture.install_filing_helpers();
 
-    let chat = fixture.run_authorized("chat-print", &fixture.compose_arguments("chat-print"));
+    let output = Command::new(env!("CARGO_BIN_EXE_larch"))
+        .args([
+            "stall-recovery",
+            "file-report",
+            "--repo",
+            "owner/repo",
+            "--body-file",
+        ])
+        .arg(fixture.path("report.md"))
+        .args([
+            "--title",
+            "Report title",
+            "--mutation-context",
+        ])
+        .arg(fixture.path("session-env.sh"))
+        .args(["--run-id", "report-8066", "--trusted-root"])
+        .arg(&fixture.tmpdir)
+        .env("LARCH_ISSUE_MUTATION_DENY", "true")
+        .env_remove("GH_TOKEN")
+        .env_remove("GITHUB_TOKEN")
+        .output()
+        .expect("run denied file-report command");
     assert!(
-        chat.status.success(),
+        output.status.success(),
         "{}",
-        String::from_utf8_lossy(&chat.stderr)
+        String::from_utf8_lossy(&output.stderr)
     );
-    let chat_stdout = String::from_utf8_lossy(&chat.stdout);
-    assert!(
-        chat_stdout.contains("STALL_RECOVERY_REPORT_STATUS=filed"),
-        "{chat_stdout}"
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "FILE_FAILURE_REPORT_STATUS=mutation-refused\n\
+FILE_FAILURE_REPORT_FALLBACK_REASON=unauthorized-mutation:test-denied\n"
     );
-    assert!(chat_stdout.contains("STALL_RECOVERY_REPORT_ISSUE_NUMBER=8066"));
-    assert!(
-        text(&fixture.path("stall-recovery-tier-b-file.env"))
-            .contains("FILE_FAILURE_REPORT_STATUS=filed")
-    );
-
-    let tier_a = fixture.run("compose-report", &fixture.compose_arguments("issue-input"));
-    assert!(
-        tier_a.status.success(),
-        "{}",
-        String::from_utf8_lossy(&tier_a.stderr)
-    );
-    let dedup = fixture.run_authorized(
-        "dedup-tier-a-report",
-        &[
-            "--implement-tmpdir".to_owned(),
-            fixture.tmpdir.to_string_lossy().into_owned(),
-            "--create-after-dedup".to_owned(),
-            "true".to_owned(),
-        ],
-    );
-    assert!(
-        dedup.status.success(),
-        "{}",
-        String::from_utf8_lossy(&dedup.stderr)
-    );
-    assert!(String::from_utf8_lossy(&dedup.stdout).contains("STALL_RECOVERY_REPORT_STATUS=filed"));
-    assert!(
-        text(&fixture.path("stall-recovery-tier-a-dedup.env"))
-            .contains("FILE_FAILURE_REPORT_URL=https://github.com/character-ai/larch/issues/8066")
-    );
-    let helper_arguments = text(&fixture.project.join("file-helper-arguments.txt"));
-    assert!(helper_arguments.contains("--create-on-lookup-failure"));
-    assert!(!helper_arguments.contains("--dedup-only"));
+    assert!(output.stderr.is_empty());
 }

@@ -248,7 +248,14 @@ widen that set. `crates/larch-adapters/src/github/issue_mutation.rs` owns every
 live issue mutation. Unauthorized calls fail before any GitHub request,
 emit the documented refusal result, and do not retry through another route.
 `issue create-one` applies the check in the Rust owner before the create request
-is built. `/issue`, including every `/learn-from-bugs` filing route, requests
+is built. `issue create-batch` validates the same route before it reads any
+remote state, then reuses the authorized create and dependency owners for each
+effect. Before its first mutation, it confines and reads the parser output,
+validated decision file, and every CREATE body below one declared temporary
+root. A malformed row, duplicate key, carriage return, escaping or symlinked
+path, unreadable body, unusable reference, or dependency cycle therefore stops
+the whole batch before a partial graph exists. Its decision file describes
+work but never grants authority. `/issue`, including every `/learn-from-bugs` filing route, requests
 authenticated-user assignment on every create. `/audit-umbrella` requests the
 same assignment on every direct corrective-leaf create. The shared owner
 resolves the authenticated GitHub login, includes it as the issue assignee, and
@@ -264,6 +271,10 @@ dependency mutations apply it in
 typed issue-graph adapter operations re-apply it before their own first read.
 `issue cleanup-failed` deliberately carries no gate: it closes an issue the same
 caller has just created, and its predecessor took no authorization either.
+The in-process batch cleanup uses that same narrow recovery owner after an edge
+failure. It closes only the issue identity returned by the current create,
+marks transitive descendants failed, and continues only independent siblings.
+Dry-run never enters create, edge, or cleanup effects and emits no remote id.
 
 Rust mutation tests exercise the boundary through injected services and scoped
 environment fixtures. Denial overrides a valid parent session.
@@ -1037,7 +1048,7 @@ materialization, field variants, private routing, and checkpoint refusal.
 
 ## Umbrella
 
-`/umbrella` treats input issue text, draft records, agent output, and child `/issue` output as untrusted. It applies one explicit approval gate; `--skip-approve` changes only that presentation wait. Normal filing uses `/issue`'s shared snapshot of at most the 100 newest issues. In-flight recovery admits only the 100 newest open issue candidates and mechanically ignores any older rows before exact-match reconciliation. The skill persists immutable leaf identities and in-flight state before filing, confirms the child sentinel and machine counters, performs live authorization and freshness checks for every mutation, redacts outbound public content, and reads back the final native graph. Ambiguous recovery, incomplete dependency analysis, failed redaction, or missing verification stops the run without a replacement create.
+`/umbrella` treats input issue text, draft records, agent output, and child `/issue` output as untrusted. It applies one explicit approval gate; `--skip-approve` changes only that presentation wait. Normal filing uses `/issue`'s shared snapshot of at most the 100 newest issues. The standard proposal composer confines its snapshot, generic batch, optional dependency file, and three outputs below the snapshot's resolved scratch root. It rejects input/output collisions, derives exact leaf identities and parser-normalized bodies in Rust, and publishes the durable proposal only after both companion outputs succeed. In-flight recovery admits only the 100 newest open issue candidates and mechanically ignores any older rows before exact-match reconciliation. The skill persists immutable leaf identities and in-flight state before filing, confirms the child sentinel and machine counters, performs live authorization and freshness checks for every mutation, redacts outbound public content, and reads back the final native graph. Ambiguous recovery, incomplete dependency analysis, failed redaction, or missing verification stops the run without a replacement create.
 
 Nested `/design` and `/implement` partitions use a narrower prepared-artifact path. The child accepts it only with immutable parent lifecycle context, one numeric managed issue, `--skip-approve`, and the complete internal flag group. Input and dependency files must be contained regular files under the declared parent scratch root. `/umbrella` parses and bounds the exact generic batch, rejects malformed or cyclic dependency graphs, persists deterministic leaf identities and an atomic child-local dependency copy before any create, and keeps `/issue` duplicate detection enabled. Filing consumes that copy instead of rereading the parent TSV. The parent approval covers only those exact leaves and edges; the child cannot re-decompose them or ask a broader second question.
 

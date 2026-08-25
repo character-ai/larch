@@ -45,6 +45,8 @@ const BLOCK_ISSUE_ERROR_CHARS: usize = 1000;
 const ATTEMPTS: usize = 3;
 /// Pre-retry pauses before the second and third attempts.
 const RETRY_PAUSES: [Duration; 2] = [Duration::from_secs(10), Duration::from_secs(30)];
+/// Stable reason a graph command reports when neither authorization route exists.
+const MISSING_EDGE_AUTHORIZATION: &str = "missing-operator-invoked-or-context-file";
 
 // ------------------------------------------------------------------- shared
 
@@ -190,19 +192,45 @@ struct EdgeOptions {
     usage: &'static str,
 }
 
+macro_rules! edge_usage {
+    ($command:literal) => {
+        concat!(
+            $command,
+            " [--operator-invoked | --context-file PATH --run-id ID --trusted-root PATH]"
+        )
+    };
+}
+
 const BLOCKED_BY_OPTIONS: EdgeOptions = EdgeOptions {
     subject: "--client-issue",
     object: "--blocker-issue",
     object_id: "--blocker-id",
-    usage: "Usage: add-blocked-by --client-issue N --blocker-issue M [--blocker-id ID] [--repo OWNER/REPO] [--operator-invoked | --context-file PATH --run-id ID --trusted-root PATH]",
+    usage: edge_usage!(
+        "Usage: add-blocked-by --client-issue N --blocker-issue M [--blocker-id ID] [--repo OWNER/REPO]"
+    ),
 };
 
 const SUB_ISSUE_OPTIONS: EdgeOptions = EdgeOptions {
     subject: "--parent-issue",
     object: "--child-issue",
     object_id: "--child-id",
-    usage: "Usage: add-sub-issue --parent-issue N --child-issue M [--child-id ID] [--repo OWNER/REPO]",
+    usage: edge_usage!(
+        "Usage: add-sub-issue --parent-issue N --child-issue M [--child-id ID] [--repo OWNER/REPO]"
+    ),
 };
+
+/// Honor the raw compatibility verbs' help spelling before option scanning.
+fn edge_help_requested(arguments: &[OsString], options: EdgeOptions) -> Option<ExitCode> {
+    if arguments
+        .iter()
+        .any(|argument| matches!(argument.to_str(), Some("-h" | "--help")))
+    {
+        eprintln!("{}", options.usage);
+        Some(ExitCode::SUCCESS)
+    } else {
+        None
+    }
+}
 
 /// Scan one `issue` issue-graph command line.
 ///
@@ -297,6 +325,9 @@ fn plan_edge(arguments: &EdgeArguments, options: EdgeOptions) -> Result<LiveEdge
         &arguments.trusted_root,
         arguments.operator_invoked,
     );
+    if !arguments.operator_invoked && arguments.context_file.is_empty() {
+        return Err(EdgeFailure::refused(MISSING_EDGE_AUTHORIZATION));
+    }
     if let Err(reason) = authorized(&authorization) {
         return Err(EdgeFailure::refused(reason));
     }
@@ -360,6 +391,9 @@ fn report_edge(
 /// when live-mutation authorization refuses the write, and `2` for every other
 /// refusal.
 pub fn add_blocked_by(arguments: &[OsString]) -> ExitCode {
+    if let Some(exit) = edge_help_requested(arguments, BLOCKED_BY_OPTIONS) {
+        return exit;
+    }
     let parsed = match parse_edge_arguments(arguments, BLOCKED_BY_OPTIONS) {
         Ok(parsed) => parsed,
         Err(message) => {
@@ -412,6 +446,18 @@ pub fn in_process_edge(
     blocker: u64,
     authorization: EdgeAuthorization<'_>,
 ) -> LiveEdge {
+    in_process_edge_with_id(repository, client, blocker, None, authorization)
+}
+
+/// Compose one in-process blocked-by edge with an optional cached blocker id.
+#[must_use]
+pub fn in_process_edge_with_id(
+    repository: GitHubRepositoryRef,
+    client: u64,
+    blocker: u64,
+    blocker_id: Option<u64>,
+    authorization: EdgeAuthorization<'_>,
+) -> LiveEdge {
     let (context_file, run_id, trusted_root, operator_invoked) = match authorization {
         EdgeAuthorization::OperatorInvoked => ("", "", "", true),
         EdgeAuthorization::Session {
@@ -424,7 +470,7 @@ pub fn in_process_edge(
         repository,
         subject: client,
         object: blocker,
-        object_id: None,
+        object_id: blocker_id,
         context_file: context_file.to_owned(),
         run_id: run_id.to_owned(),
         trusted_root: trusted_root.to_owned(),
@@ -447,6 +493,12 @@ fn apply_blocked_by_edge(edge: &LiveEdge) -> Result<(), EdgeFailure> {
         &edge.trusted_root,
         edge.operator_invoked,
     );
+    if !edge.operator_invoked && edge.context_file.is_empty() {
+        return Err(EdgeFailure::refused(MISSING_EDGE_AUTHORIZATION));
+    }
+    if let Err(reason) = authorized(&authorization) {
+        return Err(EdgeFailure::refused(reason));
+    }
     run_edge(async |service, cancellation| {
         let blocker_id = resolve_issue_id(
             service,
@@ -479,6 +531,9 @@ fn apply_blocked_by_edge(edge: &LiveEdge) -> Result<(), EdgeFailure> {
 /// Exits `0` once the relation is present, `1` for an unusable command line,
 /// `5` when live-mutation authorization refuses the write, and `2` otherwise.
 pub fn add_sub_issue(arguments: &[OsString]) -> ExitCode {
+    if let Some(exit) = edge_help_requested(arguments, SUB_ISSUE_OPTIONS) {
+        return exit;
+    }
     let parsed = match parse_edge_arguments(arguments, SUB_ISSUE_OPTIONS) {
         Ok(parsed) => parsed,
         Err(message) => {
@@ -847,13 +902,14 @@ fn block_issue_failure_from(error: &GitHubOperationError) -> EdgeFailure {
 #[cfg(test)]
 mod tests {
     use super::{
-        BLOCKED_BY_OPTIONS, BlockIssueArguments, EdgeArguments, EdgeFailure, RETRY_PAUSES,
-        SUB_ISSUE_OPTIONS, block_issue_failure_from, edge_failure_from,
-        parse_block_issue_arguments, parse_edge_arguments, pause_before, plan_edge, transient,
-        with_retries,
+        BLOCKED_BY_OPTIONS, BlockIssueArguments, EdgeArguments, EdgeAuthorization, EdgeFailure,
+        RETRY_PAUSES, SUB_ISSUE_OPTIONS, add_blocked_by, add_sub_issue, apply_blocked_by,
+        block_issue_failure_from, edge_failure_from, in_process_edge, parse_block_issue_arguments,
+        parse_edge_arguments, pause_before, plan_edge, transient, with_retries,
     };
     use larch_adapters::github::GitHubOperationError;
-    use std::{cell::Cell, ffi::OsString, time::Duration};
+    use larch_core::GitHubRepositoryRef;
+    use std::{cell::Cell, ffi::OsString, process::ExitCode, time::Duration};
     use tokio::time::Instant;
 
     fn arguments(values: &[&str]) -> Vec<OsString> {
@@ -975,21 +1031,57 @@ mod tests {
 
     #[test]
     fn an_unauthorized_line_refuses_with_the_reserved_mutation_code() {
-        let refusal = plan_edge(
-            &EdgeArguments {
-                subject: "1".to_owned(),
-                object: "2".to_owned(),
-                repo: "o/r".to_owned(),
-                ..EdgeArguments::default()
+        for options in [BLOCKED_BY_OPTIONS, SUB_ISSUE_OPTIONS] {
+            let refusal = plan_edge(
+                &EdgeArguments {
+                    subject: "1".to_owned(),
+                    object: "2".to_owned(),
+                    repo: "o/r".to_owned(),
+                    ..EdgeArguments::default()
+                },
+                options,
+            )
+            .expect_err("an unauthorized line");
+            assert_eq!(
+                refusal,
+                EdgeFailure {
+                    error: "unauthorized-mutation:missing-operator-invoked-or-context-file"
+                        .to_owned(),
+                    code: 5,
+                }
+            );
+            assert!(options.usage.contains(
+                "[--operator-invoked | --context-file PATH --run-id ID --trusted-root PATH]"
+            ));
+        }
+    }
+
+    #[test]
+    fn both_issue_graph_verbs_publish_their_complete_help() {
+        for command in [
+            add_blocked_by as fn(&[OsString]) -> ExitCode,
+            add_sub_issue as fn(&[OsString]) -> ExitCode,
+        ] {
+            assert_eq!(command(&arguments(&["--help"])), ExitCode::SUCCESS);
+            assert_eq!(command(&arguments(&["-h"])), ExitCode::SUCCESS);
+        }
+    }
+
+    #[test]
+    fn an_in_process_edge_rechecks_authorization_before_remote_setup() {
+        let edge = in_process_edge(
+            GitHubRepositoryRef::new("o", "r").expect("repository"),
+            1,
+            2,
+            EdgeAuthorization::Session {
+                context_file: "",
+                run_id: "",
+                trusted_root: "",
             },
-            BLOCKED_BY_OPTIONS,
-        )
-        .expect_err("an unauthorized line");
-        assert_eq!(refusal.code, 5);
-        assert!(
-            refusal.error.starts_with("unauthorized-mutation:"),
-            "{}",
-            refusal.error
+        );
+        assert_eq!(
+            apply_blocked_by(&edge),
+            Err("unauthorized-mutation:missing-operator-invoked-or-context-file".to_owned())
         );
     }
 

@@ -2913,6 +2913,15 @@ migration_issue = 8167
 
 [[commands]]
 domain = "issue"
+verb = "create-batch"
+machine_stdout = true
+owner = "rust"
+planning_issue = 8946
+migration_issue = 8946
+clean_install_test = "clean-install-issue-create-batch"
+
+[[commands]]
+domain = "issue"
 verb = "create-one"
 machine_stdout = false
 owner = "rust"
@@ -5143,6 +5152,15 @@ clean_install_test = "clean-install-stall-recovery-dedup-tier-a-report"
 
 [[commands]]
 domain = "stall-recovery"
+verb = "file-report"
+machine_stdout = true
+owner = "rust"
+planning_issue = 7677
+migration_issue = 8928
+clean_install_test = "clean-install-stall-recovery-file-report"
+
+[[commands]]
+domain = "stall-recovery"
 verb = "init-attempts"
 machine_stdout = true
 owner = "rust"
@@ -6170,11 +6188,6 @@ kind = "script"
 rust = ["agent check-reviewers", "agent collect-results", "agent model-args", "agent run-external-agent", "implement step2-dispatch"]
 
 [[callers]]
-path = "scripts/file-failure-report-cross-repo.sh"
-kind = "script"
-rust = ["redact secrets", "session check-live-mutation-auth", "stall-recovery *"]
-
-[[callers]]
 path = "scripts/hook-anti-read-poll.sh"
 kind = "hook"
 rust = ["hook anti-read-poll"]
@@ -6827,7 +6840,7 @@ rust = ["final-report write"]
 [[callers]]
 path = "skills/issue/SKILL.md"
 kind = "skill"
-rust = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-failed", "issue create-one", "issue fetch-issue-details", "issue list-issues", "issue parse-input", "issue write-sentinel", "oos file-conflict-deps", "redact secrets", "session setup", "verify skill-called"]
+rust = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-failed", "issue create-batch", "issue create-one", "issue fetch-issue-details", "issue list-issues", "issue parse-input", "issue write-sentinel", "oos file-conflict-deps", "redact secrets", "session setup", "verify skill-called"]
 
 [[callers]]
 path = "skills/learn-from-bugs/SKILL.md"
@@ -6997,7 +7010,7 @@ rust = ["issue list-issues", "issue title-eligibility", "triage apply", "triage 
 [[callers]]
 path = "skills/umbrella/SKILL.md"
 kind = "skill"
-rust = ["session setup", "umbrella mark-in-flight", "umbrella mutate", "umbrella persist-proposal", "umbrella prepare", "umbrella reconcile-in-flight", "umbrella record-resolved", "umbrella verify", "verify skill-called"]
+rust = ["issue add-blocked-by", "issue add-sub-issue", "session setup", "umbrella mark-in-flight", "umbrella mutate", "umbrella persist-proposal", "umbrella prepare", "umbrella reconcile-in-flight", "umbrella record-resolved", "umbrella verify", "verify skill-called"]
 
 [[callers]]
 path = "skills/upgrade-larch/SKILL.md"

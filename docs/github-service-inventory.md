@@ -47,7 +47,8 @@ bounded-partial intent rather than treating every page-bound refusal as a
 transport failure; the contract is canonical in
 [`supply-chain-credentials-and-services.md`](security/supply-chain-credentials-and-services.md). The `issue-creation` row records
 the #8169 cutover of `issue create-one`, `issue write-sentinel`, and
-`issue cleanup-failed`; its writes run through the shared issue-mutation owner,
+`issue cleanup-failed`, plus the #8946 `issue create-batch` composition owner;
+its writes run through the shared issue-mutation owner,
 and `write-sentinel` is grouped with them because it is the receipt a completed
 filing run publishes, not because it reaches GitHub. The `issue-dependencies`,
 `issue-sub-issues`, and `label-dependency-mutations` rows record the #8170
@@ -191,6 +192,13 @@ pull-request files operation and aggregates only filenames, additions, and
 deletions. The final-report and launcher consumers call the Rust owners in
 process; external callers continue through `scripts/larch.sh`.
 
+Issue #8928 moved `stall-recovery file-report` to Rust and removed its Bash
+owner. The verb reads one bounded newest-first issue page through the typed
+issue service. It performs issue creation and duplicate comments through
+`IssueMutationOwner`, including authorization, redaction, identity checks, and
+exact read-back. Callers inside the reporting runtime invoke the owner in
+process. External callers enter through `scripts/larch.sh`.
+
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
 ```text
@@ -199,11 +207,13 @@ actions	crates/larch-adapters/src/github_actions.rs	rust	#7676,#7685,#8362,#8862
 attestations	crates/larch-adapters/src/github/attestation.rs	rust	#7674	complete	complete	complete	release validate-assets
 comments	crates/larch-adapters/src/github_rest.rs	rust	#7680	complete	complete	complete	clarify *
 dependency-consumers	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	deps *
-issue-dependencies	crates/larch-adapters/src/github/operations.rs	rust	#7682,#7685	complete	complete	complete	block-issue *,issue add-blocked-by,issue migration-audit
+issue-dependencies	crates/larch-adapters/src/github/operations.rs	rust	#7682,#7685,#8946	complete	complete	complete	block-issue *,issue add-blocked-by,issue create-batch,issue migration-audit
 issue-sub-issues	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	issue add-sub-issue
-issue-creation	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	issue cleanup-failed,issue create-one,issue write-sentinel
+issue-creation	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682,#8946	complete	complete	complete	issue cleanup-failed,issue create-batch,issue create-one,issue write-sentinel
 issue-body-blocks	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7680,#7682	complete	complete	complete	named-block write,plan-block read,plan-block write
 issue-reads	crates/larch-adapters/src/github_rest.rs	rust	#7680,#7682,#7685,#8927	complete	complete	complete	design pause-load,design pause-save,gh agnix-issue,issue context,issue fetch-issue-details,issue info,issue list-issues,issue search-implementing,issue state,umbrella prepare
+stall-report-reads	crates/larch-adapters/src/github_rest.rs	rust	#7677,#7680,#8928	complete	complete	complete	stall-recovery file-report
+stall-report-mutations	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7677,#7680,#8928	complete	complete	complete	stall-recovery file-report
 design-issue-read	crates/larch-adapters/src/github/operations.rs	rust	#7680	complete	complete	complete	design step0-route
 issue-backlog-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
 issue-backlog-comments	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues run

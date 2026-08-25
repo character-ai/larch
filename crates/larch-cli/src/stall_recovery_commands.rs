@@ -70,6 +70,7 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         "clear-stall" => clear(&globals, command_arguments),
         "init-attempts" => init_attempts_command(&globals, command_arguments),
         "normalize-file-failure-report-env" => normalize_file_report(&globals, command_arguments),
+        "file-report" => crate::stall_recovery_file_report::run(command_arguments),
         "comment-url-from-response" => comment_url_from_response(&globals, command_arguments),
         "find-open-stall-issue" => find_open_issue(&globals, command_arguments),
         "rewind-public-fd" => rewind_public_fd(command_arguments),

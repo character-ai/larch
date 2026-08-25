@@ -13,6 +13,7 @@
 //! learn-from-bugs command leaves consume the analysis core. Rejected-finding
 //! and merged-change analyses stay with the research umbrella.
 
+mod batch_create;
 mod body;
 mod candidates;
 mod deps_audit;
@@ -35,6 +36,9 @@ mod untrusted;
 /// Stable marker for the shared Architecture and Code Flow comment.
 pub const DIAGRAMS_COMMENT_MARKER: &str = "<!-- larch:diagrams v1 -->";
 
+pub use batch_create::{
+    BatchCreateItem, BatchCreatePlan, BatchCreatePlanError, BatchIssueReference, BatchItemVerdict,
+};
 pub use body::{
     ALLOWED_NAMED_BLOCK_MARKERS, DESIGN_PAUSE_MARKER, MISSING_PLAN_BLOCK, MULTIPLE_PLAN_BLOCKS,
     NamedBlockDefect, NamedBlockError, NamedBlockSpan, NamedBlockWrite, NamedBlockWriteMode,
@@ -132,21 +136,22 @@ pub use triage::{
     validate_triage_evidence_path,
 };
 pub use umbrella::{
-    ADOPTED_UMBRELLA_SOURCE, AMBIGUOUS_IN_FLIGHT_RECOVERY, CLOSED_INPUT,
+    ADOPTED_UMBRELLA_SOURCE, AMBIGUOUS_IN_FLIGHT_RECOVERY, BAD_STATE, CLOSED_INPUT,
     COMPLETION_SENTINEL_VERSION, CandidateIssue, CompletionSentinel, DependencyEdge, ExpectedLeaf,
-    INCOMPATIBLE_INPUT, INCOMPATIBLE_MANAGED_PARTITION, INCOMPATIBLE_UMBRELLA,
+    IDENTITY_MISMATCH, INCOMPATIBLE_INPUT, INCOMPATIBLE_MANAGED_PARTITION, INCOMPATIBLE_UMBRELLA,
     INCOMPLETE_GRAPH_STATE, INVALID_COMPLETION_SENTINEL, INVALID_FINAL_UMBRELLA,
     INVALID_LEAF_NUMBER, INVALID_PREPARED_DEPENDENCIES, INVALID_PREPARED_PARTITION,
     INVALID_PROPOSAL_RECORD, INVALID_RESOLVED_LEAF, INVALID_UMBRELLA_NUMBER, LEAF_ALREADY_RESOLVED,
     LEAF_CAP_EXCEEDED, LeafState, MANAGED_PARTITION_PREFIXES, MAX_PREPARED_DEPS_BYTES,
-    MAX_PREPARED_INPUT_BYTES, MAX_UMBRELLA_LEAVES, MIN_PREPARED_LEAVES, PREPARED_DEPENDENCY_CYCLE,
-    PREPARED_PARTITION_TOO_LARGE, ProposalRecord, RemoteLeaf, ResolvedLeaf,
-    STALE_COMPLETION_SENTINEL, STALE_PREPARED_PARTITION, UMBRELLA_PROPOSAL_TOKEN,
-    UNKNOWN_LEAF_IDENTITY, UmbrellaRefusal, UmbrellaSnapshot, UmbrellaSourceKind, check_leaf_cap,
-    classify_umbrella_source, completion_sentinel_for_record, expected_completion_sentinel,
-    is_controlling_umbrella_title, is_managed_partition_title, is_umbrella_leaf_title,
-    is_umbrella_title, leaf_identity, mark_leaf_in_flight, parse_proposal,
-    prepare_proposal_from_batch, reconcile_in_flight, record_leaf_resolved, render_proposal,
-    render_snapshot, umbrella_leaf_opening_text, validate_final_umbrella, verify_graph_state,
+    MAX_PREPARED_INPUT_BYTES, MAX_UMBRELLA_LEAVES, MIN_PREPARED_LEAVES, MISSING_LEAF_OPENING,
+    MISSING_LEAF_PREFIX, PREPARED_DEPENDENCY_CYCLE, PREPARED_PARTITION_TOO_LARGE, ProposalRecord,
+    RemoteLeaf, ResolvedLeaf, STALE_COMPLETION_SENTINEL, STALE_PREPARED_PARTITION,
+    UMBRELLA_PROPOSAL_TOKEN, UNKNOWN_LEAF_IDENTITY, UmbrellaRefusal, UmbrellaSnapshot,
+    UmbrellaSourceKind, check_leaf_cap, classify_umbrella_source, completion_sentinel_for_record,
+    expected_completion_sentinel, is_controlling_umbrella_title, is_managed_partition_title,
+    is_umbrella_leaf_title, is_umbrella_title, leaf_identity, mark_leaf_in_flight,
+    parse_drafted_proposal, parse_proposal, prepare_proposal_from_batch, reconcile_in_flight,
+    record_leaf_resolved, render_proposal, render_snapshot, umbrella_leaf_opening_text,
+    validate_final_umbrella, verify_graph_state,
 };
 pub use untrusted::{redact_untrusted_stream, untrusted_content_block, xml_escape_attr};

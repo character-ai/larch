@@ -108,6 +108,7 @@ mod implement_ship_commands;
 mod implement_step2_commands;
 mod implement_step2_post_commands;
 mod implement_terminal_commands;
+mod issue_batch_create_commands;
 mod issue_commands;
 mod issue_create_commands;
 mod issue_dependency_commands;
@@ -182,6 +183,7 @@ mod ship_recovery_commands;
 mod slack_commands;
 mod slot_binding;
 mod stall_recovery_commands;
+mod stall_recovery_file_report;
 mod stall_recovery_reporting;
 mod state_commands;
 mod status_commands;
@@ -1365,6 +1367,9 @@ enum IssueCommand {
     /// Close one orphaned issue left by a partially created batch.
     #[command(name = "cleanup-failed", disable_help_flag = true)]
     CleanupFailed(RawCompatibilityArguments),
+    /// File and wire one validated issue batch through a single Rust owner.
+    #[command(name = "create-batch", disable_help_flag = true)]
+    CreateBatch(RawCompatibilityArguments),
     /// Materialize one issue's title and body into a caller-named directory.
     #[command(disable_help_flag = true)]
     Context(RawCompatibilityArguments),
@@ -3387,6 +3392,9 @@ fn run(
             }
             IssueCommand::CleanupFailed(arguments) => {
                 issue_create_commands::cleanup_failed(&arguments.arguments)
+            }
+            IssueCommand::CreateBatch(arguments) => {
+                issue_batch_create_commands::create_batch(&arguments.arguments)
             }
             IssueCommand::Context(arguments) => issue_commands::context(&arguments.arguments),
             IssueCommand::CreateOne(arguments) => {
