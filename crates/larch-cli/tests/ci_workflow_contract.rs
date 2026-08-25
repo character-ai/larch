@@ -104,6 +104,26 @@ fn retired_python_ci_assets_stay_absent() {
 }
 
 #[test]
+fn trusted_base_cache_key_cutovers_fall_back_to_full_rust_ci() {
+    let root = repository_root();
+    let workflow = fs::read_to_string(root.join(".github/workflows/ci.yaml"))
+        .expect("read CI workflow");
+    let selection = section(&workflow, "\n  rust-selection:");
+
+    assert!(selection.contains(
+        "continue-on-error: true\n        uses: ./.rust-ci-selector-base/.github/actions/main-cache-keys"
+    ));
+    assert_contains_all(
+        &selection,
+        &[
+            "TRUSTED_POLICY_VALID: ${{ steps.trusted-main-policy-validation.outputs.valid }}",
+            "fallback_selection trusted-main-policy-unavailable-or-invalid",
+            "mode=full",
+        ],
+    );
+}
+
+#[test]
 fn required_rust_checks_cover_each_execution_shape_without_a_serial_full_gate() {
     let root = repository_root();
     let workflow = fs::read_to_string(root.join(".github/workflows/ci.yaml"))

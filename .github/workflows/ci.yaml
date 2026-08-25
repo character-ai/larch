@@ -403,6 +403,9 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - id: main-cache-keys
+        # A base/candidate cache-key schema transition must fail closed to the
+        # full Rust path instead of making the selector job terminally red.
+        continue-on-error: true
         uses: ./.rust-ci-selector-base/.github/actions/main-cache-keys
         with:
           rust-policy-source-root: .rust-ci-selector-base

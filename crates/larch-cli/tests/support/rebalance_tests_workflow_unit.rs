@@ -997,11 +997,7 @@ fn selected_leg_responses_and_pull_request_text_remain_specific() {
     let mut harness_response = approved_response(&changed_plan());
     harness_response.rust = None;
     let harness = harness_response
-        .into_prepared(
-            RebalanceKind::Harness,
-            repository.clone(),
-            Some(harness_shards),
-        )
+        .into_prepared(RebalanceKind::Harness, repository, Some(harness_shards))
         .expect("harness response prepares only its selected leg");
     let harness_body = pull_request_body(&arguments(), &harness);
     assert!(harness_body.contains("- Legs: harness"));
