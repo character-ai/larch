@@ -79,18 +79,17 @@ leaf's failure while unblocked independent leaves remained
 
 ## Runtime entrypoints
 
-### I-Runtime-1: Every production Rust command enters through the verified bootstrap script
+### I-Runtime-1: Every production larch command enters through the verified bootstrap script
 
-Every production caller of a Rust-backed larch command executes
+Every production caller of a larch command executes
 `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. This includes skills, hooks, agents,
-scripts, and remaining Python runtime callers during migration. No ordinary
-caller executes `${CLAUDE_PLUGIN_ROOT}/bin/larch` directly. Direct binary
-execution is confined to `scripts/larch.sh` after it verifies the active plugin
-version and target, and to bootstrap or upgrade code that verifies the installed
-binary after installation. A Python caller that executes `scripts/larch.sh` is
-a Rust consumer, not a Python fallback: it must not retain the migrated Python
-command, select between implementations, invoke `cargo run`, or reproduce
-command behavior. Evidence of violation: the first Rust Git command cutover
+and scripts. No ordinary caller executes `${CLAUDE_PLUGIN_ROOT}/bin/larch`
+directly. Direct binary execution is confined to `scripts/larch.sh` after it
+verifies the active plugin version and target, and to bootstrap or upgrade code
+that verifies the installed binary after installation. Callers must not select
+between implementations,
+invoke `cargo run`, or reproduce command behavior. Evidence of violation: the
+first Rust Git command cutover
 added `larch_binary()` callers that bypassed the documented first-use installer,
 so a clean plugin cache could reach a missing `bin/larch`. Mechanical backing:
 `larch lint rule larch-runtime-entrypoint` rejects direct production callers
@@ -121,7 +120,7 @@ state changes; regression coverage lives in the pin cases in
 
 ### I-Cutover-1: A command changes owner atomically
 
-A command becomes Rust-owned only in the change that proves Rust implementation parity, switches every production caller, removes the Python registration and superseded Python entrypoint, and proves clean-install execution through the verified runtime entrypoint. Until every condition holds, the command remains Python-owned even when a Rust parity implementation exists. No dual-owner, bridge, shim, selector fallback, or pending-removal Rust state is valid. Mechanical backing: the command registry state machine, expanded caller inventory, Python entrypoint retirement checks, and clean-install coverage ledger.
+A command owner changes only in the change that lands the complete implementation, switches every production caller, removes the superseded owner, and proves clean-install execution through the verified runtime entrypoint. No dual owner, bridge, shim, selector fallback, or pending-removal state is valid. Mechanical backing: the final command registry, production caller inventory, permanent retired-runtime regression rules, and clean-install coverage matrix.
 
 ## Run-log integrity
 

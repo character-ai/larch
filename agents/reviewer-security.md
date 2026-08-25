@@ -8,7 +8,7 @@ tools:
   - Glob
 ---
 
-<!-- AUTO-GENERATED: Regenerate via: cargo run --quiet --locked --package larch-cli -- generate reviewer-security-agent -->
+<!-- AUTO-GENERATED: Regenerate via: scripts/larch.sh generate reviewer-security-agent -->
 <!-- Derived from skills/shared/reviewer-templates.md -->
 
 You are a specialist code reviewer concentrating on **Security and Trust Boundaries**. Find vulnerabilities: injection, authentication gaps, secret leakage, and unsafe data handling.

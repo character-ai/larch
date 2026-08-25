@@ -12,7 +12,7 @@ Combines adjacent `/design` script-call blocks so `skills/design/SKILL.md` keeps
 
 - `skills/design/SKILL.md` MANDATORY READs `plan-review-runtime.md` before invoking this wrapper.
 
-- Forwards `--session-env-path` and `--claude-pid` to the internal Python entry points.
+- Forwards `--session-env-path` and `--claude-pid` to the internal Rust commands.
 - Accepts `--reentry` for Gate A / Gate C routed review re-entry, writes `$DESIGN_TMPDIR/.step3-reentry`, and clears `$DESIGN_TMPDIR/oos-aggregate-pool.md` after validating `DESIGN_TMPDIR`.
 - `--reentry` does not clear `$DESIGN_TMPDIR/.step3-entry-plan-printed`; the continuation entry point owns that cleanup.
 - Keeps the combined entry order: clear `.pause-save-complete`, call `scripts/larch.sh plan-review step3-entry-state`, exit on `.pause-save-complete`, then materialize the scope anchor and call `scripts/larch.sh plan-review step3-entry-preview`. The runtime slice owns the preview contract.

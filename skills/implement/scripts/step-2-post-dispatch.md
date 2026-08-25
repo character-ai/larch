@@ -10,7 +10,7 @@ Step 2 post-dispatch wrapper. Runs the phantom untracked probe, emits the checke
 "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-2-post-dispatch.sh --expected-branch "$BRANCH_NAME"
 ```
 
-`--expected-branch` is required by the Python parser. `claude_fallback` must not call it.
+`--expected-branch` is required by the Rust parser. `claude_fallback` must not call it.
 
 ## Exit codes
 

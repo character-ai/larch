@@ -13,8 +13,8 @@ high-level trust statement.
   opening a secondary link.
 - Use stable headings for important security topics so live links remain
   useful.
-- Record implementation owners and mixed-runtime migration status in the
-  canonical document.
+- Record current implementation owners and enforcement status in the canonical
+  document.
 
 ## Document Taxonomy
 

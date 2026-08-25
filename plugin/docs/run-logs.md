@@ -673,7 +673,7 @@ Concatenation of per-slot `*.failure-diag` carriers. Each slot entry is redacted
 
 ### token-report.json
 
-**Mode**: replace. **Written**: mutable recovery checkpoints during ship and rebuilt after the closing Step 18 token mark. The Rust-owned `scripts/larch.sh run-log refresh` stages the durable batch; `larch.core.rust_runtime.refresh_logs_checkpoint` is only its typed Python facade, preserving existing caller errors before force-push or rebase preparation. The agentic Claude CI-fix delegate reconstructs `RunContext` and requires `--repo-root`. `ci-fix-exhausted` pairs with Step 12d operator bail. Stall recovery does not auto-resume the ship step for that token.
+**Mode**: replace. **Written**: mutable recovery checkpoints during ship and rebuilt after the closing Step 18 token mark. The Rust-owned `scripts/larch.sh run-log refresh` stages the durable batch. The agentic Claude CI-fix delegate reconstructs `RunContext` and requires `--repo-root`. `ci-fix-exhausted` pairs with Step 12d operator bail. Stall recovery does not auto-resume the ship step for that token.
 
 Structured per-step Claude and external-vendor token usage for the session. The terminal render includes work after Step 7a plus the closing logs-flush mark.
 

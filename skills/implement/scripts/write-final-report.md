@@ -8,7 +8,7 @@ The markdown body is produced by the Rust `render run-summary` owner (`crates/la
 
 ## Implement outcome enum (`--outcome` raw values)
 
-These values are emitted by the shared `scripts/larch.sh stall-recovery normalize-outcome` helper. `scripts/larch.sh final-report write` (via the thin `write-final-report.sh` wrapper) consumes that helper, and Step 18a.5 uses the same API for escalation-success reporting. Pytest coverage in `crates/larch-cli/tests/final_report.rs` stays aligned with the helper.
+These values are emitted by the shared `scripts/larch.sh stall-recovery normalize-outcome` helper. `scripts/larch.sh final-report write` (via the thin `write-final-report.sh` wrapper) consumes that helper, and Step 18a.5 uses the same API for escalation-success reporting. Rust coverage in `crates/larch-cli/tests/final_report.rs` stays aligned with the helper.
 
 1. `stalled`: any observed `STALL_TRACKING=true` in ship-pr state, finalize state, or session env.
 2. `forked-dry-run`: `FORKED_TARGET=true`.

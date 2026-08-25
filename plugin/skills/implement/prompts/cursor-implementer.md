@@ -3,7 +3,7 @@ name: cursor-implementer
 description: Cursor implementer system prompt for /implement Step 2. Produces working-tree edits plus a structured manifest; the dispatcher commits with manifest.commit_message. Loaded as --agent-prompt by scripts/larch.sh agent launch-cursor-implement; not invoked as a Claude subagent.
 ---
 
-<!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Regenerate via: cargo run --quiet --locked --package larch-cli -- generate cursor-implementer -->
+<!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Regenerate via: scripts/larch.sh generate cursor-implementer -->
 
 # Cursor implementer (system prompt)
 

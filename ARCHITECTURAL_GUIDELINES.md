@@ -84,7 +84,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ## Configuration and protocol literals
 
-### G-Cfg-1: Define every exit code, env-var name, tunable, and wire literal once in config.py as a Final; build token sets from prior sets rather than re-listing
+### G-Cfg-1: Define every exit code, env-var name, tunable, and wire literal once in its shared Rust domain owner; build token sets from prior sets rather than re-listing
 - Why: one edit point for protocol literals; aggregated sets cannot drift out of sync with their members.
 - Deviate when: a module-private constant used at one call site with no cross-module contract.
 
@@ -99,13 +99,13 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ## Wire-file I/O
 
-### G-IO-1: Route reads and writes of larch wire files through larch.io helpers with explicit policy flags, instead of re-implementing KEY=value parsing or bare tmp+replace
+### G-IO-1: Route reads and writes of larch wire files through the shared Rust wire codec and atomic writer with explicit policy flags, instead of re-implementing KEY=value parsing or bare tmp+replace
 - Why: one audited implementation of the on-disk grammar (duplicate keys, CR, symlinks, atomicity) keeps every envelope byte-compatible and centralizes fail-closed temp cleanup.
 - Deviate when: a throwaway internal file with no wire contract, or stdin/stdout streaming.
 
 ### G-IO-2: Reject or escape embedded newlines and carriage returns before writing a value into a line-oriented `KEY=value` wire file
 - Why: a value with a raw newline forges an extra `KEY=value` line, so an untrusted title, URL, or diagnostic could spoof a state key a later reader trusts. The ship driver and note writers already reject or `_env_escape` newlines.
-- Deviate when: the value is a controlled constant with no newline path, or a `larch.io` helper already enforces this.
+- Deviate when: the value is a controlled constant with no newline path, or the shared codec already enforces this.
 
 ### G-IO-3: Return an existing absolute path unchanged from a path-rebase helper
 - Why: a path-rebase helper re-anchored a valid, existing absolute path from the system `$TMPDIR` into a non-existent path, which broke session-transcript capture on every run after the migration because a same-host absolute path was treated as foreign (#6263).
@@ -129,8 +129,8 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ## CLI surface
 
-### G-CLI-1: Expose each runtime entry as a module-level main(argv)->int returning a typed exit code, registered by (domain, verb) in the cli.py table; no per-script shim
-- Why: one uniform process contract for prompt-side callers, one dispatcher to audit, exit codes mapped to the `Outcome` enum.
+### G-CLI-1: Expose each runtime entry as a typed `(domain, verb)` Clap command in the larch CLI; no per-command script shim
+- Why: one uniform process contract for prompt-side callers, one dispatcher to audit, and typed exit-code routing.
 - Deviate when: pure library helpers with no CLI surface.
 
 ### G-CLI-2: Give distinct failure classes distinct, documented exit codes so a caller can branch on them
@@ -165,7 +165,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Sec-4: Confine larch writes to the session and tmp roots you own; canonicalize, containment-check, and reject symlinks and non-regular files at use time
 - Why: a same-UID symlink swap or a `../`-escaping path turns an internal write into arbitrary-file corruption. Re-checking at write, unlink, or `rm -rf` time, not only at creation, closes the TOCTOU gap.
-- Deviate when: a fixed committed repo path validated once at the trust boundary (note it). Note: `larch.io` and several helpers already reject symlinks; this is the residual judgment for a new helper that takes a caller-supplied path.
+- Deviate when: a fixed committed repo path validated once at the trust boundary (note it). Shared confined-filesystem helpers already reject symlinks; this is the residual judgment for a new helper that takes a caller-supplied path.
 
 ### G-Sec-5: Re-verify process identity before signaling a persisted pid or pgid, and log the intent; a mismatch or missing signature aborts the kill
 - Why: a bare pid is reused after wraparound, so a stale `.active-leg-pgid` can kill an unrelated same-user process in another clone or session (issue #6213). Checking pid, pgid, start time, and command signature, plus a pre-signal log, makes larch kills safe and auditable.
@@ -277,8 +277,8 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: a lean active prompt, with instructions next to their use.
 - Deviate when: cross-cutting safety or NEVER constraints and Step-0-governing rules load eagerly; or blocks too small to justify a separate Read.
 
-### G-Skill-2: Keep logic in Python behind `cli.py`; SKILL.md and Bash stay thin
-- Why: the judgment residue is "is this logic that belongs in Python?".
+### G-Skill-2: Keep logic in Rust behind the larch CLI; SKILL.md and Bash stay thin
+- Why: one typed runtime owner keeps prompt and shell surfaces declarative.
 - Deviate when: a bootstrap, hook, or harness must run or test Bash itself; keep it manifest-listed and bounded.
 
 ### G-Skill-3: Use the correct runtime root for skill paths
@@ -296,7 +296,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Deviate when: a one- or two-level composition that is obviously correct at a glance.
 
 ### G-Bash-2: Keep orchestrator-facing Bash probes bounded and exit-code-safe; prefer a bounded CLI over a discovery grep, pass an explicit path, and guard expected no-match with `|| true`
-- Why: a bare top-level `grep` in a Claude Code Bash block can abort the block, and a pathless grep-family probe can hang on open stdin (BASH_AUTHORING.md §1). A bounded `cli.py … --help` often answers the question with no scan at all.
+- Why: a bare top-level `grep` in a Claude Code Bash block can abort the block, and a pathless grep-family probe can hang on open stdin (BASH_AUTHORING.md §1). A bounded `scripts/larch.sh … --help` often answers the question with no scan at all.
 - Deviate when: a rare reviewed fixture, suppressed inline through the pinned `agent-lint` rule S061 (bare-grep-probe) exception mechanism.
 
 ### G-Bash-3: Keep committed shell scripts compatible with macOS system Bash 3.2 unless the script documents a narrower runtime

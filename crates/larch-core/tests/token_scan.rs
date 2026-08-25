@@ -1,9 +1,9 @@
 //! Differential parity tests for the token scan and usage extraction layer.
 //!
-//! The `*-report.json` fixtures are recorded output of the Python owner
+//! The `*-report.json` fixtures are recorded output of the retired owner
 //! (`larch.report.tokens.build_report_from_ledgers`, `_full_json`, and
-//! `_summary_json`) over the `*.jsonl` inputs in the same directory. Regenerate
-//! them from Python whenever the owner's shape changes.
+//! `_summary_json`) over the `*.jsonl` inputs in the same directory. They are
+//! reviewed contract records, not outputs of a live reference program.
 
 use larch_core::{
     RunLogSelection, RunLogSlug, TokenCorpusScan, TokenObservationKind, TokenObservations,

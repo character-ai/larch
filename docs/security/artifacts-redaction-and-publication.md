@@ -51,8 +51,8 @@ The four public redaction commands are Rust-owned and enter through
 live in `crates/larch-core/src/redaction.rs`. The submodule command uses only the
 closed typed `GitCli::submodule(SubmoduleRequest::Foreach)` adapter, rejects a
 symlinked `.gitmodules`, and ignores entries that are not safe non-empty Git
-paths. `review-and-fix` reuses the same pure finding filter. No Python
-redaction implementation or fallback remains.
+paths. `review-and-fix` reuses the same pure finding filter. These Rust modules
+are the sole redaction implementation.
 
 Redaction state, scrubbed finding output, and audit-log writes reject symlinked
 or multiply linked targets and publish by confined atomic replacement. New
@@ -144,9 +144,8 @@ trusted-main run.
 The `.gitleaks.toml` path allowlist still creates pattern-scan blind spots. It
 covers the config itself, named residual-script and skill fixtures, one Rust
 parity golden that preserves a synthetic PEM marker to verify fail-closed log
-rescanning, build output, and session-local Python virtual-environment and cache
-directories that legitimately contain synthetic token shapes. Keep test values
-obviously fake.
+rescanning, and build output that legitimately contains synthetic token shapes.
+Keep test values obviously fake.
 The independent verified scan remains necessary, but it does not fill every
 allowlist or pattern gap.
 
@@ -645,7 +644,7 @@ descriptor owned by the helper. Marker lookup, the create title, and the
 GitHub transport consume that descriptor through `/dev/fd` rather than
 reopening the caller-provided pathname. Rust also owns descriptor rewinds,
 dedup-response parsing, comment-response URL validation, and the JSON comment
-request envelope. The runtime helper does not invoke Python. A source that
+request envelope. The Rust command owns the complete runtime helper. A source that
 changes while it is snapshotted, or is missing, oversized,
 non-regular, or symlinked, fails closed before any GitHub mutation. Later
 source changes cannot alter the approved transport bytes. A missing validator,
@@ -675,8 +674,7 @@ confidentiality boundary.
 ## Implementation and Verification Owners
 
 Publication paths are Rust-owned. The current owner of a publication path
-defines its implementation checks, and no Python fallback weakens the egress
-contract.
+defines its implementation checks and the complete egress contract.
 
 | Concern | Current owners |
 |---------|----------------|
@@ -684,11 +682,11 @@ contract.
 | Checksum-pinned scanner | Local Rust command: `crates/larch-cli/src/gitleaks.rs` and `crates/larch-adapters/src/github/release.rs`; CI verifier: `.github/workflows/ci.yaml` |
 | Rust human, machine, breadcrumb, and journal redaction | `crates/larch-core/src/redaction.rs`, `crates/larch-core/src/telemetry.rs`, and `larch_core::SafeText` consumers |
 | Clone-local statusline progress state | Rust owns pointer activation, compare-and-clear, breadcrumb append, stale cleanup, and persisted run-identity parsing in `crates/larch-adapters/src/progress_state.rs` and `crates/larch-cli/src/progress_commands.rs`. |
-| Mutable run-log flush and transcript staging | Rust owns execution-issue append, checkpoint, refresh, terminal snapshot, transcript capture, flush ordering, manifest reconciliation, and sorted vendor-diagnostic aggregation in `crates/larch-cli/src/execution_issue_commands.rs` and `run_log_flush_commands.rs`. Category-keyed chunk deduplication, the directory lock, atomic live-ledger replacement, lock-protected compare-and-clear after flush, and atomic batch replacement and append use `crates/larch-cli/src/run_log_entry_commands.rs`. The flush boundary has no Python payload producer: `token mark`, `token report`, `token claude-source`, and `difficulty write-record` are Rust-owned in process. `final-report write` additionally reads assessment, plan, and PR payloads. |
+| Mutable run-log flush and transcript staging | Rust owns execution-issue append, checkpoint, refresh, terminal snapshot, transcript capture, flush ordering, manifest reconciliation, and sorted vendor-diagnostic aggregation in `crates/larch-cli/src/execution_issue_commands.rs` and `run_log_flush_commands.rs`. Category-keyed chunk deduplication, the directory lock, atomic live-ledger replacement, lock-protected compare-and-clear after flush, and atomic batch replacement and append use `crates/larch-cli/src/run_log_entry_commands.rs`. `token mark`, `token report`, `token claude-source`, and `difficulty write-record` are Rust-owned in process. `final-report write` additionally reads assessment, plan, and PR payloads. |
 | Timing ledger mutation and reports | Rust exclusively owns timing marks, vendor and round records, locking, validation, and report rendering in `crates/larch-cli/src/timing_commands.rs` (#8291). |
 | Run-log selection, trim, scrub, and publication | Rust owns standalone and lifecycle publication, tree redaction, durable retry, create-only remote verification, cache promotion, and breadcrumb publication through `crates/larch-adapters/src/run_lifecycle.rs` and `crates/larch-cli/src/run_log_publication_commands.rs`. Design session archives use the same lifecycle through `scripts/larch.sh design log-publish` (`crates/larch-cli/src/design_log_publish_commands.rs`, selection filter `larch_core::design::log_publish::publish_excluded`). |
 | Design dialectic candidate artifacts | Rust owns candidate validation, promotion, direct write, and stale cleanup in `crates/larch-core/src/design/dialectic.rs` and `crates/larch-cli/src/design_dialectic_commands.rs` (#8584). Persisted plan, promoted-candidate, status, and generation reads are confined below a canonical non-symlink design root and opened without following symlinks; candidate publication uses private mode-0600 atomic replacement. Drafter content is an explicit untrusted input path, not a publication target. All candidate, status, digest, and request files remain private session state. |
-| Design pause and resume | Rust owns marker parsing, issue identity checks, verified cache lookup, confined restore staging, and marker cleanup in `crates/larch-core/src/design/pause.rs` and `crates/larch-cli/src/design_pause_commands.rs` (#8589). Python has no pause command or fallback. |
+| Design pause and resume | Rust owns marker parsing, issue identity checks, verified cache lookup, confined restore staging, and marker cleanup in `crates/larch-core/src/design/pause.rs` and `crates/larch-cli/src/design_pause_commands.rs` (#8589). |
 | Run-log archive, sync, and object publication | Rust owns archive creation, materialization, standalone sync, shared lifecycle publication, cache promotion, and `run-log storage-preflight` through `crates/larch-adapters/src/run_lifecycle.rs`, `google_storage.rs`, and `s3_storage.rs`. The same provider-neutral object-store port validates pagination, names, sizes, archive materialization, and repair rollback. |
 | Agent diagnostic bounds and carriers | `crates/larch-core/src/vendor_diagnostics.rs`, `crates/larch-adapters/src/vendor_diagnostics.rs`, and `crates/larch-cli/src/launcher_support.rs` |
 | Bgjob DEAD diagnostics | `crates/larch-core/src/bgjob_daemon.rs` owns the status and bounded-tail codec; `crates/larch-cli/src/bgjob_commands.rs` owns supervised capture and rendering |
@@ -698,8 +696,8 @@ contract.
 | Tracking, plan, PR, diagram, and public-report publication | Rust `tracking-issue upsert-summary` (#8346) owns marker-keyed comment mutation through the shared issue-mutation owner. Rust `diagrams upsert` (#8837) composes, redacts, authorizes, mutates, and exactly verifies the shared `larch:diagrams` comment through that typed owner. Rust `tracking post-issue` (#8789) composes its confined private metadata file and calls that owner in process. Rust `pr create` and `pr body-update` (#8790) use `larch_core::redact_pr_body` before the typed GitHub mutation boundary; the latter verifies the returned body. Rust `final-report write` (#8090) owns `/implement` final-summary publication. On the supported Unix runtime, marker-comment and post-admission issue-body materialization write only below a canonical non-symlink process temporary root or larch session-cache root and use no-follow reads plus private atomic writes. `render run-summary` remains a #7680 `/design` payload renderer, and `diagram code-flow` retains its #7681 owner. `final-report write` calls the same Rust owner in process to preserve its output envelope. |
 | Runtime projection | `crates/larch-cli/src/release_plugin_runtime.rs` |
 
-Verification includes frozen Python-to-Rust process parity for all four
-redaction commands, focused in-process redaction and run-log tests, clean-install
+Verification includes recorded black-box contracts for all four redaction
+commands, focused in-process redaction and run-log tests, clean-install
 dispatch, Rust Gitleaks command tests, Markdown and reference checks, the runtime-projection drift check, the
 local pattern scan when installed, and the required CI scanner jobs. Scanner
 success does not supersede the confidentiality classes in this document.

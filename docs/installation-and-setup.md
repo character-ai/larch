@@ -122,7 +122,6 @@ Do not place credentials in `tools-config.toml` or
 - **git**: version control (used by all skills)
 - **gh**: [GitHub CLI](https://cli.github.com/), authenticated with repo write access (`gh auth login`). The installed version must provide `gh release verify`, `gh attestation verify`, and immutable release metadata. Larch uses these commands for the first Rust binary install, PR creation, CI monitoring, and merge automation.
 - **jq**: [JSON processor](https://jqlang.github.io/jq/).
-- **python3**: Python 3.11 or newer
 
 ## Auth
 All vendor agents work with either web login or API tokens.
@@ -169,9 +168,9 @@ is cut, and always to the tagged release commit, so an install receives the
 plugin content and the executable that the same commit produced. Merges to
 `main` between releases do not change what an install receives. Both its fetch
 and the installed cache exclude Rust source,
-repository linters, tests, release automation, and CI support files. Python
-runtime modules remain because larch still executes them during the Rust
-migration. The projection includes the root security policy, the
+repository linters, tests, release automation, and CI support files. Runtime
+commands are provided by the release-matched `larch` executable. The projection
+includes the root security policy, the
 [security reference index](security/README.md), and every focused security
 reference used by shipped skills.
 

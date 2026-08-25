@@ -1,6 +1,6 @@
 # skills/design/scripts/test-check-plan-size.md
 
-Offline regression contract for `scripts/larch.sh plan check-size` (implementation: [`plan_quality_commands.rs`](../../../crates/larch-cli/src/plan_quality_commands.rs)). `make test-check-plan-size` runs the Rust migrated-parity suite against the frozen Python reference. The cases below describe the preserved command contract.
+Offline regression contract for `scripts/larch.sh plan check-size` (implementation: [`plan_quality_commands.rs`](../../../crates/larch-cli/src/plan_quality_commands.rs)). `make test-check-plan-size` runs the Rust regression suite against the recorded pre-cutover contract. The cases below describe the preserved command behavior.
 
 ## Cases exercised
 

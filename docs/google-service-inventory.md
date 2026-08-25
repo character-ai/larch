@@ -1,13 +1,12 @@
 # Google Service Inventory
 
-This ledger records the production Google and `gcloud` caller inventory for
-issue #7727. It separates adapter parity, consumer cutover, and Python removal
-for every operation found by the scan.
+This ledger records the production Google and `gcloud` caller inventory. Its
+completion columns retain the historical #7727 cutover evidence.
 
 ## Checked scope
 
 The inventory was refreshed for #7815 after the #7843 service repair leaves landed.
-The scan covered production Rust, Python, skills, agents, hooks, scripts, and CI
+The scan covered production Rust, skills, agents, hooks, scripts, and CI
 configuration. It excluded documentation, fixtures, historical run logs, and
 the generated `plugin/` projection from caller classification.
 
@@ -44,7 +43,6 @@ out to `gcloud`.
 
 Before adding a Google operation, update this ledger with its production caller,
 service, exact OAuth scopes, minimum IAM permissions, larch-owned port and DTOs,
-official client crate, adapter parity evidence, consumer cutover state, and
-Python removal state. Add offline fake-credential and fake-transport coverage
-before cutover. Keep any live test ignored by default, explicit opt-in, and
-credential-free in its output.
+official client crate, and implementation evidence. Add offline fake-credential
+and fake-transport coverage before enabling the operation. Keep any live test
+ignored by default, explicit opt-in, and credential-free in its output.

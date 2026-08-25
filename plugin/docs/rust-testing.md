@@ -139,27 +139,24 @@ separately so those states stay distinguishable.
 
 Token extraction has a second, narrower oracle. `crates/larch-core/tests/
 fixtures/token_scan/` holds ledger and transcript inputs beside the recorded
-output of the Python owner (`larch.report.tokens.build_report_from_ledgers`,
-`_full_json`, and `_summary_json`) over exactly those inputs, and
-`tests/token_scan.rs` asserts full JSON equality against them. Regenerate every
-recorded report from Python together, and review a changed byte as a Python
-contract change rather than a Rust detail. Scanning stays streaming: the scan
+output of the retired owner over exactly those inputs, and
+`tests/token_scan.rs` asserts full JSON equality against them. Treat those
+records as reviewed contract fixtures: an intentional contract change updates
+the inputs and expected reports together. Scanning stays streaming: the scan
 reads one run at a time and both ledgers and transcripts line by line, so peak
 memory is bounded by the largest single run and not by corpus size, as
 `larch_core::report`'s token-scan module documents.
 
 Token pricing uses the same differential shape. `crates/larch-core/tests/
 fixtures/token_cost/` holds two recorded case files: `argv-cases.json` pairs
-pricing flags and a rate environment with the Python owner's `KEY=value` block
+pricing flags and a rate environment with the reviewed `KEY=value` block
 and cost line, and `record-cases.json` pairs a raw token report with the flags
 `token_cost_argv` derived from it, the resulting block, and the `price_run` cost
 fields. `tests/token_cost.rs` asserts string and value equality against both,
 including the blended fallback a negative bucket forces. Every case stores its
-own inputs, so regeneration replays the recorded `argv`, `env`, and `report`
-through the Python owner. Regenerate both files together, and review a changed
-number as a pricing contract change. `flags.json` records the Python owner's
-exact count-flag set so the derived Rust flag grammar cannot drift wider or
-narrower.
+own inputs. Update both files together for an intentional pricing-contract
+change, and review every changed number. `flags.json` records the closed
+count-flag set so the Rust grammar cannot drift wider or narrower.
 
 `LocalObjectStore` is a filesystem double for the documented object-store
 operations (`preflight_prefix`, `list`, `upload_create`, `metadata`,
@@ -238,8 +235,8 @@ normalization plus fingerprints. Leaf #8598 adds the state half: round-state
 assembly, point resolution, stalemate detection, adjudication records, and the
 proposal transition machine. Inline tests cover the executable-contract cases,
 including the transition and stalemate rejection tokens, and pin golden
-fingerprint fixtures for byte parity. The Python debate protocol module has been
-removed; `larch_core::debate` is the sole owner. This core is network-free and
+fingerprint fixtures for byte parity. `larch_core::debate` is the sole owner.
+This core is network-free and
 filesystem-free.
 
 Leaf #8599 ports the state store. `larch_core::debate::state` owns canonical
@@ -249,7 +246,7 @@ versioning, every encode and decode codec, and the pure `decode_state` and
 `load_state`, `write_state`, and the `O_NOFOLLOW` flock live in
 `larch_cli::debate_state`, reusing the `larch-adapters` trusted-root
 confinement and the `analysis_state` lock precedent. Integration tests in
-`crates/larch-cli/tests/debate_state.rs` load recorded Python state fixtures
+`crates/larch-cli/tests/debate_state.rs` load recorded legacy state fixtures
 under `crates/larch-cli/tests/fixtures/debate_state/` (`state-v2.json`,
 `state-v2-active.json`, and `state-v1.json`), assert a byte-identical schema-2
 round trip and the schema-1 migration to the current schema, and cover the lock
@@ -287,8 +284,7 @@ bind an ephemeral loopback port when it must exercise socket framing; it cannot
 resolve DNS or contact a non-loopback address.
 
 Do not depend on an installed executable unless the test covers an approved
-executable compatibility boundary. The process adapter may invoke Git. The
-parity harness may invoke its documented Python and Rust fixture programs.
+executable compatibility boundary. The process adapter may invoke Git.
 `VendorProcessHarness` may invoke its Cargo-built fake vendors. Everything else
 uses `FakeProcessRunner`. Real Claude, Codex, Cursor, service credentials, and
 remote endpoints belong only in explicit live-smoke runs.
@@ -528,9 +524,9 @@ The workflow enforces these modes after both live observation windows completed:
   lockfile, Cargo configuration, and deny inputs are all global `full` inputs.
 - `skip` accepts only supplementary paths with explicit owners: root
   documentation/configuration files, `.claude/`, `agents/`, `docs/`, `plugin/`,
-  `python/`, and `skills/`. The selector records every applicable owner. The
-  normal lint, agent, Python, and plugin checks still validate their owned
-  content. Rust repository policy and plugin validation run through a verified
+  and `skills/`. The selector records every applicable owner. The normal lint,
+  agent, and plugin checks still validate their owned content. Rust repository
+  policy and plugin validation run through a verified
   trusted-main executable; bootstrap integration receives that same verified
   executable. No pull-request Rust binary runs in this path. The `rust-skip`
   job's elapsed duration is the selected execution-path measurement;

@@ -131,7 +131,7 @@ Audit an open, top-level managed umbrella without implementing leaves or changin
 
 **Source**: [`skills/debate/SKILL.md`](../skills/debate/SKILL.md)
 
-Debate an open issue through three persistent, read-only vendor seats: Cursor, Codex, and an in-session Claude `debater` agent. Round 1 stakes independent repository-grounded positions. Round 2 routes only the other validated ledgers through per-slot mailboxes. The durable Python protocol owns ordering, fingerprints, per-slot drops, quorum, adjudication, synthesis, and rejection of implementation-plan wire syntax.
+Debate an open issue through three persistent, read-only vendor seats: Cursor, Codex, and an in-session Claude `debater` agent. Round 1 stakes independent repository-grounded positions. Round 2 routes only the other validated ledgers through per-slot mailboxes. The durable Rust protocol owns ordering, fingerprints, per-slot drops, quorum, adjudication, synthesis, and rejection of implementation-plan wire syntax.
 
 One unavailable external vendor proceeds with a named warning; two unavailable externals or missing `SendMessage` stop before the source title changes. Default mode asks the operator to decide any remaining positions. `-s` and `--vote-stalemates` use the anonymized voter panel and never ask the operator. Non-interactive default mode returns a prompt-required envelope instead of blocking.
 
@@ -430,7 +430,7 @@ Audit recently-merged larch run logs for the selected skill (`--skill=design|imp
 
 **Source**: [`.claude/skills/larch-size/SKILL.md`](../.claude/skills/larch-size/SKILL.md)
 
-Report larch repository line counts for tracked Bash, Python, Rust, and Markdown. Python and Rust counts split production from test lines. Also report `larch-logs` size breakdowns. Runs `"$PWD/scripts/larch.sh" repo size` from the repo root and passes the output through unchanged. Takes no flags.
+Report tracked repository line counts by language and test status, plus `larch-logs` size breakdowns. Runs `"$PWD/scripts/larch.sh" repo size` from the repo root and passes the output through unchanged. Takes no flags.
 
 ### `/rebalance-tests`
 
@@ -465,7 +465,7 @@ Operator-run release cut for `character-ai/larch` (`disable-model-invocation: tr
 
 **Source**: consumer repo file at `scripts/larch.sh checks run-relevant` (larch ships a reference implementation in-tree for this repository).
 
-Run relevant local checks from Python: changed-file `pre-commit`, bounded changed-target Clippy where Rust paths are present, and contains-pin validation. It does not run broad make targets or a full-repository agent-lint scan. Human operators run it with `scripts/larch.sh checks run-relevant --site local --tmpdir <tmpdir>`, or another site label. `/implement` and `/review` use the same CLI without spending Skill-tool tokens on the green path. The default path fails closed on structural errors; `RELEVANT_CHECKS_SKIPPED=true` is reserved for explicit `--allow-skip` test paths. **Not part of the plugin SlashCommand surface.**
+Run relevant local checks through the Rust owner: changed-file `pre-commit`, bounded changed-target Clippy where Rust paths are present, and contains-pin validation. It does not run broad make targets or a full-repository agent-lint scan. Human operators run it with `scripts/larch.sh checks run-relevant --site local --tmpdir <tmpdir>`, or another site label. `/implement` and `/review` use the same CLI without spending Skill-tool tokens on the green path. The default path fails closed on structural errors; `RELEVANT_CHECKS_SKIPPED=true` is reserved for explicit `--allow-skip` test paths. **Not part of the plugin SlashCommand surface.**
 
 ### Changed-path Rust Clippy selector
 

@@ -28,7 +28,7 @@ The #7681 Step 8 workflow router in
 entrypoint. `crates/larch-cli/src/main.rs` dispatches the filing command to
 `oos_file_commands.rs`.
 
-The route has no Python OOS command implementation, selector fallback, or direct installed-binary call.
+The route has one Rust command implementation and enters through the verified wrapper.
 
 ## Filing stages
 

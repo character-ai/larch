@@ -8,4 +8,4 @@ Verifies the Step 7a staging retirement, Step 8 `guidelines-assessment` routing,
 
 ## Tests
 
-`make lint` runs this harness through the script sibling checks. The Python CLI owns compose-time metadata validation and durable note writes. The live prompt owns authoring the assessment and relaunching Step 8.
+`make lint` runs this harness through the script sibling checks. The Rust CLI owns compose-time metadata validation and durable note writes. The live prompt owns authoring the assessment and relaunching Step 8.

@@ -16,7 +16,7 @@ If the `SETTLE_NEXT_ACTION` action row is absent, stop for operator repair. Do n
 
 If `SETTLE_NEXT_ACTION` and wrapper rc disagree, stop for repair rather than silently choosing one.
 
-Wrapper exit codes remain diagnostics and legacy process contracts only. The orchestrator must not use them as fallback routing authority. `SETTLE_EXIT_RC` is compatibility output from the Python action envelope.
+Wrapper exit codes remain diagnostics and legacy process contracts only. The orchestrator must not use them as fallback routing authority. `SETTLE_EXIT_RC` is compatibility output from the Rust action envelope.
 
 Diagnostics:
 

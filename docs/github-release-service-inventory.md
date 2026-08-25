@@ -1,10 +1,9 @@
 # GitHub Release Service Inventory
 
-This ledger records the GitHub release and asset service operations. It
-separates adapter parity, consumer cutover, and Python removal. The three
-milestones advance independently, mirroring the
+This ledger records the GitHub release and asset service operations. Its
+completion columns retain the historical cutover evidence, while the
 [command registry](rust-command-registry.md) and the
-[Google service inventory](google-service-inventory.md).
+[Google service inventory](google-service-inventory.md) record current owners.
 
 ## Checked scope
 

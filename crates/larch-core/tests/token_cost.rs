@@ -1,11 +1,11 @@
 //! Differential parity tests for the token cost model and pricing tables.
 //!
-//! Both fixtures are recorded output of the Python owner
+//! Both fixtures are recorded output of the retired owner
 //! (`larch.report.report_tokens_cost.token_cost_from_args`,
 //! `render_cost_line_from_args`, `token_cost_argv`, and `price_run`) over
-//! exactly the inputs stored beside them. Regenerate them together from Python
-//! whenever a rate or an output shape changes, and review a changed byte as a
-//! pricing contract change rather than a Rust detail.
+//! exactly the inputs stored beside them. They are reviewed contract records,
+//! not outputs of a live reference program. Update them together only for an
+//! intentional pricing-contract change.
 
 use larch_core::{
     CLAUDE_OPUS_4_8_MODEL, RATE_TABLE, TOKEN_VENDORS, TokenCostError, TokenCounts,

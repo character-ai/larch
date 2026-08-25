@@ -43,9 +43,8 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 - **Architecture and workflow**
   - [Rust Architecture](ARCHITECTURE.md) — crate ownership, dependency direction, external boundaries, and release constraints
   - [Rust Async Runtime](docs/rust-async-runtime.md) — cancellation, timeouts, bounded tasks, signals, and child shutdown
-  - [Rust Parity Harness](docs/rust-parity-harness.md) — isolated Python-to-Rust command comparison and reviewed goldens
   - [Rust Testing](docs/rust-testing.md) — shared fixtures, test boundaries, coverage, and CI partitioning
-  - [GitHub Service Migration Inventory](docs/github-service-inventory.md) — implementation, consumer cutover, and Python-removal status
+  - [GitHub Service Inventory](docs/github-service-inventory.md): typed operation ownership and production consumers
   - [Workflow Lifecycle](docs/workflow-lifecycle.md) — how skills compose end-to-end
   - [Agent System](docs/agents.md) — parallel subagent orchestration
   - [Design Flow](docs/collaborative-sketches.md) — direct plan drafting and plan review
@@ -280,7 +279,7 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
       <td><a href="docs/skills.md#larch-size"><code>/larch-size</code></a></td>
       <td><em>(none)</em></td>
     </tr>
-    <tr><td colspan="2">Report larch repository line counts for Bash, Python, Rust, and Markdown. Python and Rust counts split production from test lines. Also report <code>larch-logs</code> size breakdowns. Takes no flags.</td></tr>
+    <tr><td colspan="2">Report tracked repository line counts by language and test status, plus <code>larch-logs</code> size breakdowns. Takes no flags.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#rebalance-tests"><code>/rebalance-tests</code></a></td>

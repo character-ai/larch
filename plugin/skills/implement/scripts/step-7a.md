@@ -1,6 +1,6 @@
 # step-7a.sh
 
-`step-7a.sh` is the direct `/implement` Step 7a orchestration helper; active prompt-side Step 7a launches the Python entrypoint with `--bgjob-launch true`. It rehydrates session context, handles code-flow diagram generation and `larch:diagrams` comment upsert, runs the 7a.r rebase checkpoint, and checkpoints pending execution issues before Step 8.
+`step-7a.sh` is the direct `/implement` Step 7a orchestration helper; active prompt-side Step 7a launches the Rust entrypoint with `--bgjob-launch true`. It rehydrates session context, handles code-flow diagram generation and `larch:diagrams` comment upsert, runs the 7a.r rebase checkpoint, and checkpoints pending execution issues before Step 8.
 
 ## Interface
 
@@ -54,7 +54,7 @@ Argument validation may emit `argv`, `missing-implement-tmpdir`, or `invalid-imp
 - The local execution-issues checkpoint runs after the 7a.r rebase probe on every path. Probe failure preserves the probe rc for orchestrator routing while still staging pending issues when inputs allow.
 - Step 7a does not render terminal token, timing, vendor, or transcript batches and never invokes the retired `run-log commit` command. Step 18 owns that complete snapshot.
 - The helper does not write a `diagrams` larch-log batch.
-- With `--bgjob-launch true`, the Python entrypoint truncates the merge-result env and starts bgjob step slug `implement-step7a`. The child mirrors required KVs into the merge-result env for the final bgjob `DONE` gate.
+- With `--bgjob-launch true`, the Rust entrypoint truncates the merge-result env and starts bgjob step slug `implement-step7a`. The child mirrors required KVs into the merge-result env for the final bgjob `DONE` gate.
 
 ## Regression checklist
 

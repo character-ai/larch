@@ -6,10 +6,9 @@ findings. [`SECURITY.md`](../../SECURITY.md) remains the public disclosure entry
 point. The [security reference index](README.md) owns the document taxonomy and
 runtime packaging contract.
 
-Larch is a mixed-runtime system. Rust, Python, residual Bash, Markdown skills,
-hooks, and external agent CLIs all participate in these boundaries. An
-implementation owner does not change until the migration inventory records
-parity, consumer cutover, and removal of the prior owner.
+Larch ships one Rust executable. Residual Bash wrappers, Markdown skills,
+hooks, and external agent CLIs participate at documented boundaries, while the
+Rust crates retain one implementation owner for each runtime behavior.
 
 ## Enforcement Levels
 
@@ -122,13 +121,13 @@ directory and injects `CURSOR_CONFIG_DIR` only into the child `ProcessRequest`
 environment; it does not mutate the parent process environment, so parallel
 tests and parallel clones stay isolated.
 
-`analyze-bugs runtime` uses closed `HostUtilityProgram` cases: `python3 -m
-pytest` only for Gix-discovered, live, repository-relative `python/tests/`
-changes, plus two fixed Make harness targets selected from touched-path
-prefixes. It accepts no generic executable or target, has a 300-second deadline,
-five-second shutdown grace, and 64 KiB capture cap, and caps normalized failure
-evidence before it reaches private artifacts. `analyze-bugs report` is local
-only: it may render a follow-up issue body, but never mutates GitHub.
+`analyze-bugs runtime` uses closed `HostUtilityProgram` cases: one fixed legacy
+test runner for Gix-discovered, live, repository-relative retired-runtime test
+paths, plus fixed Make harness targets selected from touched-path prefixes. It
+accepts no generic executable or target, has a 300-second deadline, five-second
+shutdown grace, and 64 KiB capture cap, and caps normalized failure evidence
+before it reaches private artifacts. `analyze-bugs report` is local only: it may
+render a follow-up issue body, but never mutates GitHub.
 
 `checks run-relevant` uses the closed `HostUtilityProgram::PreCommit` case
 (#8616) to run the repository's `pre-commit` hooks over the changed-file
@@ -203,8 +202,8 @@ path spellings and not the set of accepted write destinations.
 
 `hook anti-read-poll` is Rust-owned by
 `crates/larch-cli/src/hook_commands.rs`. Its shipped wrapper only forwards
-stdin to `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh hook anti-read-poll`; it does
-not retain a Python fallback or execute `bin/larch` directly. The hook treats
+stdin to `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh hook anti-read-poll`, the sole
+verified runtime entrypoint. The hook treats
 the JSON event and existing local state as untrusted data. It records only
 fixed-format rows containing hashes of the cwd, session key, and requested
 path, never a raw requested path, and its sole visible output is the fixed
@@ -267,8 +266,7 @@ typed issue-graph adapter operations re-apply it before their own first read.
 caller has just created, and its predecessor took no authorization either.
 
 Rust mutation tests exercise the boundary through injected services and scoped
-environment fixtures. Denial overrides a valid parent session. The remaining
-Python tooling tests do not exercise GitHub mutation.
+environment fixtures. Denial overrides a valid parent session.
 
 The gate does not cover every process or every GitHub surface. It cannot stop a
 process that can rewrite code, credentials, or validated session state. Treat
@@ -380,8 +378,8 @@ The Rust `review-and-fix` and `plan-review` `write-loop-identity`,
 owner through `crates/larch-cli/src/review_loop_identity_commands.rs`.
 Teardown records signal intent, revalidates the PID, PGID, start time, command,
 and kernel birth identity immediately before group signaling, and retains the
-identity sidecar until the process-group absence probe succeeds. No Python
-process-identity or alternate kill-log implementation remains.
+identity sidecar until the process-group absence probe succeeds. This shared
+boundary is the sole process-identity and kill-log implementation.
 Before a stall clear removes or rewrites anything, it preflights every fixed
 state layer and derived classification or issue artifact below the validated
 temporary root, and it completes the required abandoned-bgjob recovery proof.
@@ -646,7 +644,7 @@ policy, plugin validation, and bootstrap integration with it, so it does not
 mistake an all-workspace closure for a partial path.
 
 Skip ownership is explicit rather than extension-based. Each root or path
-family in the allowlist names the normal lint, agent, Python, plugin, and/or
+family in the allowlist names the normal lint, agent, plugin, and/or
 trusted-main repository-policy job that continues to validate it. The
 `trusted-main-rust-policy` cache trust contract is canonical in
 [Supply Chain, Credentials, and Services](supply-chain-credentials-and-services.md#ci-tool-bootstrap-and-caches).
@@ -752,8 +750,8 @@ schema. `ship seed-initial-state` validates the session root, contained state
 path, identity fields, manifest shape, line-safe values, and create-only gate
 before a private atomic write. The Rust Step 8 child invokes the lifecycle owner
 in process, requires a typed outcome, normalizes scalars, and writes the
-contained result env before it forwards JSON. No Python `ship pr` registration
-or fallback remains. Symlinked destinations, unsafe parents, relative or
+contained result env before it forwards JSON. The Rust `ship pr` command is the
+sole lifecycle owner. Symlinked destinations, unsafe parents, relative or
 escaping result paths, and missing outcomes fail closed before publication.
 
 Recovery never applies pre-merge mutations to a merged or closed pull request.
@@ -893,9 +891,8 @@ clear the gate. A fresh assessor judges every repair. An invariant violation
 hard-stops after the bounded fix ladder; no waiver or operator override accepts
 it. Rust owns architectural preparation, design-time knowledge reads, note
 presentation, design-assessment persistence, and implement assessment writes.
-Remaining Python render and run-log consumers reach the Rust `read` commands
-through the verified `scripts/larch.sh` entrypoint and do not parse the
-repo-root knowledge files. The active Rust `ship pr` owner
+All render and run-log consumers use the Rust `read` commands and do not parse
+the repo-root knowledge files. The active Rust `ship pr` owner
 consumes only identity-validated durable notes, follows the closed outcome
 grammar, binds fork assessments to `upstream/main`, and redacts note text before
 PR composition. The Rust Step 8 dispatcher carries
@@ -1008,8 +1005,8 @@ wire validation and private publication. The sibling pre-driver,
 pre-fix-rebase, route-exit, and assessment-handoff commands are Rust-owned by
 `crates/larch-cli/src/ship_pre_driver_commands.rs`, including confined
 result/handoff reads and shared-core ship-state patches. Rust OOS owners provide
-block parsing, counting, title normalization, and post-checkpoint behavior. No
-production Python OOS helper remains. Rust tests in `implement_ship_parity.rs`,
+block parsing, counting, title normalization, and post-checkpoint behavior.
+These Rust owners are the sole OOS implementations. Rust tests in `implement_ship_parity.rs`,
 `ship_pre_driver_parity.rs`, `ship_state_parity.rs`,
 `design_oos_migrated_parity.rs`, `design_oos_commands.rs`, `oos_commands.rs`,
 `oos_file_commands.rs`, `oos_batch.rs`,
