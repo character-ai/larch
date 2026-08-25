@@ -965,6 +965,10 @@ mod tests {
         values.iter().map(OsString::from).collect()
     }
 
+    fn snapshot_argv(seen: &Arc<Mutex<Vec<Vec<String>>>>) -> Vec<Vec<String>> {
+        seen.lock().expect("lock").clone()
+    }
+
     fn design() -> (TempDir, PathBuf) {
         let sandbox = TempDir::new().expect("sandbox");
         let root = sandbox.path().join("design");
@@ -1045,7 +1049,7 @@ mod tests {
 
     #[test]
     fn findings_file_must_stay_under_design_tmpdir() {
-        let (_sandbox, root) = design();
+        let (sandbox, root) = design();
         let inside = root.join("findings.md");
         fs::write(&inside, "body\n").expect("findings");
         let mut state = resume(&root, "1", "awaiting-apply");
@@ -1062,7 +1066,7 @@ mod tests {
                 .expect("approval")
                 .starts_with("FINDINGS_FILE=")
         );
-        let outside = _sandbox.path().join("outside.md");
+        let outside = sandbox.path().join("outside.md");
         fs::write(&outside, "nope\n").expect("outside");
         state.findings_file = outside.display().to_string();
         assert!(validate_resume(&root, PROG, &mut state).is_err());
@@ -1125,7 +1129,7 @@ mod tests {
             ],
         ));
         assert_eq!(code, std::process::ExitCode::SUCCESS);
-        let rows = seen.lock().expect("lock");
+        let rows = snapshot_argv(&seen);
         let adapt = rows
             .iter()
             .find(|row| row.windows(2).any(|pair| pair == ["bgjob", "adapt"]))
@@ -1263,7 +1267,7 @@ mod tests {
             ],
         ));
         assert_eq!(code, std::process::ExitCode::from(1));
-        let rows = seen.lock().expect("lock");
+        let rows = snapshot_argv(&seen);
         assert!(rows.iter().any(|row| {
             row.windows(2).any(|pair| pair == ["plan-review", "run"])
                 && row.windows(2).any(|pair| pair == ["--starting-round", "1"])
@@ -1289,8 +1293,8 @@ mod tests {
 
     #[test]
     fn session_env_is_resolved_before_adapt() {
-        let (_sandbox, root) = design();
-        let session = _sandbox.path().join("session-env.sh");
+        let (sandbox, root) = design();
+        let session = sandbox.path().join("session-env.sh");
         fs::write(&session, "export DESIGN_TMPDIR=/unused\n").expect("session");
         let seen = Arc::new(Mutex::new(Vec::<Vec<String>>::new()));
         let captured = Arc::clone(&seen);
@@ -1327,7 +1331,7 @@ mod tests {
             "123",
         ]));
         assert_eq!(code, std::process::ExitCode::SUCCESS);
-        let rows = seen.lock().expect("lock");
+        let rows = snapshot_argv(&seen);
         assert!(rows[0].iter().any(|value| value == "--resolve-session-env"));
         assert!(rows.iter().any(|row| {
             row.windows(2).any(|pair| pair == ["bgjob", "adapt"])

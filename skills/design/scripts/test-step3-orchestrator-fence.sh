@@ -139,6 +139,7 @@ echo "=== design-step3-review.sh contract pins ==="
 STEP3_REVIEW_SH="$REPO_ROOT/skills/design/scripts/design-step3-review.sh"
 grep -Fq 'plan-review step3-review' "$STEP3_REVIEW_SH" \
   || fail 'design-step3-review.sh must delegate to plan-review step3-review'
+# shellcheck disable=SC2016 # Literal script probe checks unexpanded parameter syntax.
 grep -Fq 'exec "$PLUGIN_ROOT/scripts/larch.sh"' "$STEP3_REVIEW_SH" \
   || fail 'design-step3-review.sh must exec the verified larch entrypoint'
 if grep -Fq 'step3_review_validate_resume_state' "$STEP3_REVIEW_SH" \
