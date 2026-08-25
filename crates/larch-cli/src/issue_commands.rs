@@ -17,8 +17,8 @@ use crate::{
 };
 use larch_adapters::{PathIntent, TemporaryRoot, atomic_write_utf8, ensure_directory_chain};
 use larch_core::{
-    GitHubIssue, GitHubIssueSearch, GitHubIssueSearchSort, GitHubIssueState,
-    GitHubOperationErrorKind, GitHubService, emit_kv, redact, single_line,
+    DESIGNING_PREFIX, GitHubIssue, GitHubIssueSearch, GitHubIssueSearchSort, GitHubIssueState,
+    GitHubOperationErrorKind, GitHubService, IMPLEMENTING_PREFIX, emit_kv, redact, single_line,
 };
 use std::{
     ffi::OsString,
@@ -374,8 +374,8 @@ fn classify_implementing_issues(
     let mut matches = issues.iter().filter(|issue| {
         issue.state == GitHubIssueState::Open
             && !issue.is_pull_request
-            && (issue.title.starts_with("[DESIGNING] ")
-                || issue.title.starts_with("[IMPLEMENTING] "))
+            && (issue.title.starts_with(DESIGNING_PREFIX)
+                || issue.title.starts_with(IMPLEMENTING_PREFIX))
             && (issue.title.contains(&file_path) || issue.body.contains(&file_path))
     });
     let Some(first) = matches.next() else {
@@ -658,7 +658,10 @@ mod tests {
         parse_info_arguments, parse_state_arguments, positive_issue_text, read_failure,
         read_reason, sanitize_repo_relative_path, state_text, valid_context_repo,
     };
-    use larch_core::{GitHubIssue, GitHubIssueState, GitHubOperationErrorKind};
+    use larch_core::{
+        DESIGNING_PREFIX, GitHubIssue, GitHubIssueState, GitHubOperationErrorKind,
+        IMPLEMENTING_PREFIX,
+    };
     use std::{ffi::OsString, fs, os::unix::fs::PermissionsExt as _, path::Path, path::PathBuf};
 
     fn arguments(values: &[&str]) -> Vec<OsString> {
@@ -712,13 +715,13 @@ mod tests {
             ),
             search_issue(
                 2,
-                "[IMPLEMENTING] Different path",
+                &format!("{IMPLEMENTING_PREFIX}Different path"),
                 "src/other.rs",
                 GitHubIssueState::Open,
             ),
             search_issue(
                 3,
-                "[DESIGNING] src/new.rs",
+                &format!("{DESIGNING_PREFIX}src/new.rs"),
                 "src/new.rs",
                 GitHubIssueState::Closed,
             ),
@@ -734,13 +737,13 @@ mod tests {
         let issues = [
             search_issue(
                 4,
-                "[DESIGNING] First",
+                &format!("{DESIGNING_PREFIX}First"),
                 "Creates src/new.rs",
                 GitHubIssueState::Open,
             ),
             search_issue(
                 5,
-                "[IMPLEMENTING] src/new.rs",
+                &format!("{IMPLEMENTING_PREFIX}src/new.rs"),
                 "Second",
                 GitHubIssueState::Open,
             ),
@@ -755,7 +758,7 @@ mod tests {
     fn implementing_search_reports_the_one_blocking_issue() {
         let issues = [search_issue(
             6,
-            "[IMPLEMENTING] Add the missing module",
+            &format!("{IMPLEMENTING_PREFIX}Add the missing module"),
             "Creates src/new.rs",
             GitHubIssueState::Open,
         )];
@@ -763,7 +766,7 @@ mod tests {
             classify_implementing_issues("src/new.rs", &issues),
             Ok(ImplementingSearchOutcome::Blocked {
                 number: 6,
-                title: "[IMPLEMENTING] Add the missing module".to_owned(),
+                title: format!("{IMPLEMENTING_PREFIX}Add the missing module"),
             })
         );
         assert_eq!(flatten_title("first\r\nsecond"), "first  second");
