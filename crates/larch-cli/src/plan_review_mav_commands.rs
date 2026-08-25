@@ -14,7 +14,7 @@ use std::{
 use larch_adapters::{ensure_directory_chain, validate_design_tmpdir};
 use larch_core::{
     ChildEnvironment, DuplicatePolicy, KvDocument, ParseOptions, ProcessOutput,
-    cleanup_cache_sessions_root, private_atomic_write,
+    cleanup_cache_sessions_root, emit_kv, positive_integer, private_atomic_write,
 };
 use tempfile::NamedTempFile;
 
@@ -23,6 +23,8 @@ use crate::{
         load_source_env_allowed, pause_save_arguments, phase_driver_read_result_env,
         replay_result_env_warn_error, require_plugin_root,
     },
+    design_step1_commands::append_failure_args,
+    plan_review_commands::step3_round_timing_arguments,
     runtime_entrypoint::{
         run_verified_larch_from_root_with_environment, validate_verified_plugin_root,
     },
@@ -239,13 +241,6 @@ fn read_step3_result_state(
     overlay_result_env(&root.join(".step3-review-result.env"), state)
 }
 
-fn positive_integer(value: &str) -> Option<u64> {
-    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    value.parse::<u64>().ok().filter(|value| *value > 0)
-}
-
 fn artifact_round(state: &BTreeMap<String, String>) -> u64 {
     [
         "ROUND_NUM",
@@ -270,12 +265,12 @@ fn resume_round(state: &BTreeMap<String, String>) -> Option<u64> {
     .find_map(|key| positive_integer(state_value(state, key)))
 }
 
-fn emit_kv(key: &str, value: &str) -> Result<(), ExitCode> {
+fn emit_checked(key: &str, value: &str) -> Result<(), ExitCode> {
     if value.contains(['\n', '\r']) {
         eprintln!("emit_kv: value for key {key} must not contain newline or carriage return");
         return Err(ExitCode::from(2));
     }
-    println!("{key}={value}");
+    emit_kv(key, value);
     Ok(())
 }
 
@@ -285,7 +280,7 @@ fn emit_pre_frame(
     round: Option<u64>,
 ) -> Result<(), ExitCode> {
     println!("{FRAME_BEGIN}");
-    emit_kv(
+    emit_checked(
         "BALLOT_PATH",
         &root.join("ballot.txt").display().to_string(),
     )?;
@@ -296,11 +291,11 @@ fn emit_pre_frame(
     ] {
         let value = state_value(state, key);
         if !value.is_empty() {
-            emit_kv(key, value)?;
+            emit_checked(key, value)?;
         }
     }
     if let Some(round) = round {
-        emit_kv("STEP3_RESUME_ROUND", &round.to_string())?;
+        emit_checked("STEP3_RESUME_ROUND", &round.to_string())?;
     }
     println!("{FRAME_END}");
     Ok(())
@@ -405,23 +400,17 @@ fn append_warning_once(runtime: &MavRuntime<'_>, round: u64) -> Result<(), ExitC
         &warning_path,
         "Step 3 — 0-judge plan-review panel: main-agent adjudication performed\n",
     )?;
-    let arguments = vec![
-        "run-log".into(),
-        "append-failure".into(),
-        "--log".into(),
-        root.join("execution-issues.md").into_os_string(),
-        "--site".into(),
-        "design Step 3".into(),
-        "--tool".into(),
-        "MainAgent plan-review adjudication".into(),
-        "--exit-code".into(),
-        "0".into(),
-        "--category".into(),
-        "Warnings".into(),
-        "--output-file".into(),
-        warning_path.into_os_string(),
-        "--redact".into(),
-    ];
+    let arguments = append_failure_args(
+        root.join("execution-issues.md").display().to_string(),
+        "design Step 3",
+        "MainAgent plan-review adjudication",
+        "0",
+        "Warnings",
+        &warning_path,
+    )
+    .into_iter()
+    .map(OsString::from)
+    .collect::<Vec<_>>();
     let _ignored = runtime.run_child(&arguments);
     write_confined(root, &sentinel, "")
 }
@@ -468,33 +457,13 @@ fn record_round_timing(runtime: &MavRuntime<'_>, round: u64) {
                 .collect()
         },
     );
-    if positive_integer(&start).is_none() {
+    let Some(start) = positive_integer(&start) else {
         return;
-    }
+    };
     let end = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
-    let arguments = vec![
-        "timing".into(),
-        "record-round".into(),
-        "--ledger".into(),
-        root.join("timing-ledger.tsv").into_os_string(),
-        "--skill".into(),
-        "design".into(),
-        "--step".into(),
-        "design Step 3 — plan review".into(),
-        "--round".into(),
-        round.to_string().into(),
-        "--start-s".into(),
-        start.into(),
-        "--end-s".into(),
-        end.to_string().into(),
-        "--accepted".into(),
-        "0".into(),
-        "--rejected".into(),
-        "0".into(),
-        "--if-round-exists".into(),
-    ];
+    let arguments = step3_round_timing_arguments(root, round, start, end);
     match runtime.run_child(&arguments) {
         Ok(output) => forward(&output),
         Err(error) => eprintln!("{error}"),
@@ -510,18 +479,18 @@ fn emit_post_frame(
 ) -> Result<(), ExitCode> {
     println!("{FRAME_BEGIN}");
     if tally_status == "tally-error" {
-        emit_kv("NEXT_ACTION", "step3b-bypass")?;
+        emit_checked("NEXT_ACTION", "step3b-bypass")?;
     }
-    emit_kv("TALLY_PLAN_REVIEW_STATUS", tally_status)?;
-    emit_kv("LOOP_STATUS", "complete")?;
-    emit_kv("ACCEPTED_COUNT", &count.to_string())?;
-    emit_kv("PHASE", phase)?;
+    emit_checked("TALLY_PLAN_REVIEW_STATUS", tally_status)?;
+    emit_checked("LOOP_STATUS", "complete")?;
+    emit_checked("ACCEPTED_COUNT", &count.to_string())?;
+    emit_checked("PHASE", phase)?;
     if let Some(round) = round {
-        emit_kv("STEP3_RESUME_ROUND", &round.to_string())?;
+        emit_checked("STEP3_RESUME_ROUND", &round.to_string())?;
     }
     let loop_status = state_value(state, "STEP3_REVIEW_LOOP_STATUS");
     if !loop_status.is_empty() {
-        emit_kv("STEP3_REVIEW_LOOP_STATUS", loop_status)?;
+        emit_checked("STEP3_REVIEW_LOOP_STATUS", loop_status)?;
     }
     println!("{FRAME_END}");
     Ok(())

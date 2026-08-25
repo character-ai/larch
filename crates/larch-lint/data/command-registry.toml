@@ -6224,7 +6224,7 @@ rust = ["design render-gate"]
 [[callers]]
 path = "skills/design/references/approval-gates-gate-b.md"
 kind = "skill"
-rust = ["design postplan-emit", "design render-gate", "design step2b-postplan", "design step35-settle", "plan check-size", "plan revise-waterfall", "plan-review gate-b-counts", "plan-review gate-b-finding-line", "plan-review preview"]
+rust = ["design postplan-emit", "design render-gate", "design step2b-postplan", "design step35-settle", "plan check-size", "plan revise-waterfall", "plan-review gate-b-counts", "plan-review gate-b-finding-line", "plan-review preview", "plan-review step3-mav"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-gate-c.md"
@@ -6284,7 +6284,7 @@ rust = ["design step5b-prepare"]
 [[callers]]
 path = "skills/design/references/plan-review-runtime.md"
 kind = "skill"
-rust = ["agent launch-claude-review", "bgjob wait", "decompose panel-dispatch", "plan-review panel-dispatch", "plan-review run", "plan-review step3-entry-preview", "plan-review voter-dispatch", "render plan-review", "render specialist", "render voter", "scout filter-manifest"]
+rust = ["agent launch-claude-review", "bgjob wait", "decompose panel-dispatch", "plan-review panel-dispatch", "plan-review run", "plan-review step3-entry-preview", "plan-review step3-mav", "plan-review voter-dispatch", "render plan-review", "render specialist", "render voter", "scout filter-manifest"]
 
 [[callers]]
 path = "skills/design/references/plan-review.md"
