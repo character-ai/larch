@@ -25,21 +25,31 @@ SH
 
 assert_case() {
     local helper=$1 root=$2 capture=$3 stdout=$4 stderr=$5 plugin_root=$2 rc
+    local expected_bin expected_line got_bin i
     if [ "$helper" = "$fallback/skills/implement/scripts/flush-execution-issues.sh" ]; then plugin_root=""; fi
     set +e
     CLAUDE_PLUGIN_ROOT="$plugin_root" FLUSH_CAPTURE="$capture" "$helper" --run-id run-7 --issue-log 'two words' >"$stdout" 2>"$stderr"
     rc=$?
     set -e
     [ "$rc" -eq 23 ] && [ "$(cat "$stdout")" = 'wrapper stdout' ] && [ "$(cat "$stderr")" = 'wrapper stderr' ]
-    python3 - "$capture" "$root" <<'PY'
-import sys
-from pathlib import Path
-
-rows = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
-expected = ["execution-issues", "flush", "--run-id", "run-7", "--issue-log", "two words"]
-if Path(rows[0]).resolve() != (Path(sys.argv[2]) / "scripts" / "larch.sh").resolve() or rows[1:] != expected:
-    raise SystemExit(f"unexpected delegation: {rows!r}")
-PY
+    expected_bin="$(cd "$root/scripts" && pwd -P)/larch.sh"
+    got_bin="$(cd "$(dirname "$(sed -n '1p' "$capture")")" && pwd -P)/$(basename "$(sed -n '1p' "$capture")")"
+    [ "$got_bin" = "$expected_bin" ] || {
+        printf 'unexpected entrypoint: %s\n' "$(sed -n '1p' "$capture")" >&2
+        exit 1
+    }
+    i=0
+    for expected_line in execution-issues flush --run-id run-7 --issue-log 'two words'; do
+        i=$((i + 1))
+        [ "$(sed -n "$((i + 1))p" "$capture")" = "$expected_line" ] || {
+            printf 'unexpected delegation line %s: %s\n' "$i" "$(sed -n "$((i + 1))p" "$capture")" >&2
+            exit 1
+        }
+    done
+    [ "$(wc -l < "$capture" | tr -d ' ')" = "7" ] || {
+        printf 'unexpected delegation arity\n' >&2
+        exit 1
+    }
 }
 
 fallback="$TMP_ROOT/fallback"; mkdir -p "$fallback/skills/implement/scripts"

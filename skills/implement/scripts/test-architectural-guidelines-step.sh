@@ -77,7 +77,7 @@ STATUS=present
 HEAD_SHA=$HEAD_SHA
 ASSESSED_HEAD_SHA=$HEAD_SHA
 BASE_REF=origin/main
-DIFF_FINGERPRINT=$(python3 -c "import hashlib; print(hashlib.sha256(b'').hexdigest())")
+DIFF_FINGERPRINT=$(printf '' | shasum -a 256 | awk '{print $1}')
 DIFF_SNAPSHOT=$TMPDIR/architectural-guideline-materialized-diff.txt
 GUIDELINES_STATUS=present
 EOF
@@ -121,7 +121,7 @@ STATUS=present
 HEAD_SHA=$HEAD_SHA
 ASSESSED_HEAD_SHA=$HEAD_SHA
 BASE_REF=origin/main
-DIFF_FINGERPRINT=$(python3 -c "import hashlib; print(hashlib.sha256(b'').hexdigest())")
+DIFF_FINGERPRINT=$(printf '' | shasum -a 256 | awk '{print $1}')
 DIFF_SNAPSHOT=$TMPDIR/architectural-invariant-materialized-diff.txt
 INVARIANTS_STATUS=present
 EOF
@@ -157,7 +157,7 @@ cat > "$STAGED_TMPDIR/architectural-guideline-materialize.env" <<EOF
 STATUS=present
 HEAD_SHA=$HEAD_SHA
 BASE_REF=origin/main
-DIFF_FINGERPRINT=$(python3 -c "import hashlib; print(hashlib.sha256(b'').hexdigest())")
+DIFF_FINGERPRINT=$(printf '' | shasum -a 256 | awk '{print $1}')
 EOF
 (
   cd "$TMPDIR"

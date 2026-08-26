@@ -116,7 +116,6 @@
       "Bash(pre-commit:*)",
       "Bash(printf:*)",
       "Bash(ps:*)",
-      "Bash(python3:*)",
       "Bash(read:*)",
       "Bash(realpath:*)",
       "Bash(rg:*)",

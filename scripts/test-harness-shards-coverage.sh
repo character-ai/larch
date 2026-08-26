@@ -448,9 +448,9 @@ write-final-report-bash-harness:
 test-harness-shards-coverage:
 	bash scripts/test-harness-shards-coverage.sh
 test-eval-set-structure:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/test_research_eval.py
+	$(HARNESS_MARK) --label $@ -- pytest -q python/test_research_eval.py
 test-eval-research-baseline-flag:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/test_research_eval.py
+	$(HARNESS_MARK) --label $@ -- pytest -q python/test_research_eval.py
 eval-research:
 	scripts/larch.sh eval research
 EOF
@@ -554,7 +554,7 @@ run_self_case() {
       {
         printf 'test-write-final-report: write-final-report-py-harness write-final-report-bash-harness\n'
         printf 'write-final-report-py-harness:\n'
-        printf '\tpython3 -m pytest -q python/tests/report/test_final_report.py\n'
+        printf '\tpytest -q python/tests/report/test_final_report.py\n'
       } >> "$fixture"
       awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma test-write-final-report"); print }' "$fixture" > "$fixture.tmp"
       mv "$fixture.tmp" "$fixture"
@@ -563,7 +563,7 @@ run_self_case() {
       # Direct pytest recipe excluded from inventory and rejected if scheduled.
       {
         printf 'test-only-pytest:\n'
-        printf '\tpython3 -m pytest -q python/tests/example.py\n'
+        printf '\tpytest -q python/tests/example.py\n'
       } >> "$fixture"
       awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma test-only-pytest"); gsub(/ test-zeta /, " test-zeta test-only-pytest "); print }' "$fixture" > "$fixture.tmp"
       mv "$fixture.tmp" "$fixture"
@@ -609,7 +609,7 @@ run_self_case() {
       # Multi-command recipe containing pytest is not a Bash leaf.
       {
         printf 'test-mixed-lane:\n'
-        printf '\tpython3 -m pytest -q python/tests/example.py\n'
+        printf '\tpytest -q python/tests/example.py\n'
         printf '\tbash scripts/test-mixed-lane.sh\n'
       } >> "$fixture"
       awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma test-mixed-lane"); gsub(/ test-zeta /, " test-zeta test-mixed-lane "); print }' "$fixture" > "$fixture.tmp"

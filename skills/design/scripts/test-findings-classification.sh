@@ -73,16 +73,22 @@ EOF
 }
 
 cell() {
-    python3 - "$1" "$2" "$3" <<'PY'
-import csv, sys
-path, finding_id, column = sys.argv[1:4]
-with open(path, newline="", encoding="utf-8") as fh:
-    for row in csv.DictReader(fh, delimiter="\t"):
-        if row["finding_id"] == finding_id:
-            print(row[column])
-            raise SystemExit(0)
-raise SystemExit(1)
-PY
+    local path="$1" finding_id="$2" column="$3"
+    awk -F '\t' -v id="$finding_id" -v col="$column" '
+      NR == 1 {
+        for (i = 1; i <= NF; i++) {
+          if ($i == "finding_id") id_idx = i
+          if ($i == col) idx = i
+        }
+        next
+      }
+      id_idx && idx && $id_idx == id {
+        print $idx
+        found = 1
+        exit 0
+      }
+      END { if (!found) exit 1 }
+    ' "$path"
 }
 
 assert_cell() {

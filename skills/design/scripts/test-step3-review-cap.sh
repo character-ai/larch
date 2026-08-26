@@ -102,16 +102,9 @@ write_difficulty_record() {
         --codex-model-role review \
         --audit-evaluated false \
         --escalated-round "$escalated_round" >/dev/null
-    python3 - "$record" "$escalations_json" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-record = json.loads(path.read_text(encoding="utf-8"))
-record["escalations"] = json.loads(sys.argv[2])
-path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-PY
+    jq --indent 2 --argjson escalations "$escalations_json" '
+      .escalations = $escalations
+    ' "$record" >"${record}.tmp" && mv "${record}.tmp" "$record"
 }
 
 run_driver() {
@@ -353,18 +346,10 @@ printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'two n
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=escalated-high-accepted$' || fail 'two new high findings should escalate'
 printf '%s\n' "$cont_out" | grep -q '^REVIEW_ROUND_CAP=2$' || fail 'escalation should keep the fixed cap'
 printf '%s\n' "$cont_out" | grep -q '^PANEL_TIER=HARD$' || fail 'escalation should set panel tier HARD'
-if ! PYTHONPATH="$ROOT/python" python3 - "$DESC/difficulty-rating.json" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-escalations = data.get("escalations")
-if not isinstance(escalations, list) or not escalations:
-    raise SystemExit(1)
-if data.get("panel_tier") != "HARD" or data.get("round_cap") != 2:
-    raise SystemExit(1)
-PY
+if ! jq -e '
+  (.escalations | type == "array") and (.escalations | length > 0)
+  and .panel_tier == "HARD" and .round_cap == 2
+' "$DESC/difficulty-rating.json" >/dev/null
 then
     fail 'escalation should append difficulty record entry'
 fi
