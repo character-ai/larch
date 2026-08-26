@@ -9,6 +9,12 @@ for a specialized skill.
 
 At invocation start, run this command before the skill performs work:
 
+Use the generic `$PWD` fallback only when this Bash call starts in the client
+repository. Bash tool calls do not inherit a `cd` from an earlier call. If this
+call may start in a worktree, scratch directory, or other checkout, pass the
+previously resolved absolute client repository root instead. Do not use `$PWD`
+to rediscover it.
+
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" run-log lifecycle-start --repo-root "${CLAUDE_PROJECT_DIR:-$PWD}" --skill "<name>"
 ```
@@ -64,8 +70,10 @@ failure, and has no pending remote state.
 - Operator cancellation: `run-log lifecycle-cancel`
 - Non-error early return: `run-log lifecycle-early-return`
 
-Pass `--repo-root "${CLAUDE_PROJECT_DIR:-$PWD}" --skill "<name>" --run-id
-"$RUN_ID"` to the selected terminal command. Run it before emitting terminal
+Pass the exact `--repo-root` value used for lifecycle start to the selected
+terminal command. Also pass `--skill "<name>" --run-id "$RUN_ID"`. The generic
+`${CLAUDE_PROJECT_DIR:-$PWD}` fallback remains valid only when the terminal call
+starts in the client repository. Run the command before emitting terminal
 user-facing prose.
 
 For a nested child invocation, give the child the parent skill and run ID. The
