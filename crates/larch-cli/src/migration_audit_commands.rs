@@ -603,7 +603,64 @@ fn collect_repository_findings(
             })
             .collect::<Result<Vec<_>, String>>()?,
     );
+    findings.extend(
+        launcher_escape_hatch_findings(crate::bootstrap_commands::LARCH_RUN_SH)
+            .into_iter()
+            .map(|reason| {
+                Ok(RepositoryAuditFinding {
+                    source: RepositoryFindingSource::ProductionRuntime,
+                    reason: safe_finding(&reason)?,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?,
+    );
     Ok(findings)
+}
+
+/// Count interpreter dispatch inside generated launcher text.
+///
+/// The `production-cargo-run` lint rule scans only on-disk runtime files, so the
+/// launcher embedded as a Rust string literal in `bootstrap_commands` escapes it.
+/// This parses the exact generated launcher text and flags any leaf command whose
+/// resolved executable word is `python` or `python3`.
+fn launcher_escape_hatch_findings(launcher: &str) -> Vec<String> {
+    let Ok(tree) = larch_lint::syntax::parse_bash(launcher) else {
+        return Vec::new();
+    };
+    larch_lint::syntax::leaf_bash_commands(&tree)
+        .into_iter()
+        .filter_map(|command| {
+            let words = larch_lint::syntax::shell_command_words(command, launcher);
+            let index = launcher_executable_index(&words)?;
+            let program = words.get(index)?;
+            let basename = program.rsplit('/').next().unwrap_or(program);
+            matches!(basename, "python" | "python3").then(|| {
+                format!("generated launcher larch-run.sh dispatches interpreter {basename}")
+            })
+        })
+        .collect()
+}
+
+/// Resolve the executable word index, skipping option/assignment words and the
+/// `command`/`env`/`exec`/`sudo` wrappers. Mirrors
+/// `larch_lint::rules::production_cargo_run::executable_index`, which is private
+/// to that rule.
+fn launcher_executable_index(words: &[String]) -> Option<usize> {
+    let mut index = 0;
+    loop {
+        while words
+            .get(index)
+            .is_some_and(|word| word.starts_with('-') || word.contains('='))
+        {
+            index += 1;
+        }
+        let program = words.get(index)?;
+        if matches!(program.as_str(), "command" | "env" | "exec" | "sudo") {
+            index += 1;
+            continue;
+        }
+        return Some(index);
+    }
 }
 
 fn lint_rule_findings(
@@ -856,10 +913,10 @@ mod tests {
 
     use super::{
         TableOutput, collect_plan_evidence, collect_remote_snapshot, collect_with_deadline,
-        diagnostic_detail, executable_leaf, git_path_string, is_glob, migration_issue,
-        parse_arguments, path_inside, plan_path_defects, reuse_source_refs, safe_finding,
-        scope_snapshot, tracked_paths, unsafe_filesystem_path, unsafe_plan_path, validate_plan,
-        worktree_root, write_output, write_stderr, write_stdout,
+        diagnostic_detail, executable_leaf, git_path_string, is_glob, launcher_escape_hatch_findings,
+        migration_issue, parse_arguments, path_inside, plan_path_defects, reuse_source_refs,
+        safe_finding, scope_snapshot, tracked_paths, unsafe_filesystem_path, unsafe_plan_path,
+        validate_plan, worktree_root, write_output, write_stderr, write_stdout,
     };
     use crate::github_service::{with_github_service, with_test_github_service};
     use larch_adapters::{GixRepository, github::OctocrabGitHubService, runtime::Cancellation};
@@ -986,6 +1043,32 @@ mod tests {
 
         assert_eq!(detail.chars().count(), 500);
         assert!(!diagnostic_detail(&format!("ghp_{}", "a".repeat(36))).contains("ghp_"));
+    }
+
+    #[test]
+    fn launcher_detector_flags_interpreter_dispatch_before_and_not_after_removal() {
+        const PRE_CHANGE_LAUNCHER: &str = r#"#!/usr/bin/env bash
+set -uo pipefail
+script=$1
+shift
+case "$script" in
+  *.py)
+    _larch_active_leg_owner_token="$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
+    python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@"
+    ;;
+  *.sh) exec "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;
+  *) printf '%s\n' "larch-run.sh: unsupported script target: $script" >&2; exit 2 ;;
+esac
+"#;
+
+        assert!(
+            !launcher_escape_hatch_findings(PRE_CHANGE_LAUNCHER).is_empty(),
+            "pre-change launcher must flag interpreter dispatch"
+        );
+        assert!(
+            launcher_escape_hatch_findings(crate::bootstrap_commands::LARCH_RUN_SH).is_empty(),
+            "shipped launcher must report no interpreter dispatch"
+        );
     }
 
     #[test]

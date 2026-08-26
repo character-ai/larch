@@ -832,8 +832,7 @@ fn refresh_reviewer_state(
     write_base_session_env(state, options)
 }
 
-fn write_larch_run_sh(tmpdir: &str) -> Result<(), String> {
-    let script = r#"#!/usr/bin/env bash
+pub(crate) const LARCH_RUN_SH: &str = r#"#!/usr/bin/env bash
 set -uo pipefail
 
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)}"
@@ -853,26 +852,14 @@ case "$script" in
   /*|*..*) printf '%s\n' "larch-run.sh: invalid relative script path: $script" >&2; exit 2 ;;
 esac
 
-_larch_cleanup_active_leg() {
-  "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" implement kill-active-leg --owner-token "$_larch_active_leg_owner_token" --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
-}
-
 case "$script" in
-  *.py)
-    _larch_active_leg_owner_token="$(python3 -c 'import uuid; print(uuid.uuid4().hex)' 2>/dev/null || printf '%s.%s.%s\n' "$$" "$(date +%s)" "${RANDOM:-0}")"
-    export LARCH_ACTIVE_LEG_OWNER_TOKEN="$_larch_active_leg_owner_token"
-    trap _larch_cleanup_active_leg EXIT INT TERM
-    python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@"
-    rc=$?
-    _larch_cleanup_active_leg
-    trap - EXIT INT TERM
-    exit "$rc"
-    ;;
   *.sh) exec "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;
   *) printf '%s\n' "larch-run.sh: unsupported script target: $script" >&2; exit 2 ;;
 esac
 "#;
-    write_session_text(tmpdir, "larch-run.sh", script, 0o755)
+
+fn write_larch_run_sh(tmpdir: &str) -> Result<(), String> {
+    write_session_text(tmpdir, "larch-run.sh", LARCH_RUN_SH, 0o755)
 }
 
 fn write_implement_pointer(state: &BootstrapState) -> Result<(), String> {
@@ -1432,18 +1419,6 @@ mod tests {
         ]));
     }
 
-    #[test]
-    fn session_launcher_keeps_active_leg_cleanup_contract() {
-        let temporary = tempfile::tempdir().expect("temporary session directory");
-        write_larch_run_sh(temporary.path().to_str().expect("utf8 session path"))
-            .expect("write launcher");
-        let rendered =
-            fs::read_to_string(temporary.path().join("larch-run.sh")).expect("read launcher");
-        assert!(rendered.contains("trap _larch_cleanup_active_leg EXIT INT TERM"));
-        assert!(rendered.contains("LARCH_ACTIVE_LEG_OWNER_TOKEN"));
-        assert!(rendered.contains("scripts/larch.sh\" implement kill-active-leg --owner-token"));
-    }
-
     #[cfg(unix)]
     #[test]
     fn session_launcher_executes_only_supported_relative_targets() {
@@ -1451,7 +1426,6 @@ mod tests {
         let session = temporary.path().join("session");
         let plugin = temporary.path().join("plugin");
         fs::create_dir_all(plugin.join("scripts")).expect("plugin scripts");
-        fs::create_dir_all(plugin.join("python")).expect("plugin python");
         fs::create_dir(&session).expect("session directory");
         fs::write(
             session.join("plugin-root.env"),
@@ -1469,11 +1443,6 @@ mod tests {
             .permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(&shell_target, permissions).expect("shell target executable");
-        fs::write(
-            plugin.join("python/echo_argv.py"),
-            "import sys\nprint('PY_ARGV=' + '|'.join(sys.argv[1:]))\n",
-        )
-        .expect("python target");
         write_larch_run_sh(session.to_str().expect("utf8 session path")).expect("write launcher");
         let launcher = session.join("larch-run.sh");
         let run = |arguments: &[&str]| {
@@ -1492,9 +1461,13 @@ mod tests {
             "SH_ARGV=one|two words\n"
         );
         let python = run(&["python/echo_argv.py", "alpha", "beta gamma"]);
-        assert!(python.status.success(), "{python:?}");
+        assert_eq!(
+            python.status.code(),
+            Some(2),
+            "python target must be rejected: {python:?}"
+        );
         assert!(
-            String::from_utf8_lossy(&python.stdout).contains("PY_ARGV=alpha|beta gamma"),
+            String::from_utf8_lossy(&python.stderr).contains("unsupported script target"),
             "{python:?}"
         );
         assert_eq!(
