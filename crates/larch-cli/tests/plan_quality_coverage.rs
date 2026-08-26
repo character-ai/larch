@@ -205,6 +205,8 @@ fn plan_quality_help_assets_do_not_name_the_retired_python_entry() {
         let text = fs::read_to_string(&path).expect("read plan-quality help asset");
         assert!(!text.contains("cli.py"), "asset={}", path.display());
     }
+}
+
 fn run_file_replacement_revise(
     root: &Path,
     plan: &Path,
