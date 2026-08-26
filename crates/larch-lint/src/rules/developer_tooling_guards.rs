@@ -43,8 +43,6 @@ const CLEAN_INSTALL_BOOTSTRAP_PATH: &str = "scripts/larch.sh";
 const SUBMODULE_GUARD_PATH: &str = "scripts/block-submodule-edit.sh";
 const STALE_PLUGIN_PATH: &str = "scripts/check-stale-plugin.sh";
 const SESSIONSTART_HEALTH_PATH: &str = "scripts/sessionstart-health.sh";
-const STAGED_GUIDELINES_PATH: &str =
-    "skills/implement/scripts/step-architectural-guidelines-write-staged.sh";
 const MAKEFILE_PATH: &str = "Makefile";
 const PRE_COMMIT_PATH: &str = ".pre-commit-config.yaml";
 const OTHER_DOMAIN_SKILL_PREFIXES: [&str; 1] = [".claude/skills/release/"];
@@ -492,10 +490,7 @@ fn documented_process_exception(path: &str, program: &str, residual: &BTreeSet<S
                 | CLEAN_INSTALL_BOOTSTRAP_PATH,
             "gh"
         ) | (
-            SUBMODULE_GUARD_PATH
-                | STALE_PLUGIN_PATH
-                | SESSIONSTART_HEALTH_PATH
-                | STAGED_GUIDELINES_PATH,
+            SUBMODULE_GUARD_PATH | STALE_PLUGIN_PATH | SESSIONSTART_HEALTH_PATH,
             "git"
         )
     ) && (matches!(path, RELEASE_WORKFLOW_PATH | GITHUB_AUTH_CONFIG_PATH) || manifest_backed)

@@ -245,6 +245,13 @@ fn help_matches_retired_argparse_for_each_domain_and_write_verb() {
                 .success();
             let command = format!("{} {verb}", case.domain);
             let indent = " ".repeat(format!("usage: {command} ").len());
+            let positional_help = if case.domain == "architectural-guidelines"
+                && verb == "write-staged-assessment"
+            {
+                "positional arguments:\n  ASSESSMENT_PATH\n  POSITIONAL_OUTCOME\n\n"
+            } else {
+                ""
+            };
             let (usage_tail, options) = match verb {
                 "write-compose-assessment" => (
                     format!(
@@ -254,7 +261,12 @@ fn help_matches_retired_argparse_for_each_domain_and_write_verb() {
                 ),
                 "write-staged-assessment" => (
                     format!(
-                        "[-h]\n{indent}[--outcome OUTCOME]\n{indent}[--implement-tmpdir IMPLEMENT_TMPDIR]\n{indent}(--assessment-file ASSESSMENT_FILE | --assessment-text ASSESSMENT_TEXT)\n{indent}[--assessed-head-sha ASSESSED_HEAD_SHA]\n{indent}[--diff-fingerprint DIFF_FINGERPRINT]\n{indent}[--base-ref BASE_REF]\n{indent}[--diff-file DIFF_FILE]"
+                        "[-h]\n{indent}[--outcome OUTCOME]\n{indent}[--implement-tmpdir IMPLEMENT_TMPDIR]\n{indent}{}\n{indent}[--assessed-head-sha ASSESSED_HEAD_SHA]\n{indent}[--diff-fingerprint DIFF_FINGERPRINT]\n{indent}[--base-ref BASE_REF]\n{indent}[--diff-file DIFF_FILE]",
+                        if case.domain == "architectural-guidelines" {
+                            "((--assessment-file ASSESSMENT_FILE | --assessment-text ASSESSMENT_TEXT) | ASSESSMENT_PATH [POSITIONAL_OUTCOME])"
+                        } else {
+                            "(--assessment-file ASSESSMENT_FILE | --assessment-text ASSESSMENT_TEXT)"
+                        }
                     ),
                     "  --outcome OUTCOME\n  --implement-tmpdir IMPLEMENT_TMPDIR\n  --assessment-file ASSESSMENT_FILE\n  --assessment-text ASSESSMENT_TEXT\n  --assessed-head-sha ASSESSED_HEAD_SHA\n  --diff-fingerprint DIFF_FINGERPRINT\n  --base-ref BASE_REF\n  --diff-file DIFF_FILE\n",
                 ),
@@ -279,7 +291,7 @@ fn help_matches_retired_argparse_for_each_domain_and_write_verb() {
             assert_eq!(
                 stdout(&assertion),
                 format!(
-                    "usage: {command} {usage_tail}\n\noptions:\n  -h, --help            show this help message and exit\n{options}"
+                    "usage: {command} {usage_tail}\n\n{positional_help}options:\n  -h, --help            show this help message and exit\n{options}"
                 ),
                 "{} {verb}",
                 case.domain
@@ -679,6 +691,108 @@ fn write_usage_status_and_reauthor_envelopes_match_python() {
             )
         );
     }
+}
+
+#[test]
+fn staged_guideline_positionals_resolve_paths_and_filter_materialize_values() {
+    let root = TempDir::new().expect("temp");
+    let implement = root.path().join("implement");
+    fs::create_dir(&implement).expect("implement tmpdir");
+    let diff_text = "diff --git a/src/a.rs b/src/a.rs\n+change\n";
+    fs::write(
+        implement.join("architectural-guideline-materialized-diff.txt"),
+        diff_text,
+    )
+    .expect("materialized diff");
+    fs::write(
+        implement.join("architectural-guideline-materialize.env"),
+        format!(
+            "BASE_REF=origin/main\nDIFF_FINGERPRINT={}\nHEAD_SHA={HEAD_A}\n",
+            fingerprint(diff_text)
+        ),
+    )
+    .expect("materialize env");
+    fs::write(
+        implement.join("relative.md"),
+        format!("{}\n", CASES[0].clean_note),
+    )
+    .expect("relative assessment");
+
+    larch(root.path())
+        .env("IMPLEMENT_TMPDIR", &implement)
+        .args([
+            "architectural-guidelines",
+            "write-staged-assessment",
+            "relative.md",
+            "clean",
+        ])
+        .assert()
+        .success();
+    let staged_env = fs::read_to_string(implement.join(CASES[0].staged_env)).expect("staged env");
+    assert!(staged_env.contains(&format!("ASSESSED_HEAD_SHA={HEAD_A}\n")));
+    assert!(staged_env.contains("BASE_REF=origin/main\n"));
+    assert!(staged_env.contains(&format!(
+        "DIFF_FINGERPRINT={}\n",
+        fingerprint(diff_text)
+    )));
+
+    let absolute = implement.join("absolute.md");
+    fs::write(&absolute, format!("{}\n", CASES[0].clean_note)).expect("absolute assessment");
+    larch(root.path())
+        .env("IMPLEMENT_TMPDIR", &implement)
+        .args([
+            "architectural-guidelines",
+            "write-staged-assessment",
+            absolute.to_str().expect("utf8"),
+            "clean",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        fs::read_to_string(implement.join(CASES[0].staged_note)).expect("staged note"),
+        format!("{}\n", CASES[0].clean_note)
+    );
+
+    let rebased_name = "larch-9014-rebased-assessment.md";
+    fs::write(
+        implement.join(rebased_name),
+        format!("{}\n", CASES[0].clean_note),
+    )
+    .expect("rebased absolute assessment");
+    let rebased_absolute = format!("/{rebased_name}");
+    larch(root.path())
+        .env("IMPLEMENT_TMPDIR", &implement)
+        .args([
+            "architectural-guidelines",
+            "write-staged-assessment",
+            &rebased_absolute,
+            "clean",
+        ])
+        .assert()
+        .success();
+
+    fs::write(
+        implement.join("architectural-guideline-materialize.env"),
+        "BASE_REF=bad ref\nDIFF_FINGERPRINT=not-a-fingerprint\nHEAD_SHA=not-a-sha\n",
+    )
+    .expect("invalid materialize env");
+    larch(root.path())
+        .env("IMPLEMENT_TMPDIR", &implement)
+        .args([
+            "architectural-guidelines",
+            "write-staged-assessment",
+            "relative.md",
+            "clean",
+        ])
+        .assert()
+        .success();
+    let filtered = fs::read_to_string(implement.join(CASES[0].staged_env)).expect("filtered env");
+    assert!(filtered.contains("ASSESSED_HEAD_SHA=\n"), "{filtered}");
+    assert!(filtered.contains("BASE_REF=\n"), "{filtered}");
+    assert!(
+        filtered.contains(&format!("DIFF_FINGERPRINT={}\n", fingerprint(diff_text))),
+        "{filtered}"
+    );
 }
 
 #[test]

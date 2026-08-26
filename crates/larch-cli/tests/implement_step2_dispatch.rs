@@ -224,6 +224,16 @@ fn step2_dispatch_help_matches_the_retired_argparse_usage() {
 // ---------------------------------------------------------------------------
 
 #[test]
+fn run_dispatch_missing_dispatch_arguments_exit_two() {
+    let fixture = fixture("feature/parity");
+
+    let (code, _stdout, stderr) = run(&fixture, "run-dispatch", &[]);
+
+    assert_eq!(code, 2);
+    assert!(stderr.contains("--coder"), "stderr: {stderr}");
+}
+
+#[test]
 fn run_dispatch_requires_the_bgjob_child_and_merge_env_flags_together() {
     let fixture = fixture("feature/parity");
     let tmpdir = fixture.tmpdir.display().to_string();

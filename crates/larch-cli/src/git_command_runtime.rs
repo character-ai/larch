@@ -36,6 +36,16 @@ pub const fn exact_name_only_request(
     }
 }
 
+/// Return whether `value` uses the bounded character set accepted for remote
+/// and ref labels passed through the Git command adapters.
+#[must_use]
+pub fn is_git_ref_label(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'/' | b'-'))
+}
+
 impl GitCommandRuntime {
     /// Build typed Git command components for `repository_root`.
     ///

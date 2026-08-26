@@ -6709,16 +6709,6 @@ kind = "skill"
 rust = ["umbrella verify-completion"]
 
 [[callers]]
-path = "skills/implement/scripts/cleanup.md"
-kind = "skill"
-rust = ["session cleanup-tmpdir"]
-
-[[callers]]
-path = "skills/implement/scripts/cleanup.sh"
-kind = "skill"
-rust = ["session cleanup-tmpdir"]
-
-[[callers]]
 path = "skills/implement/scripts/flush-execution-issues.md"
 kind = "skill"
 rust = ["execution-issues flush"]
@@ -6809,11 +6799,6 @@ kind = "skill"
 rust = ["implement step-19"]
 
 [[callers]]
-path = "skills/implement/scripts/step-2-dispatch.sh"
-kind = "skill"
-rust = ["bgjob adapt", "implement run-dispatch"]
-
-[[callers]]
 path = "skills/implement/scripts/step-2-post-dispatch.md"
 kind = "skill"
 rust = ["implement step-2-post-dispatch"]
@@ -6902,11 +6887,6 @@ rust = ["architectural-guidelines write-compose-assessment"]
 path = "skills/implement/scripts/step-architectural-guidelines-write-compose.sh"
 kind = "skill"
 rust = ["architectural-guidelines write-compose-assessment"]
-
-[[callers]]
-path = "skills/implement/scripts/step-architectural-guidelines-write-staged.sh"
-kind = "skill"
-rust = ["architectural-guidelines write-staged-assessment", "kv get"]
 
 [[callers]]
 path = "skills/implement/scripts/step-architectural-invariants-write-compose.md"

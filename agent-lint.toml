@@ -223,7 +223,6 @@ exclude = [
   "skills/implement/scripts/post-tracking-issue.sh",
   "skills/implement/scripts/refresh-execution-issues.sh",
   "skills/implement/scripts/write-final-report.sh",
-  "skills/implement/scripts/cleanup.sh",
   "skills/implement/scripts/step-0-degraded-gate.sh",
   "skills/implement/scripts/step-0-degraded-gate.md",
   "skills/implement/scripts/step-8-seed-initial.md",
@@ -472,15 +471,6 @@ exclude = [
   # under skills/<name>/scripts/. Not orchestrator references (not cited
   # from the owning SKILL.md by design — contributors discover them by
   # editing the sibling .sh). Excluded from S030/orphaned-skill-files.
-  # step-architectural-guidelines-write-staged.{sh,md} implement and document the
-  # post-7a staged-assessment write wrapper. Their references were relocated out
-  # of skills/implement/SKILL.md into skills/implement/references/architectural-
-  # guidelines-present.md (Phase A present-path persistence contract). The
-  # test-architectural-guidelines-step.sh harness asserts the .sh literal must NOT
-  # appear in SKILL.md (write-staged wrapper moved to present reference), so these
-  # cannot be pinned there; referenced only from the present reference doc.
-  "skills/implement/scripts/step-architectural-guidelines-write-staged.sh",
-  "skills/implement/scripts/step-architectural-guidelines-write-staged.md",
   "scripts/test-token-vendor-scrapers.md",
   "skills/research/scripts/test-research-angle-prompts.md",
   "skills/implement/scripts/test-implement-relevant-checks-anti-halt.md",
@@ -560,8 +550,6 @@ exclude = [
   "skills/implement/scripts/test-write-final-report.sh",
   "skills/implement/scripts/test-write-final-report.md",
   "skills/implement/scripts/test-step-18.md",
-  "skills/implement/scripts/test-cleanup.sh",
-  "skills/implement/scripts/test-cleanup.md",
   # scripts/test-prompt-template-invariants.sh is the cross-cutting
   # structural invariants harness for subagent prompt templates (issue #2421).
   # Referenced only from Makefile (test-prompt-template-invariants target),

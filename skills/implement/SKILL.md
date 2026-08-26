@@ -319,10 +319,10 @@ Regression coverage for this dispatcher surface lives in the inline tests in `cr
 **2.1 — First dispatch invocation**:
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-2-dispatch.sh --coder "$coder"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh implement run-dispatch --coder "$coder"
 ```
 
-**Do NOT poll or print sidecar output while dispatching.** The foreground adapter starts or reattaches `implement-step2-dispatch`; its only launcher output is `BGJOB_STATUS=STARTED STEP=implement-step2-dispatch PGID=<n>`. Wait with the shared bgjob contract below. On `BGJOB_STATUS=WAIT`, repeat the exact wait fence with no intervening prose or tools. On `DONE`, read `$IMPLEMENT_TMPDIR/bgjob/implement-step2-dispatch.result.env`; continue only with `BGJOB_RC=0` and the complete dispatcher envelope from that file. Do not use sidecars, daemon stdout, or launcher stdout as completion evidence.
+**Do NOT poll or print sidecar output while dispatching.** The Rust adapter starts or reattaches `implement-step2-dispatch`; its only launcher output is `BGJOB_STATUS=STARTED STEP=implement-step2-dispatch PGID=<n>`. Wait with the shared bgjob contract below. On `BGJOB_STATUS=WAIT`, repeat the exact wait fence with no intervening prose or tools. On `DONE`, read `$IMPLEMENT_TMPDIR/bgjob/implement-step2-dispatch.result.env`; continue only with `BGJOB_RC=0` and the complete dispatcher envelope from that file. Do not use sidecars, daemon stdout, or launcher stdout as completion evidence.
 
 ```bash
 "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh bgjob wait --step implement-step2-dispatch --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270

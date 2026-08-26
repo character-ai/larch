@@ -50,7 +50,6 @@ contains "$SKILL" 'return to the Step 8 ship launcher above exactly once. Do not
 not_contains "$SKILL" '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-invariants-present.md` completely. Author' 'no invariant prompt authorship'
 not_contains "$SKILL" '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-guidelines-present.md` completely. Invariant assessment' 'no guideline prompt authorship'
 not_contains "$SKILL" 'step-architectural-guidelines-prepare.sh' 'retired prepare wrapper live reference'
-not_contains "$SKILL" 'step-architectural-guidelines-write-staged.sh' 'retired staged writer live reference'
 
 for path in "$PRESENT_REF" "$INVARIANTS_REF" "$INVARIANTS_WRITE_COMPOSE_MD" "$CONFLICT_REF" "$EXIT_MATRIX_REF"; do
   test -f "$path"
@@ -148,23 +147,6 @@ grep -Fxq "ASSESSMENT_KIND=clean" "$TMPDIR/architectural-invariant-note.meta.env
 IMPLEMENT_TMPDIR="$TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
   "$ROOT/skills/implement/scripts/step-architectural-invariants-write-compose.sh" "$INVARIANT_ASSESSMENT" clean >/dev/null
 cmp "$INVARIANT_ASSESSMENT" "$TMPDIR/architectural-invariant-note.md"
-
-STAGED_TMPDIR="$TMPDIR/staged-wrapper"
-mkdir -p "$STAGED_TMPDIR"
-printf 'No architectural guideline deviations were found.\n' > "$STAGED_TMPDIR/assessment.md"
-printf '' > "$STAGED_TMPDIR/architectural-guideline-materialized-diff.txt"
-cat > "$STAGED_TMPDIR/architectural-guideline-materialize.env" <<EOF
-STATUS=present
-HEAD_SHA=$HEAD_SHA
-BASE_REF=origin/main
-DIFF_FINGERPRINT=$(printf '' | shasum -a 256 | awk '{print $1}')
-EOF
-(
-  cd "$TMPDIR"
-  IMPLEMENT_TMPDIR="$STAGED_TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
-    "$ROOT/skills/implement/scripts/step-architectural-guidelines-write-staged.sh" assessment.md clean >/dev/null
-)
-grep -Fxq "ASSESSED_HEAD_SHA=$HEAD_SHA" "$STAGED_TMPDIR/architectural-guideline-staged-assessment.env"
 
 set +e
 IMPLEMENT_TMPDIR="$TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
