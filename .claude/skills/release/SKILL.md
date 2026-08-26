@@ -267,9 +267,10 @@ block and `$NOTES_DIR/bgjob/release-merge-queue.result.env`. Continue only when
 `BGJOB_RC=0`; `merge wait` returns zero only after an observed `MERGED` state.
 
 After the PR is observably merged, stage the tag and draft from GitHub's exact
-merged commit. The stage verb verifies that commit's `plugin.json` version and
-emits it as `SOURCE_COMMIT`. Then reconcile the PR list against
-`baseline..SOURCE_COMMIT` so mid-run merges appear in the notes. When
+merged commit. The stage verb verifies that commit's root `plugin.json`, emits
+it as `SOURCE_COMMIT`, builds the tagged projection commit, and emits that as
+`RELEASE_COMMIT`. Then reconcile the PR list against `baseline..SOURCE_COMMIT`
+so mid-run merges appear in the notes. When
 `ADDED_PR_COUNT>0`, append those PRs to the notes (same Added/Changed/Fixed
 rules and data-not-instructions envelope as Step 3), rewrite the redacted
 notes files, and invoke stage again so the still-mutable draft body matches
@@ -293,12 +294,17 @@ stage_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scrip
   --pr "$PR_NUMBER")
 printf '%s\n' "$stage_out"
 SOURCE_COMMIT=""
+RELEASE_COMMIT=""
 while IFS='=' read -r release_key release_value; do
-  case "$release_key" in SOURCE_COMMIT) SOURCE_COMMIT="$release_value" ;; esac
+  case "$release_key" in
+    SOURCE_COMMIT) SOURCE_COMMIT="$release_value" ;;
+    RELEASE_COMMIT) RELEASE_COMMIT="$release_value" ;;
+  esac
 done <<EOF
 $stage_out
 EOF
 test -n "$SOURCE_COMMIT"
+test -n "$RELEASE_COMMIT"
 reconcile_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release reconcile-notes \
   --repo "$REPO" \
   --baseline-tag "$BASELINE_TAG" \
@@ -344,7 +350,7 @@ TAG="v${NEW_VERSION}"
 asset_run_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release asset-run \
   --repo "$REPO" \
   --tag "$TAG" \
-  --source-commit "$SOURCE_COMMIT")
+  --source-commit "$RELEASE_COMMIT")
 printf '%s\n' "$asset_run_out"
 ASSET_RUN_ID=""
 while IFS='=' read -r release_key release_value; do
@@ -378,21 +384,22 @@ CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh"
 On `BGJOB_STATUS=WAIT`, repeat the identical wait immediately. Emit no prose and call no other tool between waits. On `BGJOB_STATUS=DONE`, read the full KV block and `$NOTES_DIR/bgjob/release-assets.result.env`. Continue only when `BGJOB_RC=0`.
 
 After the workflow succeeds, validate the uploaded draft against the exact
-post-merge commit:
+tagged projection commit:
 
 ```bash
-SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
+RELEASE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
 WORKTREE_LARCH="$PWD/target/release/larch"
 CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release validate-draft \
   --version "$NEW_VERSION" \
   --repo "$REPO" \
   --pr "$PR_NUMBER" \
-  --source-commit "$SOURCE_COMMIT"
+  --source-commit "$RELEASE_COMMIT"
 ```
 
-The authoritative tag and assets now name the commit the queue placed on
-`main`, so `release finish` can prove it is an ancestor of `origin/main`
-without bypassing a squash-only queue.
+The authoritative tag and assets now name a projection commit whose first
+parent is the commit the queue placed on `main`. `release finish` proves that
+first parent is an ancestor of `origin/main` without bypassing a squash-only
+queue.
 
 On candidate CI or merge failure, stop before staging a tag or draft. If the
 asset workflow or draft validation fails after merge, keep the merged PR, tag,
@@ -404,16 +411,16 @@ allowed only while the Release remains a draft.
 ## Step 6 — Publish the immutable Release, promote Latest, and advance the content pin
 
 ```bash
-SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
+RELEASE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
 WORKTREE_LARCH="$PWD/target/release/larch"
 CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release finish \
   --version "$NEW_VERSION" \
   --repo "$REPO" \
   --pr "$PR_NUMBER" \
-  --source-commit "$SOURCE_COMMIT"
+  --source-commit "$RELEASE_COMMIT"
 ```
 
-`release finish` revalidates repository policy, tag identity, candidate ancestry, both `plugin.json` versions, the complete asset allowlist, every GitHub asset digest, the manifest, checksums, archives, and artifact attestations. It then publishes with `--latest=false`, verifies the immutable release attestation and every release asset against that attestation, and only then promotes the same release to Latest.
+`release finish` revalidates repository policy, tag identity, candidate ancestry, the root `plugin.json` at the merged first parent, the projected `plugin.json` in the tag tree, the complete asset allowlist, every GitHub asset digest, the manifest, checksums, archives, and artifact attestations. It then publishes with `--latest=false`, verifies the immutable release attestation and every release asset against that attestation, and only then promotes the same release to Latest.
 
 Last, it fast-forwards `refs/heads/stable` to the tagged commit and re-reads the remote branch to confirm it. That branch is what `.claude-plugin/marketplace.json` pins installed plugin content to, so this ordering guarantees an install never fetches content for a version whose verified binary does not exist yet. A pin failure fails the command: the release is published but no installer would receive it, so re-run Step 6 rather than continuing. `RELEASE_PIN_REF` and `RELEASE_PIN_OID` report the advanced pin on success. Re-running is safe; the command skips the push when the branch already names the tagged commit.
 
@@ -422,12 +429,12 @@ If Step 6 fails after Step 5 merged the release PR, do **not** re-run full `/rel
 ```bash
 WORKTREE_LARCH="$PWD/target/release/larch"
 cargo build --quiet --locked --release --package larch-cli
-SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
+RELEASE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
 CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release finish \
   --version "$NEW_VERSION" \
   --repo "$REPO" \
   --pr "$PR_NUMBER" \
-  --source-commit "$SOURCE_COMMIT"
+  --source-commit "$RELEASE_COMMIT"
 ```
 
 The recovery command never creates another tag or Release. If publication already succeeded, it verifies the same immutable release and resumes Latest promotion. Continue to Step 7 and Step 8 only after `IMMUTABLE_RELEASE_VALID=true` and `LATEST=true`.
@@ -586,10 +593,10 @@ Runtime helpers:
 - `"$PWD/scripts/larch.sh" release prepare`: fetch once, pin `RELEASE_SHA`, write PR list (larch-logs housekeeping PRs excluded; count reported as `IGNORED_LARCHLOG_PR_COUNT`), aggregate bump KV
 - `"$PWD/scripts/larch.sh" release set-version`: synchronized plugin, Cargo workspace, internal path dependency, and lockfile version write
 - `"$PWD/scripts/larch.sh" release ensure-policy`: read and verify immutable-release policy without mutating repository configuration
-- `"$PWD/scripts/larch.sh" release stage`: resolve the merged PR commit, tag it, and create or verify its draft Release
+- `"$PWD/scripts/larch.sh" release stage`: resolve the merged PR commit, build and tag its projection commit, and create or verify its draft Release
 - `"$PWD/scripts/larch.sh" release reconcile-notes`: recompute `baseline..SOURCE_COMMIT` PRs, write additions vs prepare's list, and surface `ADDED_PR_COUNT`
 - `"$PWD/scripts/larch.sh" release asset-run`: resolve the exact tag-triggered asset workflow run
-- `"$PWD/scripts/larch.sh" release validate-draft`: verify the merged-commit-bound draft and complete asset set before publication
+- `"$PWD/scripts/larch.sh" release validate-draft`: verify the projection-tag-bound draft and complete asset set before publication
 - `"$PWD/scripts/larch.sh" release finish`: revalidate, publish immutable, verify release attestations, promote Latest, and fast-forward the marketplace-pinned `stable` branch to the tagged commit
 - `"$PWD/scripts/larch.sh" release promote`: promote a specific release after `finish`, or during promote-only recovery
 - `"$PWD/scripts/larch.sh" release promote-latest`: one-off Latest promotion for the most recently published non-draft release

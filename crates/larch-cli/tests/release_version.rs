@@ -14,7 +14,7 @@ const ROOT_ENV: &str = "LARCH_RELEASE_SET_VERSION_REPO_ROOT";
 const FAIL_AFTER_ENV: &str = "LARCH_TEST_RELEASE_SET_VERSION_FAIL_AFTER_WRITE";
 
 #[test]
-fn set_version_synchronizes_every_surface_and_preserves_formatting() {
+fn set_version_synchronizes_release_owned_surfaces_and_preserves_formatting() {
     let repository = release_repository(true);
 
     larch(repository.path(), "1.2.4")
@@ -29,7 +29,7 @@ fn set_version_synchronizes_every_surface_and_preserves_formatting() {
     );
     assert_eq!(
         plugin_version(repository.path(), "plugin/.claude-plugin/plugin.json"),
-        "1.2.4"
+        "1.2.3"
     );
     let manifest = read(repository.path(), "Cargo.toml");
     assert!(manifest.contains("version = \"1.2.4\""));
@@ -58,6 +58,24 @@ fn set_version_preserves_optional_projection_behavior() {
             .join("plugin/.claude-plugin/plugin.json")
             .exists()
     );
+}
+
+#[test]
+fn set_version_does_not_read_or_write_an_existing_projection() {
+    let repository = release_repository(true);
+    let projected = repository
+        .path()
+        .join("plugin/.claude-plugin/plugin.json");
+    fs::write(&projected, b"not projected release metadata\n")
+        .expect("replace projected plugin manifest");
+    let before = fs::read(&projected).expect("projected bytes");
+
+    larch(repository.path(), "1.2.4")
+        .assert()
+        .success()
+        .stdout("PREVIOUS_VERSION=1.2.3\nNEW_VERSION=1.2.4\n");
+
+    assert_eq!(fs::read(projected).expect("projected bytes"), before);
 }
 
 #[test]
@@ -185,17 +203,6 @@ fn set_version_rejects_every_inconsistent_old_version() {
     );
     assert_inconsistent(lock.path(), "Cargo.lock workspace package version mismatch");
 
-    let projection = release_repository(true);
-    replace(
-        projection.path(),
-        "plugin/.claude-plugin/plugin.json",
-        "1.2.3",
-        "1.2.2",
-    );
-    assert_inconsistent(
-        projection.path(),
-        "runtime projection plugin version source is out of sync",
-    );
 }
 
 #[test]
@@ -273,7 +280,7 @@ fn set_version_rejects_invalid_workspace_members_and_dependency_ownership() {
 
 #[test]
 fn set_version_rolls_back_an_interruption_at_every_write_boundary() {
-    for boundary in 1..=4 {
+    for boundary in 1..=3 {
         let repository = release_repository(true);
         let before = release_bytes(repository.path());
 

@@ -6,8 +6,9 @@ mod release_prepare_tests {
         companion_title, flag_tokens, frontmatter, frontmatter_field, idempotency_subject,
         is_bump_subject, is_log_housekeeping, is_release_subject, pr_suffix, prepare_out_dir,
         prepare_with_service, public_surface, read_prepared_pr_numbers,
-        reconcile_notes_with_service, release_already_cut, resolve, select_pull_requests, semver,
-        skill_path, strict_plugin_version_bytes, tsv, verify_main_worktree, verify_origin,
+        reconcile_notes_with_service, release_already_cut, release_window_base, resolve,
+        select_pull_requests, semver, skill_path, strict_plugin_version_bytes, tsv,
+        verify_main_worktree, verify_origin,
     };
     use crate::github_repository_resolution::parse_github_remote_url;
     use larch_adapters::{TemporaryRoot, github::GitHubOperationError};
@@ -156,6 +157,37 @@ mod release_prepare_tests {
             &repository,
             ["update-ref", "refs/remotes/origin/main", "HEAD"],
         );
+        repository
+    }
+
+    fn projection_baseline_repository() -> GitRepository {
+        let repository = release_repository();
+        checked_git(&repository, ["branch", "stable", "v1.2.3"]);
+        checked_git(&repository, ["switch", "stable"]);
+        repository
+            .write("stable-only.txt", b"prior release pin\n")
+            .expect("stable file");
+        checked_git(&repository, ["add", "-A"]);
+        checked_git(
+            &repository,
+            ["commit", "--quiet", "-m", "prior stable release"],
+        );
+        checked_git(&repository, ["switch", "--detach", "v1.2.3"]);
+        checked_git(
+            &repository,
+            [
+                "merge",
+                "--quiet",
+                "--no-ff",
+                "-s",
+                "ours",
+                "stable",
+                "-m",
+                "Release v1.2.3 plugin projection",
+            ],
+        );
+        checked_git(&repository, ["tag", "--force", "v1.2.3"]);
+        checked_git(&repository, ["switch", "main"]);
         repository
     }
 
@@ -353,6 +385,50 @@ mod release_prepare_tests {
                 &Cancellation::new(),
             ))
             .expect("prepare release with explicit bump");
+    }
+
+    #[test]
+    fn prepare_uses_a_projection_tags_first_parent_as_the_release_window_base() {
+        let fixture = projection_baseline_repository();
+        let repository = GixRepository::open(fixture.root()).expect("open repository");
+        let baseline = resolve(&repository, "v1.2.3").expect("projection baseline");
+        let main = resolve(&repository, "origin/main").expect("origin/main");
+        let window_base = release_window_base(&repository, &baseline, &main)
+            .expect("release window lookup")
+            .expect("projection baseline is accepted");
+        assert_eq!(
+            window_base,
+            resolve(&repository, "v1.2.3^1").expect("projection first parent")
+        );
+
+        let output = tempfile::tempdir().expect("output directory");
+        let output_root = TemporaryRoot::resolve(Some(output.path())).expect("temporary root");
+        let service = FakeReleaseService {
+            latest: Some("v1.2.3".to_owned()),
+            pulls: BTreeMap::from([(42, pull_request(42, "Feature"))]),
+            ..FakeReleaseService::default()
+        };
+        let arguments = PrepareArguments {
+            repository: GitHubRepositoryRef::new("o", "r").expect("repository reference"),
+            bump: Some(BumpType::Patch),
+            out_dir: output.path().to_path_buf(),
+        };
+        LarchRuntime::current_thread()
+            .expect("test runtime")
+            .block_on(prepare_with_service(
+                &arguments,
+                &output_root,
+                fixture.root(),
+                &repository,
+                &service,
+                &Cancellation::new(),
+            ))
+            .expect("prepare from projection tag");
+
+        assert_eq!(
+            fs::read_to_string(output.path().join("pr-list.tsv")).expect("release rows"),
+            "42\tFeature\trelease-note\tauthor\thttps://github.com/o/r/pull/42\n"
+        );
     }
 
     #[test]
@@ -877,7 +953,7 @@ mod release_prepare_tests {
 
     #[test]
     fn reconcile_notes_surfaces_mid_run_additions_and_excludes() {
-        let fixture = release_repository();
+        let fixture = projection_baseline_repository();
         fixture
             .write("README.md", b"mid-run merge\n")
             .expect("readme");
