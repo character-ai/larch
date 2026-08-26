@@ -6,7 +6,7 @@
 
 #[cfg(test)]
 mod design_publish_commands_tests {
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
     use std::collections::HashMap;
     use std::fs;
     use std::path::Path;
@@ -197,6 +197,92 @@ mod design_publish_commands_tests {
                     )
                 }));
             self.reply(args, true)
+        }
+    }
+
+    /// A two-attempt runner that emulates the lifecycle's write-once outcome.
+    ///
+    /// The first plan write fails. A failure log publish without the
+    /// retryable-failure reason terminalizes the emulated lifecycle, so the
+    /// second attempt's approved publish is refused like the real lifecycle.
+    struct RetryLifecycleRunner {
+        calls: RefCell<Vec<String>>,
+        plan_write_attempts: Cell<u32>,
+        terminal_failure: Cell<bool>,
+    }
+
+    impl RetryLifecycleRunner {
+        const fn new() -> Self {
+            Self {
+                calls: RefCell::new(Vec::new()),
+                plan_write_attempts: Cell::new(0),
+                terminal_failure: Cell::new(false),
+            }
+        }
+
+        fn reply(&self, args: &[std::ffi::OsString]) -> CapturedRun {
+            let joined = args
+                .iter()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join(" ");
+            self.calls.borrow_mut().push(joined.clone());
+            if joined.starts_with("plan check-size") {
+                return CapturedRun {
+                    rc: 0,
+                    stdout: "PLAN_SIZE_STATUS=ok\nSIZE_TRIGGER_FIRED=false\n".to_owned(),
+                    stderr: String::new(),
+                };
+            }
+            if joined.starts_with("named-block write") {
+                let attempt = self.plan_write_attempts.get() + 1;
+                self.plan_write_attempts.set(attempt);
+                return CapturedRun {
+                    rc: i32::from(attempt == 1),
+                    stdout: String::new(),
+                    stderr: String::new(),
+                };
+            }
+            if joined.starts_with("design log-publish") {
+                if joined.contains("--outcome failed-plan-write") {
+                    if !joined.contains("--reason retryable-failure") {
+                        self.terminal_failure.set(true);
+                    }
+                    return CapturedRun {
+                        rc: 0,
+                        stdout: "PUBLISH_OK=false\n".to_owned(),
+                        stderr: String::new(),
+                    };
+                }
+                return CapturedRun {
+                    rc: i32::from(self.terminal_failure.get()),
+                    stdout: if self.terminal_failure.get() {
+                        "PUBLISH_OK=false\n".to_owned()
+                    } else {
+                        "PUBLISH_OK=true\n".to_owned()
+                    },
+                    stderr: String::new(),
+                };
+            }
+            CapturedRun {
+                rc: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            }
+        }
+    }
+
+    impl SiblingRunner for RetryLifecycleRunner {
+        fn run_larch(&self, args: &[std::ffi::OsString]) -> CapturedRun {
+            self.reply(args)
+        }
+
+        fn run_larch_env(
+            &self,
+            args: &[std::ffi::OsString],
+            _environment: &[(ChildEnvironment, std::ffi::OsString)],
+        ) -> CapturedRun {
+            self.reply(args)
         }
     }
 
@@ -1186,7 +1272,7 @@ mod design_publish_commands_tests {
     }
 
     #[test]
-    fn a_failed_plan_write_publishes_its_logs_under_the_failure_outcome() {
+    fn a_failed_plan_write_stages_its_logs_under_the_retryable_failure_reason() {
         let session = Session::ready();
         let runner = ScriptRunner::new(&[
             SIZE_OK,
@@ -1198,12 +1284,35 @@ mod design_publish_commands_tests {
 
         assert_eq!(rc, 1);
         assert!(runner.ran_larch("design log-publish"));
+        let argv = runner.call("design log-publish");
+        assert!(argv.contains("--reason retryable-failure"));
+        assert!(argv.contains("--outcome failed-plan-write"));
+        assert_eq!(env_value(&session.result_env(), "PLAN_WRITE_OK"), "false");
+    }
+
+    #[test]
+    fn a_fresh_attempt_after_failed_plan_write_can_finalize_the_same_lifecycle() {
+        let session = Session::ready();
+        let runner = RetryLifecycleRunner::new();
+        let args = publishing_args(&session);
+
+        let failed = publish_core(&runner, &ScriptReceipt::ok(), &args);
+        let recovered = publish_core(&runner, &ScriptReceipt::ok(), &args);
+
+        assert_eq!(failed, 1);
+        assert_eq!(recovered, 0);
+        assert!(!runner.terminal_failure.get());
+        assert_eq!(
+            env_value(&session.result_env(), "LOG_PUBLISH_COMPLETED"),
+            "true"
+        );
         assert!(
             runner
-                .call("design log-publish")
-                .contains("--outcome failed-plan-write")
+                .calls
+                .borrow()
+                .iter()
+                .any(|call| call.contains("design log-publish --reason retryable-failure"))
         );
-        assert_eq!(env_value(&session.result_env(), "PLAN_WRITE_OK"), "false");
     }
 
     // -----------------------------------------------------------------------
@@ -1831,6 +1940,7 @@ mod design_publish_commands_tests {
                 &mut rows,
                 &result_env,
                 "approved",
+                None,
                 true
             ),
             Some(RC_FAILED)
@@ -1846,6 +1956,7 @@ mod design_publish_commands_tests {
                 &mut rows,
                 &result_env,
                 "approved",
+                None,
                 true
             ),
             Some(super::super::RC_RESULT_ENV)
