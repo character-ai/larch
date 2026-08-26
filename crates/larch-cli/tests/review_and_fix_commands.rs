@@ -18,7 +18,18 @@ domain=${1:-}
 verb=${2:-}
 shift 2 || true
 case "$domain:$verb" in
-  timing:mark|git:snapshot-untracked|run-log:write|run-log:write-round|voting:write-tally) exit 0 ;;
+  timing:mark|git:snapshot-untracked|run-log:write|voting:write-tally) exit 0 ;;
+  run-log:write-round)
+    source_dir=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --source-dir) source_dir=$2; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    [ -f "$source_dir/round-meta.json" ]
+    : > "$source_dir/round-meta-published"
+    ;;
   timing:record-round)
     ledger=""
     while [ "$#" -gt 0 ]; do
@@ -92,7 +103,7 @@ fs::write( implementation.join("session-env.sh"), "RUN_ID=review-and-fix-test\nC
 let result = Command::new(env!("CARGO_BIN_EXE_larch")) .current_dir(&root) .env("CLAUDE_PROJECT_DIR", &root) .env("CLAUDE_PLUGIN_ROOT", &fixture_plugin) .env("PATH", path) .args([ "review-and-fix", "step5", "--implement-tmpdir", implementation.to_str().expect("implementation path"), "--mode", "loop", "--codex-available", "true", "--cursor-available", "false", ]) .output() .expect("step5"); assert!( result.status.success(),
 "{}", String::from_utf8_lossy(&result.stderr) ); let transcript = "STEP5_REVIEW_STATUS=complete\nSTALL_TRACKING=false\nSTALL_REASON=\nROUNDS_COMPLETED=1\nFINAL_ROUND_NUM=1\nFINAL_REVIEW_AND_FIX_STATUS=fix-applied\nCODER_STATUS=applied\nFILES_CHANGED_HINT="; let stdout = String::from_utf8_lossy(&result.stdout); assert!(stdout.starts_with(transcript), "{stdout}"); assert!( stdout.contains("EFFECTIVE_ROUND_CAP=2\nPANEL_TIER=MODERATE\nAUDIT_UPGRADE=false\n"),
 "{stdout}" ); assert_eq!( fs::read_to_string(implementation.join(".step5-review-result.env")) .expect("persisted transcript"), stdout, ); assert_eq!( fs::read_to_string(root.join("tracked.txt")).expect("tracked content"), "after\n" ); assert_eq!( fs::read_to_string(implementation.join("round-1/coder-context.txt")) .expect("coder session context"), format!( "repair-session|{}|\n", implementation.join("timing-ledger.tsv").display()
-) ); assert_eq!( String::from_utf8_lossy(&git(&root, &["show", "--format=", "--name-only", "HEAD"]).stdout), "tracked.txt\n" ); assert!(implementation.join("progress/done").is_file()); assert!(implementation.join("round-1/round-start-s").is_file()); assert!(implementation.join("timing-ledger.tsv.recorded").is_file()); } #[test] fn normalize_status_replays_and_persists_the_captured_envelope() { let fixture = TempDir::new().expect("fixture");
+) ); assert_eq!( String::from_utf8_lossy(&git(&root, &["show", "--format=", "--name-only", "HEAD"]).stdout), "tracked.txt\n" ); assert!(implementation.join("progress/done").is_file()); assert!(implementation.join("round-1/round-start-s").is_file()); assert!(implementation.join("timing-ledger.tsv.recorded").is_file()); assert!(implementation.join("round-1/round-meta.json").is_file()); assert!(implementation.join("round-1/round-meta-published").is_file()); } #[test] fn normalize_status_replays_and_persists_the_captured_envelope() { let fixture = TempDir::new().expect("fixture");
 let root = repository(&fixture); let implementation = fixture.path().join("implementation"); fs::create_dir_all(&implementation).expect("implementation"); let captured = fixture.path().join("captured.out"); let transcript = "STEP5_REVIEW_STATUS=complete\nSTALL_TRACKING=false\nSTALL_REASON=\nROUNDS_COMPLETED=1\nFINAL_ROUND_NUM=1\nFINAL_REVIEW_AND_FIX_STATUS=complete\nCODER_STATUS=skipped\nFILES_CHANGED_HINT=\nEFFECTIVE_ROUND_CAP=2\n";
 fs::write(&captured, transcript).expect("captured transcript"); let result = output( &root, &[ "review-and-fix", "normalize-status", "--implement-tmpdir", implementation.to_str().expect("implementation path"), "--stdout-file", captured.to_str().expect("captured path"), "--loop-rc", "7", ], ); assert_eq!(result.status.code(), Some(7)); assert_eq!(String::from_utf8_lossy(&result.stdout), transcript); assert_eq!( fs::read_to_string(implementation.join(".step5-review-result.env"))
 .expect("persisted envelope"), transcript, ); } #[test] fn self_review_snapshot_commits_only_its_delta() { let fixture = TempDir::new().expect("fixture"); let root = repository(&fixture); let implementation = fixture.path().join("implementation"); fs::create_dir_all(&implementation).expect("implementation"); let fixture_plugin = plugin(fixture.path()); let snapshot = Command::new(env!("CARGO_BIN_EXE_larch")) .current_dir(&root)

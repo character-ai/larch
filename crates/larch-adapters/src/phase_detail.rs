@@ -71,7 +71,7 @@ impl PhaseSkill {
 /// Explicit inputs for one pure-ish renderer invocation.
 #[derive(Clone, Debug)]
 pub struct RenderRequest<'a> {
-    /// Directory holding `round-N/round-meta.json` artifacts.
+    /// Directory holding completed `round-N` artifact trees.
     pub rounds_root: &'a Path,
     /// Workflow that owns the timing table's duration window.
     pub skill: PhaseSkill,
@@ -410,11 +410,17 @@ fn completed_round_dirs(root: &Path) -> Vec<PathBuf> {
     let mut entries: Vec<(u64, PathBuf)> = entries
         .flatten()
         .map(|entry| entry.path())
-        .filter(|path| path.is_dir() && regular_file(&path.join("round-meta.json")))
+        .filter(|path| path.is_dir() && completed_round(path))
         .filter_map(|path| round_number(&path).map(|number| (number, path)))
         .collect();
     entries.sort_by_key(|(number, _path)| *number);
     entries.into_iter().map(|(_number, path)| path).collect()
+}
+
+fn completed_round(path: &Path) -> bool {
+    regular_file(&path.join("round-meta.json"))
+        || (regular_file(&path.join("findings-classification.tsv"))
+            && regular_file(&path.join("collector-results.env")))
 }
 
 fn read_text(path: &Path) -> String {
