@@ -57,15 +57,27 @@ pub fn stage(
         ProductionServices::new(),
         |services| stage_with(services, version, notes_file, repo, pr, dry_run),
         |staged| {
-            emit_kv("TAG", &format!("v{version}"));
-            emit_kv("SOURCE_COMMIT", &staged.source_commit);
-            emit_kv("RELEASE_COMMIT", &staged.release_commit);
-            emit_kv("RELEASE_SOURCE_COMMIT", &staged.source_commit);
-            emit_kv("PROJECTION_PARENTS", &staged.parents.join(" "));
-            emit_kv("DRY_RUN", if staged.dry_run { "true" } else { "false" });
-            emit_kv("DRAFT_READY", if staged.dry_run { "false" } else { "true" });
+            for (key, value) in staged_kv(version, &staged) {
+                emit_kv(key, &value);
+            }
         },
     )
+}
+
+/// The `release stage` stdout rows, in emission order. The release skill reads
+/// `SOURCE_COMMIT` and `RELEASE_COMMIT`; the first-release runbook gates its
+/// rehearsal on `DRY_RUN` and `DRAFT_READY` and inspects `PROJECTION_PARENTS`.
+fn staged_kv(version: &str, staged: &StagedRelease) -> Vec<(&'static str, String)> {
+    let flag = |value: bool| if value { "true" } else { "false" }.to_owned();
+    vec![
+        ("TAG", format!("v{version}")),
+        ("SOURCE_COMMIT", staged.source_commit.clone()),
+        ("RELEASE_COMMIT", staged.release_commit.clone()),
+        ("RELEASE_SOURCE_COMMIT", staged.source_commit.clone()),
+        ("PROJECTION_PARENTS", staged.parents.join(" ")),
+        ("DRY_RUN", flag(staged.dry_run)),
+        ("DRAFT_READY", flag(!staged.dry_run)),
+    ]
 }
 
 pub fn asset_run(repo: &str, tag: &str, source_commit: &str) -> ExitCode {
@@ -491,7 +503,13 @@ fn stage_with(
     }
     let notes_file = notes_file.ok_or_else(|| "notes file is required".to_owned())?;
     let release_commit = stage_projection_tag(services, &slug, &tag, &source_commit, &projection)?;
-    let (parents, _) = services.commit_parents_and_tree(&release_commit)?;
+    // An idempotent re-run may accept an existing structurally matching tag
+    // whose commit is not the freshly built projection.
+    let parents = if release_commit == projection {
+        parents
+    } else {
+        services.commit_parents_and_tree(&release_commit)?.0
+    };
     let notes = fs::read_to_string(notes_file).map_err(|error| error.to_string())?;
     let input = DraftReleaseInput {
         tag: tag.clone(),
@@ -537,8 +555,9 @@ fn stage_projection_tag(
         return Ok(remote);
     }
     // The tag names an existing structurally matching local commit (whose OID
-    // differs from a freshly rebuilt projection on any retry, since `commit
-    // --amend` restamps the committer time), or the newly created projection.
+    // differs from a freshly rebuilt projection on any retry, since Git
+    // restamps the committer time on every rebuild), or the newly created
+    // projection.
     // The pushed ref, postcondition, and return value must all name that commit.
     let tagged = if let Some(local) = services.local_tag(tag)? {
         if !structurally_matches(services, &local, source_commit, &projection_tree)? {
@@ -1325,6 +1344,39 @@ mod tests {
         assert_eq!(rehearsal.tag_pushes.get(), 0);
         assert_eq!(*rehearsal.created.borrow(), 0);
         assert_eq!(*rehearsal.updated.borrow(), 0);
+
+        // The runbook gates on these rows; pin the mapping for both modes.
+        let rows = |staged: &StagedRelease| {
+            staged_kv("1.2.3", staged)
+                .into_iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            rows(&staged),
+            vec![
+                "TAG=v1.2.3".to_owned(),
+                format!("SOURCE_COMMIT={SOURCE}"),
+                format!("RELEASE_COMMIT={PROJECTION}"),
+                format!("RELEASE_SOURCE_COMMIT={SOURCE}"),
+                format!("PROJECTION_PARENTS={SOURCE}"),
+                "DRY_RUN=true".to_owned(),
+                "DRAFT_READY=false".to_owned(),
+            ]
+        );
+        let real = StagedRelease {
+            parents: vec![SOURCE.to_owned(), STABLE.to_owned()],
+            dry_run: false,
+            ..staged
+        };
+        assert_eq!(
+            rows(&real)[4..],
+            [
+                format!("PROJECTION_PARENTS={SOURCE} {STABLE}"),
+                "DRY_RUN=false".to_owned(),
+                "DRAFT_READY=true".to_owned(),
+            ]
+        );
 
         // The dry run still fails closed on every structural proof.
         let drift = FakeServices {
