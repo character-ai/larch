@@ -74,7 +74,7 @@ mod clarify_orchestrator_tests {
     /// A scripted sibling runner recording calls and returning queued outputs.
     struct FakeRunner {
         calls: RefCell<Vec<Vec<String>>>,
-        environments: RefCell<Vec<(String, Vec<(String, String)>)>>,
+        environments: RefCell<Vec<(String, String, String)>>,
         stdout: RefCell<Vec<String>>,
         failures: RefCell<BTreeMap<String, i32>>,
     }
@@ -111,13 +111,8 @@ mod clarify_orchestrator_tests {
             self.environments
                 .borrow()
                 .iter()
-                .find(|(recorded_verb, _environment)| recorded_verb == verb)
-                .and_then(|(_verb, environment)| {
-                    environment
-                        .iter()
-                        .find(|(name, _value)| name == key)
-                        .map(|(_name, value)| value.clone())
-                })
+                .find(|(recorded_verb, name, _value)| recorded_verb == verb && name == key)
+                .map(|(_verb, _name, value)| value.clone())
                 .unwrap_or_default()
         }
     }
@@ -163,11 +158,15 @@ mod clarify_orchestrator_tests {
                 .map(|value| value.to_string_lossy())
                 .collect::<Vec<_>>()
                 .join(" ");
-            let environment = environment
-                .iter()
-                .map(|(key, value)| (key.name().to_owned(), value.to_string_lossy().into_owned()))
-                .collect();
-            self.environments.borrow_mut().push((verb, environment));
+            self.environments
+                .borrow_mut()
+                .extend(environment.iter().map(|(key, value)| {
+                    (
+                        verb.clone(),
+                        key.name().to_owned(),
+                        value.to_string_lossy().into_owned(),
+                    )
+                }));
             self.run_larch(args)
         }
     }

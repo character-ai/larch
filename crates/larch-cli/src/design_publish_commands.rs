@@ -27,8 +27,9 @@ use larch_core::{
     hash_blocker_rows, hash_owner_rows, hash_plan_block, is_publish_attempt_id, is_repo_slug,
     parse_named_block, parse_native_blocker_refs, parse_owner_block, parse_receipt,
     persisted_note_publishable, private_atomic_write, redact_run_log_payload, redact_secrets_only,
-    review_provenance, rewrite_plan_difficulty, sanitizer_reason_token, splice_plan_provenance,
-    upsert_receipt, validate_plan_contract, write_bounded_diagram_failure_log,
+    remove_regular_file_if_present, review_provenance, rewrite_plan_difficulty,
+    sanitizer_reason_token, splice_plan_provenance, upsert_receipt, validate_plan_contract,
+    write_bounded_diagram_failure_log,
 };
 
 use crate::blocker_commands::resolve_repo_for;
@@ -804,18 +805,6 @@ fn write_plan_receipt_failure_log(design_tmpdir: &Path, detail: &str) {
     let _ = private_atomic_write(&path, &redact_run_log_payload(&detail), design_tmpdir);
 }
 
-/// Remove one prior attempt's plan-write detail without following an unsafe path.
-fn clear_plan_write_failure_log(design_tmpdir: &Path) -> bool {
-    let path = design_tmpdir.join("design-plan-write.failure.log");
-    match fs::symlink_metadata(&path) {
-        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
-            fs::remove_file(path).is_ok()
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
-        Ok(_) | Err(_) => false,
-    }
-}
-
 /// Append the optional publish state a terminal-stage command carries.
 fn publish_failure_stage_args(design_tmpdir: &Path, rows: &Rows, detail_log: &Path) -> Vec<String> {
     let mut args = vec![
@@ -1363,7 +1352,7 @@ fn publish_core(
     if redacted.is_empty() || fs::write(&redacted_plan, &redacted).is_err() {
         return RC_FAILED;
     }
-    if !clear_plan_write_failure_log(&paths.design_tmpdir) {
+    if !remove_regular_file_if_present(&paths.design_tmpdir.join("design-plan-write.failure.log")) {
         return RC_FAILED;
     }
     let block = plan_named_block_args(&args.issue, &redacted_plan, &repo_args);

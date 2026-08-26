@@ -87,7 +87,7 @@ mod design_publish_commands_tests {
         replies: HashMap<String, (i32, String, String)>,
         calls: RefCell<Vec<String>>,
         larch_calls: RefCell<Vec<String>>,
-        environment_calls: RefCell<Vec<(String, Vec<(String, String)>)>>,
+        environment_calls: RefCell<Vec<(String, String, String)>>,
     }
 
     impl ScriptRunner {
@@ -166,13 +166,8 @@ mod design_publish_commands_tests {
             self.environment_calls
                 .borrow()
                 .iter()
-                .find(|(call, _environment)| call.starts_with(prefix))
-                .and_then(|(_call, environment)| {
-                    environment
-                        .iter()
-                        .find(|(name, _value)| name == key)
-                        .map(|(_name, value)| value.clone())
-                })
+                .find(|(call, name, _value)| call.starts_with(prefix) && name == key)
+                .map(|(_call, _name, value)| value.clone())
                 .unwrap_or_default()
         }
     }
@@ -192,15 +187,15 @@ mod design_publish_commands_tests {
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect::<Vec<_>>()
                 .join(" ");
-            self.environment_calls.borrow_mut().push((
-                joined,
-                environment
-                    .iter()
-                    .map(|(key, value)| {
-                        (key.name().to_owned(), value.to_string_lossy().into_owned())
-                    })
-                    .collect(),
-            ));
+            self.environment_calls
+                .borrow_mut()
+                .extend(environment.iter().map(|(key, value)| {
+                    (
+                        joined.clone(),
+                        key.name().to_owned(),
+                        value.to_string_lossy().into_owned(),
+                    )
+                }));
             self.reply(args, true)
         }
     }
@@ -462,8 +457,7 @@ mod design_publish_commands_tests {
         let mut args = session.args();
         args.session_id = "design-session-8968".to_owned();
         let expected = super::super::plan_named_block_lease(&args.session_id)
-            .map(|lease| lease.run_id)
-            .unwrap_or_else(|| args.session_id.clone());
+            .map_or_else(|| args.session_id.clone(), |lease| lease.run_id);
         let runner = ScriptRunner::new(&[SIZE_OK]);
         let receipt = ScriptReceipt::ok();
 

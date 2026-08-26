@@ -1739,7 +1739,7 @@ pub fn claim_recovery(
                         }
                     }
                 }
-                if !remove_regular_file(&lease_path) {
+                if !remove_regular_file_if_present(&lease_path) {
                     return Err(BgjobError::Io(
                         "could not remove stale recovery lease".to_owned(),
                     ));
@@ -1763,7 +1763,7 @@ pub fn release_recovery_claim(claim: &RecoveryLease) {
         inspect_recovery_lease(&claim.lease_path),
         Ok(RecoveryLeaseState::Valid(existing)) if existing == claim.claimant
     ) {
-        let _removed = remove_regular_file(&claim.lease_path);
+        let _removed = remove_regular_file_if_present(&claim.lease_path);
     }
 }
 
@@ -2076,7 +2076,9 @@ fn read_recovery_lease(path: &Path) -> Option<RecordedProcessIdentity> {
     }
 }
 
-fn remove_regular_file(path: &Path) -> bool {
+/// Remove one regular file without following a symlink, accepting absence.
+#[must_use]
+pub fn remove_regular_file_if_present(path: &Path) -> bool {
     match fs::symlink_metadata(path) {
         Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_file() => {
             fs::remove_file(path).is_ok()
