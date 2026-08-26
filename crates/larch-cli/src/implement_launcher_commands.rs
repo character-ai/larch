@@ -1128,6 +1128,13 @@ fn launch_cursor(args: &ImplementArguments) -> i32 {
 
     let mut child_environment = larch_core::cursor_child_environment(credential.as_ref());
     child_environment.push(cursor_config.child_environment());
+    let credential_source = if env::var_os(larch_core::env::CURSOR_API_KEY).is_some() {
+        "environment"
+    } else if credential.is_some() {
+        "keychain"
+    } else {
+        "none"
+    };
     let mark = || mark_step2_token(&sidecar);
     let usage = |model: &str| record_cursor_implement_usage(&artifacts, &sidecar, model);
     let exit_code = run_vendor_launch_execution(&VendorLaunchExecution {
@@ -1154,7 +1161,7 @@ fn launch_cursor(args: &ImplementArguments) -> i32 {
     artifacts.append(
         &artifacts.path(LauncherArtifactKind::Meta),
         &format!(
-            "OUTER_LAUNCHER=agent launch-cursor-implement\nOUTER_LAUNCHER_PROMPT_FILE={}\nOUTER_LAUNCHER_WORKDIR={workdir_text}\n",
+            "OUTER_LAUNCHER=agent launch-cursor-implement\nOUTER_LAUNCHER_PROMPT_FILE={}\nOUTER_LAUNCHER_WORKDIR={workdir_text}\nCURSOR_CREDENTIAL_SOURCE={credential_source}\n",
             artifacts.path(LauncherArtifactKind::Prompt).display(),
         ),
     );
