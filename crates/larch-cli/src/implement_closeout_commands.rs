@@ -442,20 +442,7 @@ fn final_report(context: &CloseoutContext, print_stdout: bool) -> Result<Process
     if cost_overrides != "{}" {
         arguments.extend(["--cost-overrides-json".into(), cost_overrides.into()]);
     }
-    let environment = [
-        (
-            ChildEnvironment::ClaudeCodeEffortLevel,
-            env::var_os("CLAUDE_CODE_EFFORT_LEVEL").unwrap_or_default(),
-        ),
-        (
-            ChildEnvironment::ClaudeEffort,
-            env::var_os("CLAUDE_EFFORT").unwrap_or_default(),
-        ),
-        (
-            ChildEnvironment::LarchExecIssueAssessmentModel,
-            env::var_os("LARCH_EXEC_ISSUE_ASSESSMENT_MODEL").unwrap_or_default(),
-        ),
-    ];
+    let environment = crate::final_report_commands::child_environment();
     context.run_with_environment(arguments, &environment)
 }
 

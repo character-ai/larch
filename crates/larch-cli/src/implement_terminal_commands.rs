@@ -629,6 +629,7 @@ fn step18_logs_flush(root: &Path, tmpdir: &Path, step17_emitted: &str) -> i32 {
     let step18b_err = tmpdir.join("step18b-final-report.stderr");
     let _ = fs::write(&step18b_err, b"");
     let tmpdir_text = tmpdir.to_string_lossy().into_owned();
+    let report_environment = crate::final_report_commands::child_environment();
     let result = larch(
         root,
         tmpdir,
@@ -641,7 +642,7 @@ fn step18_logs_flush(root: &Path, tmpdir: &Path, step17_emitted: &str) -> i32 {
             step17_emitted,
         ],
         None,
-        &[],
+        &report_environment,
     );
     let (rc, stdout, stderr) = match result {
         Ok(output) => (

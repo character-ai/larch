@@ -125,6 +125,32 @@ CODE_DELETED=1470\nLOGS_ADDED=88\nLOGS_DELETED=0\n",
     run
 }
 
+fn seed_rust_step5_round_without_meta(run: &Run) {
+    let round = format!("larch-logs/implement/{RUN_ID}/round-1");
+    run.write(
+        &format!("{round}/findings-classification.tsv"),
+        concat!(
+            "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_severity\tv2_vote\tv2_severity\tv3_vote\tv3_severity\tscope\n",
+            "FINDING_1\tcodex-generalist-output.txt\trejected\tNO\tminor\tNO\tminor\tNO\tminor\tin_scope\n",
+        ),
+    );
+    run.write(
+        &format!("{round}/collector-results.env"),
+        "TOOL=codex\nSTATUS=OK\nREVIEWER_FILE=codex-generalist-output.txt\n",
+    );
+    run.write(
+        &format!("{round}/panel-manifest.ndjson"),
+        "{\"slot\":\"generalist\",\"tool\":\"codex\",\"output\":\"codex-generalist-output.txt\"}\n",
+    );
+    run.write(
+        "timing-ledger.tsv",
+        concat!(
+            "v1\tround\t-\timplement\t-\t1\t100\t220\t-\t-\t-\t-\t1\n",
+            "v1\tvendor\t-\t-\t-\tcodex\treview\t110\t200\t-\tcodex-generalist-output.txt\t-\tcomplete\n",
+        ),
+    );
+}
+
 fn kv(stdout: &str) -> BTreeMap<String, String> {
     KvDocument::parse(stdout, ParseOptions::legacy())
         .expect("KEY=value envelope")
@@ -197,6 +223,32 @@ fn write_never_embeds_the_temporary_root_or_a_credential() {
     let body = summary(&run.tmpdir.join("summary-final.md"));
     assert!(!body.contains(&run.tmpdir.display().to_string()));
     assert!(!body.contains("ghp_"));
+}
+
+#[test]
+fn write_renders_a_completed_rust_step5_round_without_round_meta() {
+    let run = shipped_run();
+    seed_rust_step5_round_without_meta(&run);
+    assert!(!run.run_dir().join("round-1/round-meta.json").exists());
+
+    let output = run
+        .command("write")
+        .arg("--skip-tracking-upsert")
+        .output()
+        .expect("final-report write");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let body = summary(&run.tmpdir.join("summary-final.md"));
+    assert!(!body.contains("No review rounds completed."), "{body}");
+    assert!(
+        body.contains("| 1 | 0 | 0 | 0 | 0 | 2m 00s | N/A | 0 |"),
+        "{body}"
+    );
+    assert!(body.contains("### Round 1 reviewer timing"), "{body}");
+    assert!(body.contains("codex/generalist"), "{body}");
 }
 
 #[test]
@@ -369,4 +421,75 @@ fn step18b_suppresses_the_body_when_step17_already_emitted_an_identical_one() {
         Some("true")
     );
     assert_eq!(values.get("SNAPSHOT_OK").map(String::as_str), Some("true"));
+}
+
+#[cfg(unix)]
+#[test]
+fn step18_composite_forwards_effort_metadata_to_the_nested_final_report() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let run = Run::create();
+    run.write(
+        "session-env.sh",
+        &format!("LARCH_RUN_ID={RUN_ID}\nNO_LOGS_COMMIT=true\n"),
+    );
+    let plugin = run.tmpdir.join("plugin");
+    let launcher = plugin.join("scripts/larch.sh");
+    fs::create_dir_all(launcher.parent().expect("launcher parent")).expect("plugin scripts");
+    fs::write(
+        &launcher,
+        r#"#!/bin/sh
+set -eu
+case "$1:$2" in
+  final-report:step18b)
+    printf '%s|%s\n' "${CLAUDE_CODE_EFFORT_LEVEL-}" "${CLAUDE_EFFORT-}" > "$IMPLEMENT_TMPDIR/step18-effort.txt"
+    printf '## /implement run fixture: merged\n' > "$IMPLEMENT_TMPDIR/summary-final.md"
+    printf 'EMIT_BODY=false\nWFR_RC=0\nSTEP17_EMITTED_PRESENT=true\nSNAPSHOT_OK=true\nERROR=\n'
+    ;;
+  run-log:prepare-terminal-snapshot)
+    printf 'SESSION_TRANSCRIPT_STATUS=captured\nTERMINAL_SNAPSHOT_STATUS=prepared\n'
+    ;;
+  stall-recovery:normalize-outcome)
+    printf 'IMPLEMENT_NORMALIZED_OUTCOME=merged\n'
+    ;;
+  token:report|token:mark|timing:report|timing:mark)
+    ;;
+  *)
+    printf 'unexpected child: %s %s\n' "$1" "$2" >&2
+    exit 64
+    ;;
+esac
+"#,
+    )
+    .expect("launcher");
+    fs::set_permissions(&launcher, fs::Permissions::from_mode(0o755)).expect("launcher mode");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_larch"))
+        .current_dir(&run.tmpdir)
+        .env("IMPLEMENT_TMPDIR", &run.tmpdir)
+        .env("CLAUDE_PLUGIN_ROOT", &plugin)
+        .env("CLAUDE_CODE_EFFORT_LEVEL", "high")
+        .env("CLAUDE_EFFORT", "legacy-high")
+        .args([
+            "implement",
+            "step-18-gate-logs-flush",
+            "--implement-tmpdir",
+            run.tmpdir.to_str().expect("temporary root"),
+            "--stall-tracking-memory",
+            "false",
+            "--step17-emitted",
+            "true",
+        ])
+        .output()
+        .expect("implement step-18-gate-logs-flush");
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(run.tmpdir.join("step18-effort.txt")).expect("effort capture"),
+        "high|legacy-high\n"
+    );
 }

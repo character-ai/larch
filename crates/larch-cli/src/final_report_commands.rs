@@ -113,6 +113,24 @@ pub fn cost_overrides_from_environment() -> String {
     .unwrap_or_else(|_error| "{}".to_owned())
 }
 
+/// Environment metadata that every composed final-report child must retain.
+pub fn child_environment() -> [(ChildEnvironment, OsString); 3] {
+    [
+        (
+            ChildEnvironment::ClaudeCodeEffortLevel,
+            env::var_os("CLAUDE_CODE_EFFORT_LEVEL").unwrap_or_default(),
+        ),
+        (
+            ChildEnvironment::ClaudeEffort,
+            env::var_os("CLAUDE_EFFORT").unwrap_or_default(),
+        ),
+        (
+            ChildEnvironment::LarchExecIssueAssessmentModel,
+            env::var_os("LARCH_EXEC_ISSUE_ASSESSMENT_MODEL").unwrap_or_default(),
+        ),
+    ]
+}
+
 /// One completed report render.
 struct ReportOutcome {
     code: i32,
