@@ -597,8 +597,17 @@ mod tests {
             &MergeRequest::Commit {
                 theirs: GitRef::new("topic").unwrap(),
                 no_edit: true,
+                strategy_ours: false,
             },
             &["merge", "--no-edit", "topic"],
+        );
+        check(
+            &MergeRequest::Commit {
+                theirs: GitRef::new("topic").unwrap(),
+                no_edit: true,
+                strategy_ours: true,
+            },
+            &["merge", "-s", "ours", "--no-edit", "topic"],
         );
         check(
             &MergeRequest::FastForward {
@@ -1764,11 +1773,100 @@ mod tests {
                     MergeRequest::Commit {
                         theirs: GitRef::new("missing-branch").unwrap(),
                         no_edit: true,
+                        strategy_ours: false,
                     },
                     &NeverCancelled,
                 ))
             },
         );
+        assert_status_differential_case(
+            "merge strategy ours succeeds where a content merge would conflict",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            setup_divergent_tracked,
+            ["merge", "-s", "ours", "--no-edit", "topic"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).merge(
+                    MergeRequest::Commit {
+                        theirs: GitRef::new("topic").unwrap(),
+                        no_edit: true,
+                        strategy_ours: true,
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+    }
+
+    #[test]
+    fn merge_strategy_ours_keeps_ours_tree_and_records_both_parents() {
+        let runtime = LarchRuntime::current_thread().expect("runtime");
+        let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
+        let repository = GitRepository::builder(GitFixture::Refs)
+            .build()
+            .expect("fixture");
+        setup_divergent_tracked(&repository);
+        let pre_head = rev_parse(&repository, "HEAD");
+        let pre_tree = rev_parse(&repository, "HEAD^{tree}");
+        let topic = rev_parse(&repository, "topic");
+
+        runtime
+            .block_on(GitCli::new(&runner, policy(repository.root())).merge(
+                MergeRequest::Commit {
+                    theirs: GitRef::new("topic").unwrap(),
+                    no_edit: true,
+                    strategy_ours: true,
+                },
+                &NeverCancelled,
+            ))
+            .expect("ours merge");
+
+        assert_eq!(rev_parse(&repository, "HEAD^1"), pre_head);
+        assert_eq!(rev_parse(&repository, "HEAD^2"), topic);
+        assert_eq!(rev_parse(&repository, "HEAD^{tree}"), pre_tree);
+    }
+
+    fn rev_parse(repository: &GitRepository, spec: &str) -> String {
+        let output = repository
+            .git(["rev-parse", spec])
+            .expect("run fixture rev-parse");
+        assert!(output.success(), "fixture rev-parse must succeed");
+        String::from_utf8(output.stdout)
+            .expect("rev-parse output is UTF-8")
+            .trim()
+            .to_owned()
+    }
+
+    fn setup_divergent_tracked(repository: &GitRepository) {
+        repository
+            .git(["config", "user.name", "Larch Fixture"])
+            .expect("configure fixture author");
+        repository
+            .git(["config", "user.email", "fixture@example.invalid"])
+            .expect("configure fixture author");
+        let topic_checkout = repository
+            .git(["checkout", "--quiet", "topic"])
+            .expect("checkout topic fixture branch");
+        assert!(topic_checkout.success());
+        repository
+            .write("tracked.txt", b"topic\n")
+            .expect("write topic change");
+        let topic_commit = repository
+            .git(["commit", "--quiet", "-am", "topic change"])
+            .expect("commit topic change");
+        assert!(topic_commit.success());
+        let main_checkout = repository
+            .git(["checkout", "--quiet", "main"])
+            .expect("checkout main fixture branch");
+        assert!(main_checkout.success());
+        repository
+            .write("tracked.txt", b"main\n")
+            .expect("write main change");
+        let main_commit = repository
+            .git(["commit", "--quiet", "-am", "main change"])
+            .expect("commit main change");
+        assert!(main_commit.success());
     }
 
     fn setup_rebase_conflict(repository: &GitRepository) {

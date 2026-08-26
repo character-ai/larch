@@ -19,7 +19,7 @@ pub struct ProductionReleaseServices {
     pub(crate) github: OctocrabGitHubService,
     pub(crate) repository: GixRepository,
     git_policy: GitCliPolicy,
-    runner: TokioProcessRunner,
+    pub(crate) runner: TokioProcessRunner,
 }
 
 /// Resolve the commit GitHub recorded for a merged release PR.

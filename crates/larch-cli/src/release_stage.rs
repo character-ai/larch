@@ -7,13 +7,17 @@
 use std::{collections::BTreeSet, env, fs, path::Path, process::ExitCode, time::Duration};
 
 use larch_adapters::{
-    GitRef, SecureTempDir, TagMutationRequest, TemporaryRoot,
+    AddRequest, CommitMessage, CommitRequest, FetchMode, FetchRequest, GitCli, GitCliPolicy,
+    GitPath as CliGitPath, GitRef, GitRefspec, GitRemote, GixRepository, MergeRequest,
+    RepositoryRoot, SecureTempDir, TagMutationRequest, TemporaryRoot, TokioProcessRunner,
+    WorktreeRequest,
     clock::TokioClock,
+    git::WorktreePath,
     github::{
         AttestationOperations, DraftReleaseInput, OctocrabAttestationTransport,
         OctocrabReleaseTransport, ReleaseOperations, RepoSlug,
     },
-    runtime::Cancellation,
+    runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
     ArtifactAttestationRequest, AsyncClock, GitHubActionsService, GitHubRepositoryRef, GitPath,
@@ -45,9 +49,11 @@ pub fn stage(version: &str, notes_file: &Path, repo: &str, pr: &str) -> ExitCode
     release_common::command(
         ProductionServices::new(),
         |services| stage_with(services, version, notes_file, repo, pr),
-        |source_commit| {
+        |staged| {
             emit_kv("TAG", &format!("v{version}"));
-            emit_kv("SOURCE_COMMIT", &source_commit);
+            emit_kv("SOURCE_COMMIT", &staged.source_commit);
+            emit_kv("RELEASE_COMMIT", &staged.release_commit);
+            emit_kv("RELEASE_SOURCE_COMMIT", &staged.source_commit);
             emit_kv("DRAFT_READY", "true");
         },
     )
@@ -99,6 +105,17 @@ trait Services: release_common::PostMergeReleaseServices {
     fn local_tag(&self, tag: &str) -> Result<Option<String>, String>;
     fn create_local_tag(&self, tag: &str, oid: &str) -> Result<(), String>;
     fn push_tag(&self, tag: &str) -> Result<(), String>;
+    fn resolve_origin_stable(&self) -> Result<Option<String>, String>;
+    fn build_projection_commit(
+        &self,
+        source_commit: &str,
+        stable_oid: &str,
+        version: &str,
+    ) -> Result<String, String>;
+    fn fetch_tag(&self, tag: &str) -> Result<(), String>;
+    fn commit_parents_and_tree(&self, oid: &str) -> Result<(Vec<String>, String), String>;
+    fn changed_paths(&self, base: &str, head: &str) -> Result<Vec<String>, String>;
+    fn projected_plugin_version(&self, oid: &str) -> Result<String, String>;
     fn staged_release(
         &self,
         repo: &RepoSlug,
@@ -205,6 +222,124 @@ impl Services for ProductionServices {
         self.push_origin_ref(&format!("{reference}:{reference}"))
     }
 
+    fn resolve_origin_stable(&self) -> Result<Option<String>, String> {
+        let request = FetchRequest {
+            remote: GitRemote::new("origin").map_err(|error| error.to_string())?,
+            refspec: Some(
+                GitRefspec::new("refs/heads/stable:refs/remotes/origin/stable")
+                    .map_err(|error| error.to_string())?,
+            ),
+            quiet: true,
+            no_tags: false,
+            mode: FetchMode::Standard,
+        };
+        if self
+            .runtime
+            .block_on(self.git_cli().fetch(request, &self.cancellation))
+            .is_err()
+        {
+            return Ok(None);
+        }
+        match self
+            .repository
+            .resolve_revision(&Revision::new(b"refs/remotes/origin/stable".to_vec()))
+        {
+            Ok(oid) => Ok(Some(oid.to_hex())),
+            Err(error) if error.kind() == RepositoryErrorKind::RevisionNotFound => Ok(None),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn build_projection_commit(
+        &self,
+        source_commit: &str,
+        stable_oid: &str,
+        version: &str,
+    ) -> Result<String, String> {
+        let root = self.git_cli().working_directory().to_path_buf();
+        build_projection_commit_with_git(
+            &root,
+            &self.runtime,
+            &self.cancellation,
+            &self.runner,
+            source_commit,
+            stable_oid,
+            version,
+        )
+    }
+
+    fn fetch_tag(&self, tag: &str) -> Result<(), String> {
+        let reference = format!("refs/tags/{tag}");
+        let request = FetchRequest {
+            remote: GitRemote::new("origin").map_err(|error| error.to_string())?,
+            refspec: Some(
+                GitRefspec::new(format!("{reference}:{reference}"))
+                    .map_err(|error| error.to_string())?,
+            ),
+            quiet: true,
+            no_tags: true,
+            mode: FetchMode::Standard,
+        };
+        self.runtime
+            .block_on(self.git_cli().fetch(request, &self.cancellation))
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    fn commit_parents_and_tree(&self, oid: &str) -> Result<(Vec<String>, String), String> {
+        let id = self.object_id(oid)?;
+        let commits = self
+            .repository
+            .walk_commits(&id, 1)
+            .map_err(|error| error.to_string())?;
+        let commit = commits
+            .first()
+            .ok_or_else(|| format!("commit {oid} was not found"))?;
+        Ok((
+            commit
+                .parents
+                .iter()
+                .map(larch_core::ObjectId::to_hex)
+                .collect(),
+            commit.tree.to_hex(),
+        ))
+    }
+
+    fn changed_paths(&self, base: &str, head: &str) -> Result<Vec<String>, String> {
+        let request = crate::git_command_runtime::exact_name_only_request(
+            Some(GitRef::new(base).map_err(|error| error.to_string())?),
+            Some(GitRef::new(head).map_err(|error| error.to_string())?),
+        );
+        let result = self
+            .runtime
+            .block_on(self.git_cli().exact_diff(request, &self.cancellation))
+            .map_err(|error| error.to_string())?;
+        let stdout = String::from_utf8(result.output().stdout().to_vec())
+            .map_err(|_| "projection diff returned non-UTF-8 output".to_owned())?;
+        Ok(stdout.lines().map(str::to_owned).collect())
+    }
+
+    fn projected_plugin_version(&self, oid: &str) -> Result<String, String> {
+        let id = self.object_id(oid)?;
+        let bytes = self
+            .repository
+            .blob_at_commit(
+                &id,
+                &GitPath::new(b"plugin/.claude-plugin/plugin.json".to_vec()),
+            )
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                format!("projected plugin.json read at {oid} failed: file is missing")
+            })?;
+        let value: serde_json::Value = serde_json::from_slice(&bytes)
+            .map_err(|_| format!("projected plugin.json at {oid} is invalid JSON"))?;
+        value
+            .get("version")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| format!("projected plugin.json at {oid} has no version"))
+    }
+
     fn staged_release(
         &self,
         repo: &RepoSlug,
@@ -290,13 +425,22 @@ fn ensure_policy_with(services: &dyn Services, repo: &str) -> Result<(), String>
     services.ensure_policy(&slug)
 }
 
+/// Both commits a successful `release stage` reports on stdout.
+#[derive(Debug, Eq, PartialEq)]
+struct StagedRelease {
+    /// The merged release-PR commit (`SOURCE_COMMIT`, unchanged meaning).
+    source_commit: String,
+    /// The tagged projection commit (`RELEASE_COMMIT`).
+    release_commit: String,
+}
+
 fn stage_with(
     services: &dyn Services,
     version: &str,
     notes_file: &Path,
     repo: &str,
     pr: &str,
-) -> Result<String, String> {
+) -> Result<StagedRelease, String> {
     let tag = release_tag(version)?;
     let pr = parse_pr(pr)?;
     let (repository, slug) = repositories(repo)?;
@@ -314,11 +458,40 @@ fn stage_with(
             "release candidate plugin version does not match the requested version".to_owned(),
         );
     }
-    stage_tag(services, &slug, &tag, &source_commit)?;
+    let stable = services
+        .resolve_origin_stable()?
+        .ok_or_else(|| "origin/stable is not resolvable".to_owned())?;
+    let projection = services.build_projection_commit(&source_commit, &stable, version)?;
+    // During the transition plugin/ is still committed on main, so an empty
+    // changed-path set (identical trees) is a valid projection.
+    if services
+        .changed_paths(&source_commit, &projection)?
+        .iter()
+        .any(|path| !path.starts_with("plugin/"))
+    {
+        return Err("projection commit changed paths outside plugin/".to_owned());
+    }
+    let (parents, projection_tree) = services.commit_parents_and_tree(&projection)?;
+    if parents.first().map(String::as_str) != Some(source_commit.as_str()) {
+        return Err("projection commit first parent is not the merged release commit".to_owned());
+    }
+    if services.projected_plugin_version(&projection)? != version {
+        return Err(
+            "projected plugin.json version does not match the requested version".to_owned(),
+        );
+    }
+    let release_commit = stage_projection_tag(
+        services,
+        &slug,
+        &tag,
+        &source_commit,
+        &projection,
+        &projection_tree,
+    )?;
     let notes = fs::read_to_string(notes_file).map_err(|error| error.to_string())?;
     let input = DraftReleaseInput {
         tag: tag.clone(),
-        target_commitish: source_commit.clone(),
+        target_commitish: release_commit.clone(),
         body: SafeText::from_untrusted(notes).as_str().to_owned(),
     };
     let release = match services.staged_release(&slug, &input)? {
@@ -331,37 +504,188 @@ fn stage_with(
     if release.tag() != tag || !release.is_mutable_draft() {
         return Err("staged release is not a mutable draft".to_owned());
     }
-    Ok(source_commit)
+    Ok(StagedRelease {
+        source_commit,
+        release_commit,
+    })
 }
 
-fn stage_tag(
+/// Tag the projection commit, or converge on a structurally matching tag.
+///
+/// Idempotency deliberately compares the first parent and the projected tree
+/// only; the `origin/stable` second parent may drift between re-runs.
+fn stage_projection_tag(
     services: &dyn Services,
     repo: &RepoSlug,
     tag: &str,
     source_commit: &str,
-) -> Result<(), String> {
-    match services.remote_tag(repo, tag)? {
-        Some(remote) if remote != source_commit => {
-            return Err(format!(
-                "remote tag {tag} points at {remote}, not {source_commit}"
-            ));
-        }
-        Some(_) => {}
-        None => {
-            match services.local_tag(tag)? {
-                Some(local) if local != source_commit => {
-                    return Err(format!("local tag {tag} points at a different commit"));
-                }
-                Some(_) => {}
-                None => services.create_local_tag(tag, source_commit)?,
+    projection: &str,
+    projection_tree: &str,
+) -> Result<String, String> {
+    let release_commit = match services.remote_tag(repo, tag)? {
+        Some(remote) => {
+            if services.commit_parents_and_tree(&remote).is_err() {
+                services.fetch_tag(tag)?;
             }
-            services.push_tag(tag)?;
+            require_matching_projection(
+                services,
+                &remote,
+                source_commit,
+                projection_tree,
+                &format!("remote tag {tag} points at {remote}, not a matching projection commit"),
+            )?;
+            remote
         }
-    }
-    if services.remote_tag(repo, tag)?.as_deref() != Some(source_commit) {
+        None => {
+            if let Some(local) = services.local_tag(tag)? {
+                require_matching_projection(
+                    services,
+                    &local,
+                    source_commit,
+                    projection_tree,
+                    &format!("local tag {tag} points at a different commit"),
+                )?;
+                services.push_tag(tag)?;
+                local
+            } else {
+                services.create_local_tag(tag, projection)?;
+                services.push_tag(tag)?;
+                projection.to_owned()
+            }
+        }
+    };
+    if services.remote_tag(repo, tag)?.as_deref() != Some(release_commit.as_str()) {
         return Err("remote tag postcondition failed".to_owned());
     }
-    Ok(())
+    Ok(release_commit)
+}
+
+fn require_matching_projection(
+    services: &dyn Services,
+    commit: &str,
+    source_commit: &str,
+    projection_tree: &str,
+    message: &str,
+) -> Result<(), String> {
+    let (parents, tree) = services.commit_parents_and_tree(commit)?;
+    if parents.first().map(String::as_str) == Some(source_commit) && tree == projection_tree {
+        Ok(())
+    } else {
+        Err(message.to_owned())
+    }
+}
+
+/// Build the two-parent projection commit inside a detached temporary worktree.
+///
+/// The commit's tree is the merged release tree plus a freshly generated
+/// `plugin/`; its parents are `[source_commit, stable_oid]`. The worktree is
+/// removed on both success and failure before returning.
+pub fn build_projection_commit_with_git(
+    repo_root: &Path,
+    runtime: &LarchRuntime,
+    cancellation: &Cancellation,
+    runner: &TokioProcessRunner,
+    source_commit: &str,
+    stable_oid: &str,
+    version: &str,
+) -> Result<String, String> {
+    let temporary_root =
+        TemporaryRoot::resolve(Some(&env::temp_dir())).map_err(|error| error.to_string())?;
+    let temporary = SecureTempDir::create(&temporary_root, "larch-release-projection-")
+        .map_err(|error| error.to_string())?;
+    let worktree = temporary.path().join("worktree");
+    let policy = GitCliPolicy::new(repo_root.to_path_buf()).map_err(|error| error.to_string())?;
+    let git = GitCli::new(runner, policy);
+    runtime
+        .block_on(git.worktree(
+            WorktreeRequest::Add {
+                branch: None,
+                detach: true,
+                path: WorktreePath::new(worktree.as_os_str()).map_err(|error| error.to_string())?,
+                start_point: Some(GitRef::new(source_commit).map_err(|error| error.to_string())?),
+            },
+            cancellation,
+        ))
+        .map_err(|error| error.to_string())?;
+    let built = build_projection_in_worktree(
+        &worktree,
+        runtime,
+        cancellation,
+        runner,
+        stable_oid,
+        version,
+    );
+    let removed = runtime
+        .block_on(git.worktree(
+            WorktreeRequest::Remove {
+                force: true,
+                path: WorktreePath::new(worktree.as_os_str()).map_err(|error| error.to_string())?,
+            },
+            cancellation,
+        ))
+        .map(|_| ())
+        .map_err(|error| error.to_string());
+    let oid = built?;
+    removed?;
+    Ok(oid)
+}
+
+fn build_projection_in_worktree(
+    worktree: &Path,
+    runtime: &LarchRuntime,
+    cancellation: &Cancellation,
+    runner: &TokioProcessRunner,
+    stable_oid: &str,
+    version: &str,
+) -> Result<String, String> {
+    let policy = GitCliPolicy::new(worktree.to_path_buf()).map_err(|error| error.to_string())?;
+    let git = GitCli::new(runner, policy);
+    runtime
+        .block_on(git.merge(
+            MergeRequest::Commit {
+                theirs: GitRef::new(stable_oid).map_err(|error| error.to_string())?,
+                no_edit: true,
+                strategy_ours: true,
+            },
+            cancellation,
+        ))
+        .map_err(|error| error.to_string())?;
+    let root = RepositoryRoot::resolve(Some(worktree)).map_err(|error| error.to_string())?;
+    crate::release_plugin_runtime::generate_projection(&root, &root.path().join("plugin"))?;
+    runtime
+        .block_on(git.add(
+            AddRequest {
+                all: false,
+                force: true,
+                pathspec_from_file: None,
+                pathspec_file_nul: false,
+                paths: vec![CliGitPath::new("plugin").map_err(|error| error.to_string())?],
+            },
+            cancellation,
+        ))
+        .map_err(|error| error.to_string())?;
+    runtime
+        .block_on(git.commit(
+            CommitRequest {
+                message: Some(CommitMessage::Literal(
+                    format!("Release v{version} plugin projection").into(),
+                )),
+                amend: true,
+                no_edit: false,
+                allow_empty: false,
+                only: false,
+                pathspec_from_file: None,
+                pathspec_file_nul: false,
+                paths: Vec::new(),
+            },
+            cancellation,
+        ))
+        .map_err(|error| error.to_string())?;
+    let repository = GixRepository::open(worktree).map_err(|error| error.to_string())?;
+    repository
+        .resolve_revision(&Revision::new(b"HEAD".to_vec()))
+        .map(|oid| oid.to_hex())
+        .map_err(|error| error.to_string())
 }
 
 fn asset_run_with(
@@ -580,6 +904,9 @@ mod tests {
 
     const SOURCE: &str = "1111111111111111111111111111111111111111";
     const OTHER: &str = "2222222222222222222222222222222222222222";
+    const PROJECTION: &str = "3333333333333333333333333333333333333333";
+    const STABLE: &str = "4444444444444444444444444444444444444444";
+    const TREE: &str = "5555555555555555555555555555555555555555";
     const DIGEST: &str = "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881";
 
     struct FakeServices {
@@ -591,6 +918,14 @@ mod tests {
         plugin_version: String,
         remote_tag: RefCell<Option<String>>,
         local_tag: Option<String>,
+        stable: Result<Option<String>, String>,
+        projection_commit: Result<String, String>,
+        projection_builds: Cell<usize>,
+        commit_graph: BTreeMap<String, (Vec<String>, String)>,
+        changed: Result<Vec<String>, String>,
+        projected_version: Result<String, String>,
+        tag_creates: Cell<usize>,
+        created_tag: RefCell<Option<String>>,
         releases: RefCell<Vec<Option<ReleaseState>>>,
         created: RefCell<usize>,
         updated: RefCell<usize>,
@@ -618,6 +953,17 @@ mod tests {
                 plugin_version: "1.2.3".to_owned(),
                 remote_tag: RefCell::new(Some(SOURCE.to_owned())),
                 local_tag: None,
+                stable: Ok(Some(STABLE.to_owned())),
+                projection_commit: Ok(PROJECTION.to_owned()),
+                projection_builds: Cell::new(0),
+                commit_graph: BTreeMap::from([(
+                    PROJECTION.to_owned(),
+                    (vec![SOURCE.to_owned(), STABLE.to_owned()], TREE.to_owned()),
+                )]),
+                changed: Ok(vec!["plugin/scripts/larch.sh".to_owned()]),
+                projected_version: Ok("1.2.3".to_owned()),
+                tag_creates: Cell::new(0),
+                created_tag: RefCell::new(None),
                 releases: RefCell::new(Vec::new()),
                 created: RefCell::new(0),
                 updated: RefCell::new(0),
@@ -671,13 +1017,48 @@ mod tests {
         fn local_tag(&self, _tag: &str) -> Result<Option<String>, String> {
             Ok(self.local_tag.clone())
         }
-        fn create_local_tag(&self, _tag: &str, _oid: &str) -> Result<(), String> {
+        fn create_local_tag(&self, _tag: &str, oid: &str) -> Result<(), String> {
+            self.tag_creates.set(self.tag_creates.get() + 1);
+            *self.created_tag.borrow_mut() = Some(oid.to_owned());
             Ok(())
         }
         fn push_tag(&self, _tag: &str) -> Result<(), String> {
             self.tag_pushes.set(self.tag_pushes.get() + 1);
-            *self.remote_tag.borrow_mut() = Some(SOURCE.to_owned());
+            let pushed = self
+                .created_tag
+                .borrow()
+                .clone()
+                .or_else(|| self.local_tag.clone())
+                .expect("push requires a local tag");
+            *self.remote_tag.borrow_mut() = Some(pushed);
             Ok(())
+        }
+        fn resolve_origin_stable(&self) -> Result<Option<String>, String> {
+            self.stable.clone()
+        }
+        fn build_projection_commit(
+            &self,
+            _source_commit: &str,
+            _stable_oid: &str,
+            _version: &str,
+        ) -> Result<String, String> {
+            self.projection_builds.set(self.projection_builds.get() + 1);
+            self.projection_commit.clone()
+        }
+        fn fetch_tag(&self, _tag: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn commit_parents_and_tree(&self, oid: &str) -> Result<(Vec<String>, String), String> {
+            self.commit_graph
+                .get(oid)
+                .cloned()
+                .ok_or_else(|| format!("commit {oid} was not found"))
+        }
+        fn changed_paths(&self, _base: &str, _head: &str) -> Result<Vec<String>, String> {
+            self.changed.clone()
+        }
+        fn projected_plugin_version(&self, _oid: &str) -> Result<String, String> {
+            self.projected_version.clone()
         }
         fn staged_release(
             &self,
@@ -743,6 +1124,136 @@ mod tests {
         fn verify_artifact(&self, _request: &ArtifactAttestationRequest) -> Result<(), String> {
             self.attestation_error.clone().map_or(Ok(()), Err)
         }
+    }
+
+    #[test]
+    fn build_projection_commit_with_git_builds_the_projection_shape() {
+        let fixture = projection_fixture();
+        let runtime = LarchRuntime::current_thread().expect("test runtime");
+        let runner = TokioProcessRunner::default();
+        let cancellation = Cancellation::new();
+        let source = fixture_git(fixture.path(), &["rev-parse", "HEAD"]);
+        let stable = fixture_git(fixture.path(), &["rev-parse", "stable"]);
+
+        let projection = build_projection_commit_with_git(
+            fixture.path(),
+            &runtime,
+            &cancellation,
+            &runner,
+            &source,
+            &stable,
+            "9.9.9",
+        )
+        .expect("projection commit");
+
+        let repository = GixRepository::open(fixture.path()).expect("fixture repository");
+        let projection_id = repository
+            .resolve_revision(&Revision::new(projection.into_bytes()))
+            .expect("projection oid");
+        let commits = repository
+            .walk_commits(&projection_id, 1)
+            .expect("projection commit read");
+        let commit = commits.first().expect("projection commit exists");
+        assert_eq!(
+            commit
+                .parents
+                .iter()
+                .map(larch_core::ObjectId::to_hex)
+                .collect::<Vec<_>>(),
+            vec![source.clone(), stable]
+        );
+        let source_id = repository
+            .resolve_revision(&Revision::new(source.into_bytes()))
+            .expect("source oid");
+        let source_commits = repository.walk_commits(&source_id, 1).expect("source read");
+        let changes = repository
+            .tree_changes(&source_commits[0].tree, &commit.tree)
+            .expect("projection tree changes");
+        assert!(!changes.is_empty());
+        // The typed tree diff may report the added directory itself as one
+        // `plugin` entry; the production proof diffs file names via installed
+        // Git and sees only `plugin/...` paths.
+        let outside: Vec<String> = changes
+            .paths()
+            .filter(|path| path.as_bytes() != b"plugin" && !path.as_bytes().starts_with(b"plugin/"))
+            .map(|path| String::from_utf8_lossy(path.as_bytes()).into_owned())
+            .collect();
+        assert!(
+            outside.is_empty(),
+            "non-plugin projection changes: {outside:?}"
+        );
+        assert!(
+            repository
+                .blob_at_commit(
+                    &projection_id,
+                    &GitPath::new(b"plugin/.claude-plugin/plugin.json".to_vec()),
+                )
+                .expect("projected manifest read")
+                .is_some()
+        );
+        let worktrees = fixture_git(fixture.path(), &["worktree", "list", "--porcelain"]);
+        assert_eq!(
+            worktrees
+                .lines()
+                .filter(|line| line.starts_with("worktree "))
+                .count(),
+            1
+        );
+    }
+
+    fn projection_fixture() -> tempfile::TempDir {
+        let fixture = tempfile::tempdir().expect("fixture directory");
+        for path in crate::release_plugin_runtime::DIRECT_FILES {
+            let contents = if *path == ".claude-plugin/plugin.json" {
+                "{\"name\":\"larch\",\"version\":\"9.9.9\"}\n"
+            } else {
+                "runtime\n"
+            };
+            write_fixture(fixture.path(), path, contents);
+        }
+        for arguments in [
+            ["init", "--quiet"].as_slice(),
+            &["config", "user.email", "test@example.invalid"],
+            &["config", "user.name", "Larch test"],
+            &["add", "--all"],
+            &["commit", "--quiet", "-m", "fixture"],
+            &["checkout", "--quiet", "-b", "stable"],
+        ] {
+            fixture_git(fixture.path(), arguments);
+        }
+        write_fixture(fixture.path(), "stable.txt", "stable divergence\n");
+        for arguments in [
+            ["add", "stable.txt"].as_slice(),
+            &["commit", "--quiet", "-m", "stable divergence"],
+            &["checkout", "--quiet", "-"],
+        ] {
+            fixture_git(fixture.path(), arguments);
+        }
+        fixture
+    }
+
+    fn write_fixture(root: &Path, relative: &str, contents: &str) {
+        let path = root.join(relative);
+        fs::create_dir_all(path.parent().expect("fixture parent")).expect("create fixture parent");
+        fs::write(path, contents).expect("write fixture file");
+    }
+
+    fn fixture_git(root: &Path, arguments: &[&str]) -> String {
+        let output = std::process::Command::new("git") // lint-subprocess-via-runner: ok test-only Git fixture prepares the projection-commit repository
+            .arg("-C")
+            .arg(root)
+            .args(arguments)
+            .output()
+            .expect("run fixture git");
+        assert!(
+            output.status.success(),
+            "fixture git command failed: {:?}",
+            output.status
+        );
+        String::from_utf8(output.stdout)
+            .expect("fixture git output is UTF-8")
+            .trim()
+            .to_owned()
     }
 
     fn draft(assets: Vec<RemoteAsset>) -> ReleaseState {
@@ -835,17 +1346,26 @@ mod tests {
         let notes = notes();
         let create = FakeServices {
             remote_tag: RefCell::new(None),
+            // Transition case: plugin/ is still committed, so the projection
+            // tree may equal the merged tree exactly.
+            changed: Ok(Vec::new()),
             releases: RefCell::new(vec![None]),
             ..FakeServices::default()
         };
         assert_eq!(
             stage_with(&create, "1.2.3", notes.path(), "character-ai/larch", "7"),
-            Ok(SOURCE.to_owned())
+            Ok(StagedRelease {
+                source_commit: SOURCE.to_owned(),
+                release_commit: PROJECTION.to_owned(),
+            })
         );
         assert_eq!(*create.created.borrow(), 1);
         assert_eq!(create.fetches.get(), 1);
+        assert_eq!(create.tag_creates.get(), 1);
+        assert_eq!(create.tag_pushes.get(), 1);
 
         let resume = FakeServices {
+            remote_tag: RefCell::new(Some(PROJECTION.to_owned())),
             releases: RefCell::new(vec![Some(draft(Vec::new()))]),
             ..FakeServices::default()
         };
@@ -854,19 +1374,124 @@ mod tests {
     }
 
     #[test]
+    fn stage_reuses_a_structurally_matching_remote_tag_without_a_second_push() {
+        let notes = notes();
+        let services = FakeServices {
+            remote_tag: RefCell::new(Some(PROJECTION.to_owned())),
+            releases: RefCell::new(vec![Some(draft(Vec::new()))]),
+            ..FakeServices::default()
+        };
+
+        let staged = stage_with(&services, "1.2.3", notes.path(), "character-ai/larch", "7")
+            .expect("idempotent re-run");
+
+        assert_eq!(staged.source_commit, SOURCE);
+        assert_eq!(staged.release_commit, PROJECTION);
+        assert_eq!(services.tag_creates.get(), 0);
+        assert_eq!(services.tag_pushes.get(), 0);
+        assert_eq!(services.projection_builds.get(), 1);
+    }
+
+    #[test]
+    fn stage_refuses_an_unresolvable_stable_branch_before_any_mutation() {
+        let notes = notes();
+        let services = FakeServices {
+            stable: Ok(None),
+            remote_tag: RefCell::new(None),
+            ..FakeServices::default()
+        };
+
+        assert_eq!(
+            stage_with(&services, "1.2.3", notes.path(), "character-ai/larch", "7"),
+            Err("origin/stable is not resolvable".to_owned())
+        );
+        assert_eq!(services.projection_builds.get(), 0);
+        assert_eq!(services.tag_creates.get(), 0);
+        assert_eq!(services.tag_pushes.get(), 0);
+    }
+
+    #[test]
+    fn stage_refuses_a_projection_that_changes_paths_outside_plugin() {
+        let notes = notes();
+        let services = FakeServices {
+            changed: Ok(vec![
+                "plugin/scripts/larch.sh".to_owned(),
+                "docs/skills.md".to_owned(),
+            ]),
+            remote_tag: RefCell::new(None),
+            ..FakeServices::default()
+        };
+
+        assert_eq!(
+            stage_with(&services, "1.2.3", notes.path(), "character-ai/larch", "7"),
+            Err("projection commit changed paths outside plugin/".to_owned())
+        );
+        assert_eq!(services.tag_creates.get(), 0);
+        assert_eq!(services.tag_pushes.get(), 0);
+    }
+
+    #[test]
+    fn stage_refuses_a_projection_whose_first_parent_is_not_the_merged_commit() {
+        let notes = notes();
+        let services = FakeServices {
+            commit_graph: BTreeMap::from([(
+                PROJECTION.to_owned(),
+                (vec![OTHER.to_owned(), STABLE.to_owned()], TREE.to_owned()),
+            )]),
+            remote_tag: RefCell::new(None),
+            ..FakeServices::default()
+        };
+
+        assert_eq!(
+            stage_with(&services, "1.2.3", notes.path(), "character-ai/larch", "7"),
+            Err("projection commit first parent is not the merged release commit".to_owned())
+        );
+        assert_eq!(services.tag_pushes.get(), 0);
+    }
+
+    #[test]
+    fn stage_refuses_a_projected_plugin_version_mismatch() {
+        let notes = notes();
+        let services = FakeServices {
+            projected_version: Ok("1.2.4".to_owned()),
+            remote_tag: RefCell::new(None),
+            ..FakeServices::default()
+        };
+
+        assert_eq!(
+            stage_with(&services, "1.2.3", notes.path(), "character-ai/larch", "7"),
+            Err("projected plugin.json version does not match the requested version".to_owned())
+        );
+        assert_eq!(services.tag_creates.get(), 0);
+        assert_eq!(services.tag_pushes.get(), 0);
+    }
+
+    #[test]
     fn stage_rejects_tag_identity_and_unsafe_resume_state() {
         let notes = notes();
         let mismatch = FakeServices {
             remote_tag: RefCell::new(Some(OTHER.to_owned())),
+            commit_graph: BTreeMap::from([
+                (
+                    PROJECTION.to_owned(),
+                    (vec![SOURCE.to_owned(), STABLE.to_owned()], TREE.to_owned()),
+                ),
+                (
+                    OTHER.to_owned(),
+                    (vec![OTHER.to_owned(), STABLE.to_owned()], TREE.to_owned()),
+                ),
+            ]),
             ..FakeServices::default()
         };
         assert!(
             stage_with(&mismatch, "1.2.3", notes.path(), "character-ai/larch", "7")
                 .unwrap_err()
-                .contains("not 111111")
+                .contains("not a matching projection commit")
         );
+        assert_eq!(mismatch.tag_pushes.get(), 0);
         let published = ReleaseState::new(42, "v1.2.3", false, true, Vec::new()).expect("release");
         let unsafe_resume = FakeServices {
+            remote_tag: RefCell::new(Some(PROJECTION.to_owned())),
             releases: RefCell::new(vec![Some(published)]),
             ..FakeServices::default()
         };
@@ -1145,6 +1770,16 @@ mod tests {
         let local_mismatch = FakeServices {
             remote_tag: RefCell::new(None),
             local_tag: Some(OTHER.to_owned()),
+            commit_graph: BTreeMap::from([
+                (
+                    PROJECTION.to_owned(),
+                    (vec![SOURCE.to_owned(), STABLE.to_owned()], TREE.to_owned()),
+                ),
+                (
+                    OTHER.to_owned(),
+                    (vec![OTHER.to_owned(), STABLE.to_owned()], TREE.to_owned()),
+                ),
+            ]),
             ..FakeServices::default()
         };
         assert!(
