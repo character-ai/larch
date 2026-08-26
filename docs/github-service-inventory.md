@@ -9,9 +9,10 @@ command and implementation-leaf ownership lives in the command registry.
 
 The scan covers production Rust, skills, agents, hooks, scripts, and CI
 configuration. It excludes documentation, fixtures, historical run logs, and the
-generated `plugin/` projection. `service-ownership` in `crates/larch-lint`
-mechanically holds the boundary this inventory records: concrete clients,
-service request surfaces, and `gcloud` stay inside `crates/larch-adapters`.
+release-generated `plugin/` projection, which is absent from `main`.
+`service-ownership` in `crates/larch-lint` mechanically holds the boundary this
+inventory records: concrete clients, service request surfaces, and `gcloud`
+stay inside `crates/larch-adapters`.
 The #7843 refresh ran after the Actions-log, pull-request merge,
 issue-dependency, and credential-contract repairs. It explicitly covered `gh`,
 `gh api`, `gh auth token --hostname github.com`, GitHub and Google service
@@ -185,6 +186,12 @@ Issue #8788 moved `merge pr` and `merge wait` to Rust. The command owner uses
 the typed pull-request, Actions, direct-merge, and fixed merge-queue operations.
 Every ship and release consumer now reaches that owner through verified larch
 dispatch. The retired registrations and module were removed atomically.
+
+`release stage` gives the `releases` operation row the tag and target commit for
+the synthetic projection commit, not the merged `main` commit. The Git adapter
+creates the projection and tag before the GitHub release adapter creates or
+updates the draft. The canonical identity and pin rules live in
+[Release content pin](security/supply-chain-credentials-and-services.md#release-content-pin).
 
 Issue #8797 moved `token check-budget`, `token compute-pr-line-counts`, and its
 `token compute-pr-lines` alias to Rust. Line counting uses the typed, bounded

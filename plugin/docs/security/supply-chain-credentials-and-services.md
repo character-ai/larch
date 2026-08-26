@@ -255,11 +255,11 @@ both the selection and handoff boundaries.
 
 ### Release provenance and attestations
 
-The tag-triggered Rust asset workflow checks out the exact tag commit. It
-requires the tag, `.claude-plugin/plugin.json`, and Cargo workspace version to
-agree. It builds and runs the only supported target, `aarch64-apple-darwin`,
-natively. The workflow packages only `larch` and `LICENSE` with normalized
-archive metadata.
+The tag-triggered Rust asset workflow checks out the exact tagged projection
+commit. It requires the tag, `.claude-plugin/plugin.json`, and Cargo workspace
+version to agree. It builds and runs the only supported target,
+`aarch64-apple-darwin`, natively. The workflow packages only `larch` and
+`LICENSE` with normalized archive metadata.
 
 Each matrix job attests its archive through GitHub artifact attestations. The
 collector accepts only one archive and one metadata fragment for each required
@@ -293,24 +293,31 @@ directly through its Rust owner. It has no `gh` fallback.
 GitHub provenance ties bytes to a commit and workflow, not source or
 infrastructure trust. Checksums index integrity, not trust. `/release` merges
 the version candidate through the normal queue, resolves GitHub's recorded
-post-merge commit, then tags it and uploads only the validated three-file set
-to a mutable draft. It rechecks merge identity, ancestry, and versions,
-publishes without Latest, verifies every immutable asset, then promotes.
-Failures resume the same draft or release.
+post-merge `main` commit, builds a projection commit with that commit as its
+first parent, then tags the projection and uploads only the validated
+three-file set to a mutable draft. It rechecks the merge identity, projection
+parent, ancestry, and versions, publishes without Latest, verifies every
+immutable asset, then promotes. Failures resume the same draft or release.
 Published tags and assets never change. Installation verifies separately.
 
 ### Release content pin
 
-A release version names one commit, and both halves of an install derive from
-it. `.claude-plugin/marketplace.json` pins its `git-subdir` source to the
-`stable` branch, so no merge to `main` can change what an install receives.
-`release finish` fast-forwards that branch to the tagged commit last, only after
-immutable publication, release and asset attestation verification, and Latest
-promotion succeed, then re-reads the remote branch and fails the release when it
-does not name the tagged commit. The push carries no force and no lease, so Git
-rejects any non-fast-forward update and the pin can only advance. A published
-release whose pin did not advance fails `release finish` rather than reporting
-success, because no installer would see it.
+A release version names one synthetic projection commit, and both halves of an
+install derive from it. The projection's first parent is the merged release
+commit on `main`; its tree matches that parent except for the generated
+`plugin/` subtree. `release stage` records the previous `stable` tip as the
+projection's second parent. `.claude-plugin/marketplace.json` pins its
+`git-subdir` source to that branch, so no merge to `main` can change what an
+install receives.
+
+`release finish` fast-forwards `stable` to the tagged projection commit last,
+only after immutable publication, release and asset attestation verification,
+and Latest promotion succeed. It then re-reads the remote branch and fails the
+release when the branch does not name the tagged projection commit. The push
+carries no force and no lease. The projection's second parent therefore keeps
+the update fast-forwardable, and the pin can only advance. A published release
+whose pin did not advance fails `release finish` rather than reporting success,
+because no installer would see it.
 
 Version-string equality is not content identity, so the pin is verified
 separately at install time. See [`../../ARCHITECTURAL_INVARIANTS.md`](../../ARCHITECTURAL_INVARIANTS.md)
@@ -322,10 +329,11 @@ separately at install time. See [`../../ARCHITECTURAL_INVARIANTS.md`](../../ARCH
 maps the host target for binary identity checks, installs releases only on
 Apple Silicon macOS (`aarch64-apple-darwin`) and fails release install and
 preflight closed on every other host, and verifies the exact immutable
-release, tag commit, asset allowlist, build attestations, strict manifest and
-checksums, sizes, digests, platform identity, and raw USTAR layout. It rejects symlinks, special files,
-traversal, extra members, malformed archives, and trailing data before
-extracting only `larch`. When `CLAUDE_PLUGIN_ROOT` is unset or empty, the shim
+release, tagged projection commit, asset allowlist, build attestations, strict
+manifest and checksums, sizes, digests, platform identity, and raw USTAR
+layout. It rejects symlinks, special files, traversal, extra members, malformed
+archives, and trailing data before extracting only `larch`. When
+`CLAUDE_PLUGIN_ROOT` is unset or empty, the shim
 derives it as the parent of its own resolved `scripts/` directory and exports
 that validated absolute path before any further bootstrap work; an explicit
 `CLAUDE_PLUGIN_ROOT` still wins and remains subject to the same absolute-path,
@@ -384,7 +392,7 @@ Before any marketplace mutation, the current root's bootstrap verifies the
 exact immutable stable release, complete asset allowlist, attestations,
 manifest, checksums, archive, target, and staged binary identity in confined
 `${CLAUDE_PLUGIN_DATA}` staging. It also verifies that the pinned `stable`
-branch is at that release's tagged commit and reports the proof as
+branch is at that release's tagged projection commit and reports the proof as
 `LARCH_PREFLIGHT_PIN_VERIFIED=true`. The driver requires both that proof and the
 preflighted version before it touches the marketplace, so a content-and-binary
 mismatch is refused while the prior installation is still the active one rather

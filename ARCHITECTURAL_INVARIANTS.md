@@ -103,24 +103,35 @@ inventory recognizes `scripts/larch.sh`; clean-install tests prove first use.
 
 ### I-Release-1: A release version names exactly one commit
 
-A release version is a human-readable alias for one git commit. Everything an
+A release version is a human-readable alias for one synthetic projection
+commit. Its first parent is the merged release commit on `main`, and its tree
+matches that parent except for the generated `plugin/` subtree. Everything an
 installer places on disk for that version, plugin content and executable alike,
-derives from that commit. Version-string equality is not identity: it proves
-two artifacts carry the same label, never that they were built from the same
-tree. Any pairing whose only guard is a matching version string can produce an
-installed combination that exists at no commit and that CI never tested.
+derives from the projection commit. Version-string equality is not identity: it
+proves two artifacts carry the same label, never that they were built from the
+same tree. Any pairing whose only guard is a matching version string can
+produce an installed combination that exists at no commit and that CI never
+tested.
 Evidence of violation: the marketplace descriptor left its `git-subdir` source
 unpinned, so every install paired `main` HEAD plugin content with the release
 tag's binary, and each post-release merge to `main` silently changed what a
 subsequent install received (#8007); the identically structured smarts plugin
 shipped a store its release binary rejected for the same reason
-(character-tech/smarts#323). Mechanical backing: the descriptor pins its source
-to the `stable` branch that `release finish` fast-forwards to the tagged commit
-only after immutable publication, attestation verification, and Latest
-promotion succeed; `verify_release_pin` in `scripts/larch.sh` refuses an
-upgrade whose pinned commit differs from the release commit before any plugin
-state changes; regression coverage lives in the pin cases in
-`crates/larch-cli/src/release_publish.rs` and
+(character-tech/smarts#323). Rejected design evidence: keeping the tag on
+`main`, placing the projection on an orphan `stable` branch, and linking the two
+with a commit trailer would require a transition release. Cached bootstraps
+compare the `stable` and tag commit IDs and cannot prove the trailer, so that
+shape would strand direct upgrades from older versions. Mechanical backing:
+`release stage` gives the projection commit the merged `main` commit as its
+first parent and the previous `stable` tip as its second parent, and rejects
+changes outside `plugin/`; the descriptor pins its source to the `stable`
+branch that `release finish` fast-forwards to the tagged projection commit only
+after immutable publication, attestation verification, and Latest promotion
+succeed; `verify_release_pin` in `scripts/larch.sh` refuses an upgrade whose
+pinned commit differs from the release commit before any plugin state changes;
+regression coverage lives in the projection and pin cases in
+`crates/larch-cli/src/release_stage.rs`,
+`crates/larch-cli/src/release_publish.rs`, and
 `crates/larch-cli/tests/release_assets.rs`.
 
 ### I-Cutover-1: A command changes owner atomically

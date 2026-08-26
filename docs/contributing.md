@@ -20,9 +20,9 @@ claude plugin install larch@larch-local
 
 This reads the descriptor from your checkout, but the descriptor's plugin source
 is a remote `git-subdir` entry pinned to the `stable` branch, so the install
-still fetches `plugin/` from GitHub at the latest release commit, not from your
-working tree. Use `--plugin-dir` when you need Claude Code to load the code you
-are editing.
+still fetches `plugin/` from GitHub at the latest tagged projection commit, not
+from your working tree. Use `--plugin-dir` when you need Claude Code to load the
+code you are editing.
 
 ## Plugin cache vs. working-tree version
 

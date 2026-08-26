@@ -17,10 +17,10 @@ and registrations are removed.
 
 | Service category | Current production operations | Production callers | Adapter parity | Consumer cutover | Python removal |
 | --- | --- | --- | --- | --- | --- |
-| Release reads | List releases, tag-reference resolution, immutable-release policy, Latest | Rust `release stage`, `release finish`, `release promote`, `release promote-latest` | Landed (#7738) | Complete (#7752) | Complete (#7752) |
+| Release reads | List releases, projection-tag reference resolution, immutable-release policy, Latest | Rust `release stage`, `release finish`, `release promote`, `release promote-latest` | Landed (#7738) | Complete (#7752) | Complete (#7752) |
 | Release mutations | Create draft, publish without Latest, promote to Latest | Rust `release stage`, `release finish`, `release promote`, `release promote-latest` | Landed (#7738) | Complete (#7752) | Complete (#7752) |
 | Asset operations | Asset metadata, upload, bounded download | Rust `release stage`, `release finish` | Landed (#7738) | Complete (#7752) | Complete (#7752) |
-| Attestation verification | Artifact provenance and immutable-release tag, commit, and asset-set verification | Rust `release stage`, `release finish`, bootstrap | Landed (#7755) | Complete (#7752) | Complete (#7752) |
+| Attestation verification | Artifact provenance and immutable-release projection tag, commit, and asset-set verification | Rust `release stage`, `release finish`, bootstrap | Landed (#7755) | Complete (#7752) | Complete (#7752) |
 
 The Rust adapter now owns the typed release and asset operations behind the
 hardened Octocrab client from #7724: `larch-core` carries the effect-free
@@ -41,11 +41,14 @@ provenance checks, and immutable-release asset-set binding. Real larch
 domains. The adapter does not accept caller-supplied repositories, workflows,
 issuers, signer identities, trust roots, or URLs.
 
-The publication state machine uses typed GitHub, pull-request, Git, and
-attestation services. It publishes a validated draft with `make_latest=false`,
-revalidates the resulting immutable release, verifies its attestation, and only
-then promotes it with `make_latest=true`. Ambiguous promotion outcomes read back
-Latest before any retry. A failed verification or promotion leaves the prior
-Latest release unchanged. Recovery accepts the same already-published immutable
-release and resumes verification and promotion without creating a tag, release,
-or asset.
+Release staging first creates and tags the synthetic projection commit through
+the typed Git service. Its first parent is GitHub's recorded post-merge `main`
+commit. The GitHub publication state machine then publishes a validated draft
+for that projection tag with `make_latest=false`, revalidates the resulting
+immutable release, verifies its attestation, and only then promotes it with
+`make_latest=true`. Ambiguous promotion outcomes read back Latest before any
+retry. A failed verification or promotion leaves the prior Latest release
+unchanged. Recovery accepts the same already-published immutable release and
+resumes verification and promotion without creating a tag, release, or asset.
+The canonical identity and pin rules live in
+[Release content pin](security/supply-chain-credentials-and-services.md#release-content-pin).
