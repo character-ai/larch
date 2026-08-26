@@ -324,6 +324,31 @@ pub fn plan_surfaces(text: &str) -> HashSet<String> {
         .collect()
 }
 
+/// Map one repository path to its plan-size surface.
+#[must_use]
+pub fn plan_surface(path: &str) -> String {
+    let normalized = path.trim().trim_matches('`').trim_matches('/');
+    let parts = normalized
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect::<Vec<_>>();
+    match parts.as_slice() {
+        [] => String::new(),
+        ["crates", crate_name, "src", file] => {
+            let file_stem = Path::new(file)
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or(file);
+            format!("crates/{crate_name}/src/{file_stem}")
+        }
+        ["crates", crate_name, "src", top_module, ..] => {
+            format!("crates/{crate_name}/src/{top_module}")
+        }
+        ["crates", crate_name, "tests", ..] => format!("crates/{crate_name}/tests"),
+        [first, ..] => (*first).to_owned(),
+    }
+}
+
 /// Assess plan-size trigger reasons without reading the filesystem.
 #[must_use]
 pub fn assess_plan_size(
@@ -535,21 +560,6 @@ pub fn parse_plan_commands(
         }
     }
     rows
-}
-
-fn plan_surface(path: &str) -> String {
-    let normalized = path.trim().trim_matches('`').trim_matches('/').to_owned();
-    if normalized.is_empty() {
-        return String::new();
-    }
-    let parts: Vec<&str> = normalized.split('/').collect();
-    if parts.len() >= 3 && parts[0] == "python" && parts[1] == "larch" {
-        if parts.len() >= 4 {
-            return parts[..3].join("/");
-        }
-        return "python/larch".to_owned();
-    }
-    parts[0].to_owned()
 }
 
 fn normalize_root(path: &Path) -> PathBuf {
@@ -1253,7 +1263,7 @@ mod tests {
     use super::{
         OVERSIZE_OVERRIDE_OPERATOR, assess_plan_size, covered_plan_size_trigger_reasons,
         parse_optional_metadata, parse_plan_commands, parse_plan_size_trigger_reason_set,
-        render_plan_command_tsv, validate_difficulty_metadata,
+        plan_surface, plan_surfaces, render_plan_command_tsv, validate_difficulty_metadata,
     };
     use std::{fs, path::PathBuf};
 
@@ -1323,6 +1333,46 @@ mod tests {
         );
         assert!(!assessment.soft);
         assert!(!assessment.override_suppressed);
+    }
+
+    #[test]
+    fn five_rust_modules_trip_the_surface_trigger() {
+        let text = "### UPDATED: crates/larch-core/src/design/plan_quality.rs\n\
+                    ### UPDATED: crates/larch-core/src/issue/mod.rs\n\
+                    ### UPDATED: crates/larch-cli/src/analyze_bugs_commands.rs\n\
+                    ### UPDATED: crates/larch-adapters/src/github/client.rs\n\
+                    ### UPDATED: crates/larch-lint/tests/plan_surfaces.rs\n\
+                    difficulty: HARD\n\
+                    diff_lines: 1\n";
+        let meta = parse_optional_metadata(text);
+        let trailers = crate::design::parse_final_trailers(text, true);
+        let assessment =
+            assess_plan_size(&meta, text, trailers.start_line.saturating_sub(1), 1, None);
+
+        assert_eq!(assessment.surfaces, 5);
+        assert_eq!(assessment.reasons, ["surfaces"]);
+    }
+
+    #[test]
+    fn files_in_one_rust_module_share_a_surface() {
+        let text = "### UPDATED: crates/larch-core/src/design/plan_quality.rs\n\
+                    ### UPDATED: crates/larch-core/src/design/plan_grammar.rs\n\
+                    difficulty: HARD\n\
+                    diff_lines: 1\n";
+        let surfaces = plan_surfaces(text);
+
+        assert_eq!(surfaces.len(), 1);
+        assert!(surfaces.contains("crates/larch-core/src/design"));
+        assert_eq!(
+            plan_surface("crates/larch-cli/src/main.rs"),
+            "crates/larch-cli/src/main"
+        );
+        assert_eq!(
+            plan_surface("crates/larch-cli/tests/plan_quality.rs"),
+            "crates/larch-cli/tests"
+        );
+        assert_eq!(plan_surface("skills/design/SKILL.md"), "skills");
+        assert_eq!(plan_surface(".github/workflows/ci.yml"), ".github");
     }
 
     #[test]

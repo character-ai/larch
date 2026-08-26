@@ -24,7 +24,7 @@ use larch_adapters::{GixRepository, unified_blob_diff};
 use larch_core::{
     ChangeKind, Commit, ExternalProgram, GitHubIssue, GitHubIssueBodyMode, GitHubIssueList,
     GitHubIssueListMode, GitHubIssueState, GitHubService, GitPath, HostUtilityProgram, PLAN_MARKER,
-    ProcessErrorKind, RepositoryRead, Revision, bug_title_match, emit_kv, epoch_now,
+    ProcessErrorKind, RepositoryRead, Revision, bug_title_match, emit_kv, epoch_now, plan_surface,
     private_atomic_write, require_enabled_storage, strip_named_block,
 };
 use serde_json::{Map, Value, json};
@@ -1409,17 +1409,8 @@ fn zones_for_files(paths: &[String]) -> Vec<String> {
     paths
         .iter()
         .filter_map(|path| {
-            let parts = path
-                .split('/')
-                .filter(|part| !part.is_empty() && *part != ".")
-                .collect::<Vec<_>>();
-            match parts.as_slice() {
-                [] => None,
-                ["python", "larch", third, ..] => Some(format!("python/larch/{third}")),
-                ["scripts" | "docs", ..] => Some(parts[0].to_owned()),
-                [first, second, ..] => Some(format!("{first}/{second}")),
-                [first] => Some((*first).to_owned()),
-            }
+            let surface = plan_surface(path);
+            (!surface.is_empty()).then_some(surface)
         })
         .collect::<BTreeSet<_>>()
         .into_iter()
@@ -5430,18 +5421,25 @@ mod tests {
         assert!(repository_path_text(&GitPath::new(b"unsafe\npath".to_vec())).is_err());
         assert_eq!(
             zones_for_files(&[
-                "python/larch/issue.py".to_owned(),
+                "crates/larch-core/src/design/plan_quality.rs".to_owned(),
+                "crates/larch-core/src/design/plan_grammar.rs".to_owned(),
+                "crates/larch-cli/src/main.rs".to_owned(),
+                "crates/larch-cli/tests/plan_quality.rs".to_owned(),
+                ".github/workflows/ci.yml".to_owned(),
+                "skills/design/SKILL.md".to_owned(),
                 "scripts/check.sh".to_owned(),
                 "docs/contract.md".to_owned(),
-                "crates/larch-cli/main.rs".to_owned(),
                 "README.md".to_owned(),
             ]),
             vec![
+                ".github".to_owned(),
                 "README.md".to_owned(),
-                "crates/larch-cli".to_owned(),
+                "crates/larch-cli/src/main".to_owned(),
+                "crates/larch-cli/tests".to_owned(),
+                "crates/larch-core/src/design".to_owned(),
                 "docs".to_owned(),
-                "python/larch/issue.py".to_owned(),
                 "scripts".to_owned(),
+                "skills".to_owned(),
             ]
         );
         assert!(excluded_consumer_path("larch-logs/run.json"));

@@ -67,7 +67,7 @@ pub use plan_quality::{
     PlanCommandRow, PlanSizeAssessment, ValidationSummary, assess_plan_size,
     compose_plan_goals_test, covered_plan_size_trigger_reasons, drift_exceeds, drift_ratio_token,
     firm_heading_count, firm_heading_paths, parse_optional_metadata, parse_plan_commands,
-    parse_plan_size_trigger_reason_set, plan_size_trigger_reasons, plan_surfaces,
+    parse_plan_size_trigger_reason_set, plan_size_trigger_reasons, plan_surface, plan_surfaces,
     render_plan_command_tsv, set_oversize_override_text, validate_difficulty_metadata,
 };
 pub use publish::{

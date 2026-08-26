@@ -69,7 +69,7 @@ Emitted keys (exit **0** only):
 - Diff (new-style): `diff_added > 2000` when the `diff_added:` trailer is present in the final metadata block.
 - Diff (legacy fallback): `diff_lines > 1500` when `diff_added` is absent.
 - Firm heading count: `FIRM_HEADINGS > 25`, excluding `### MAY_UPDATE:`.
-- Surfaces: `SURFACES_TOUCHED > 4`; `python/larch/<pkg>/...` maps to `python/larch/<pkg>`, direct `python/larch` files to `python/larch`, others to their first segment.
+- Surfaces: `SURFACES_TOUCHED > 4`. Under `crates/<crate>/`, group by `src/<top-module>`, direct `src/<file-stem>`, or `tests`; group other paths by first segment.
 - Deletions never trip; `diff_deleted` is informational only.
 - `mechanical_churn: true` suppresses the diff hard trigger and sets `SOFT_ADVISORY=true` when a diff trigger would have fired; plan-body hard triggers are unaffected.
 - `oversize_override: operator` forces `SIZE_TRIGGER_FIRED=false` while keeping `TRIGGER_REASONS` visible.

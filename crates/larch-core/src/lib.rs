@@ -231,7 +231,7 @@ pub use design::{
     firm_heading_paths, grammar_prompt, is_fence_marker, iter_firm_headings, iter_heading_events,
     iter_plan_headings, iter_trailer_lines, match_heading, match_trailer_line,
     parse_final_trailers, parse_optional_metadata, parse_plan_commands,
-    parse_plan_size_trigger_reason_set, plan_size_trigger_reasons, plan_surfaces,
+    parse_plan_size_trigger_reason_set, plan_size_trigger_reasons, plan_surface, plan_surfaces,
     render_plan_command_tsv, set_oversize_override_text, validate_difficulty_metadata,
     validate_plan_contract,
 };

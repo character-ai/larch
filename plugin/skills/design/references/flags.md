@@ -47,7 +47,7 @@ The historical **ownership-domains** sprawl heuristic is **not** part of L1; it 
 - Plan body line count **>** 800.
 - `diff_added` trailer **>** 2000 when present in the final metadata block immediately above `diff_lines:`; otherwise legacy `diff_lines` trailer **>** 1500.
 - Firm heading count **>** 25 across `### NEW:`, `### UPDATED:`, and `### REWRITTEN:` headings; `### MAY_UPDATE:` is excluded.
-- Distinct surfaces **>** 4 (`python/larch/<pkg>/...` → `python/larch/<pkg>`, direct `python/larch` files → `python/larch`, others → first segment).
+- Distinct surfaces **>** 4. Under `crates/<crate>/`, group by `src/<top-module>`, direct `src/<file-stem>`, or `tests`; group other paths by first segment.
 - Deletions (`diff_deleted`) never trip.
 - `mechanical_churn: true` downgrades only the diff trigger to a soft advisory (`SOFT_ADVISORY`); plan-body hard triggers are unchanged.
 - `oversize_override: operator` suppresses hard triggers and emits `OVERSIZE_OVERRIDE=operator`.

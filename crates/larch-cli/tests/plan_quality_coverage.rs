@@ -80,6 +80,44 @@ fn repo_root() -> &'static Path {
 }
 
 #[test]
+fn check_size_reports_five_rust_module_surfaces_and_trips() {
+    let root = unique_root("rust-surfaces");
+    fs::write(
+        root.join("plan.txt"),
+        "### UPDATED: crates/larch-core/src/design/plan_quality.rs\n\
+         ### UPDATED: crates/larch-core/src/issue/mod.rs\n\
+         ### UPDATED: crates/larch-cli/src/analyze_bugs_commands.rs\n\
+         ### UPDATED: crates/larch-adapters/src/github/client.rs\n\
+         ### UPDATED: crates/larch-lint/tests/plan_surfaces.rs\n\
+         difficulty: HARD\n\
+         diff_lines: 1\n",
+    )
+    .expect("write plan");
+    fs::write(
+        root.join("drift-baseline.env"),
+        "BASELINE_PLAN_LINES=6\nBASELINE_DIFF_LINES=1\n",
+    )
+    .expect("write drift baseline");
+
+    let output = larch()
+        .args(["plan", "check-size", "--design-tmpdir"])
+        .arg(&root)
+        .output()
+        .expect("run check-size");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(stdout.lines().any(|line| line == "SURFACES_TOUCHED=5"));
+    assert!(stdout.lines().any(|line| line == "SIZE_TRIGGER_FIRED=true"));
+    assert!(stdout.lines().any(|line| line == "TRIGGER_REASONS=surfaces"));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn plan_quality_help_and_usage_errors_name_larch() {
     let plan_verbs = [
         "auto-fix-commands",
