@@ -15,8 +15,9 @@ use larch_adapters::{ensure_directory_chain, validate_design_tmpdir};
 use larch_core::{
     cleanup_cache_sessions_root, emit_kv, redact_secrets_only, redact_sensitive_paths,
     review::{
-        VoterOutputBinding, VoterPathsFilePolicy, VoterRowLayout, VoterSlotPolicy, VoterSlotState,
-        voter_states_from_bindings, voter_status_rows, with_manifest_attribution,
+        PLAN_REVIEW_SLOTS_MANIFEST, VoterOutputBinding, VoterPathsFilePolicy, VoterRowLayout,
+        VoterSlotPolicy, VoterSlotState, voter_states_from_bindings, voter_status_rows,
+        with_manifest_attribution,
     },
 };
 use serde_json::{Map, Value, json};
@@ -409,7 +410,7 @@ fn run_panel(options: &PanelOptions) -> Result<ExitCode, String> {
     let dynamic = load_dynamic_archetypes(&options.design);
     let (dynamic_rows, failures) = dynamic_panel_rows(options, &round_dir, &dynamic, &environment)?;
     rows.extend(dynamic_rows);
-    let manifest = options.design.join("plan-review-slots.ndjson");
+    let manifest = options.design.join(PLAN_REVIEW_SLOTS_MANIFEST);
     write_manifest(&manifest, &rows)?;
 
     let prune_round = if options.escalated_round {
@@ -420,6 +421,7 @@ fn run_panel(options: &PanelOptions) -> Result<ExitCode, String> {
         options.prune_round_num
     };
     let prune = filter_pruned(&options.design, &manifest, prune_round)?;
+    persist_round_slots_manifest(&round_dir, &manifest);
     let dynamic_warning = dynamic_render_warning(&failures);
     if prune
         .get("PANEL_PRUNED_EMPTY")
@@ -796,6 +798,14 @@ fn panel_waterfall_arguments(
         (options.tier != "TRIVIAL").then_some(CODEX_PLAN_REVIEW_MODEL),
     );
     arguments
+}
+
+/// Copy the launched (post-prune) slot manifest into the round directory so
+/// later rounds can overwrite the root file without erasing round-1 evidence.
+fn persist_round_slots_manifest(round_dir: &Path, source: &Path) {
+    if let Ok(body) = fs::read_to_string(source) {
+        let _ = write_required(&round_dir.join(PLAN_REVIEW_SLOTS_MANIFEST), &body);
+    }
 }
 
 fn filter_pruned(
@@ -1599,9 +1609,12 @@ fn payload_sidecar(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        dynamic_render_warning, panel_default_model, safe_component, sanitize_slot_label,
-        voter_policies,
+        dynamic_render_warning, panel_default_model, persist_round_slots_manifest, safe_component,
+        sanitize_slot_label, voter_policies,
     };
+    use std::fs;
+
+    use larch_core::review::PLAN_REVIEW_SLOTS_MANIFEST;
 
     #[test]
     fn plan_roles_keep_the_shared_three_voter_policy() {
@@ -1638,6 +1651,20 @@ mod tests {
         ]);
         assert!(warning.contains("4 dynamic render failure(s)"));
         assert!(warning.ends_with("one, two, three, +1 more."));
+    }
+
+    #[test]
+    fn persist_round_slots_manifest_copies_the_launched_rows() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let source = dir.path().join(PLAN_REVIEW_SLOTS_MANIFEST);
+        let round = dir.path().join("plan-review/round-1");
+        fs::create_dir_all(&round).expect("round");
+        fs::write(&source, "{\"slot\":\"dyn-cursor-plan-reuse\"}\n").expect("write");
+        persist_round_slots_manifest(&round, &source);
+        assert_eq!(
+            fs::read_to_string(round.join(PLAN_REVIEW_SLOTS_MANIFEST)).expect("round copy"),
+            "{\"slot\":\"dyn-cursor-plan-reuse\"}\n"
+        );
     }
 }
 

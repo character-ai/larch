@@ -890,6 +890,14 @@ fn plan_review_artifacts_and_reviewer_status_bytes_are_stable() {
         artifacts.stable_reviewer_status_table(),
         PathBuf::from("/tmp/design/reviewer-status-table.txt")
     );
+    assert_eq!(
+        artifacts.slots_manifest(),
+        PathBuf::from("/tmp/design/plan-review-slots.ndjson")
+    );
+    assert_eq!(
+        artifacts.round_slots_manifest(),
+        PathBuf::from("/tmp/design/plan-review/round-2/plan-review-slots.ndjson")
+    );
     let manifest = vec![PlanReviewManifestSlot {
         slot: "cursor-plan-arch".to_owned(),
         tool: "cursor".to_owned(),
@@ -1137,4 +1145,37 @@ fn plan_review_normalization_helpers_preserve_python_wire_rules() {
         ),
         "alpha\nbeta\nzeta\n"
     );
+}
+
+#[test]
+fn dyn_plan_slot_slugs_and_summary_line_are_stable() {
+    use larch_core::review::{
+        DYN_CODEX_PLAN_PREFIX, DYN_CURSOR_PLAN_PREFIX, dyn_plan_archetype_slug,
+        format_launched_dynamic_archetypes, slot_human_label,
+    };
+
+    assert_eq!(
+        dyn_plan_archetype_slug("dyn-cursor-plan-proposal-grammar-migration"),
+        Some("proposal-grammar-migration")
+    );
+    assert_eq!(
+        dyn_plan_archetype_slug("dyn-codex-plan-proposal-grammar-migration"),
+        Some("proposal-grammar-migration")
+    );
+    assert_eq!(dyn_plan_archetype_slug("cursor-plan-arch"), None);
+    assert_eq!(dyn_plan_archetype_slug(DYN_CURSOR_PLAN_PREFIX), None);
+    assert_eq!(dyn_plan_archetype_slug(DYN_CODEX_PLAN_PREFIX), None);
+    assert_eq!(
+        slot_human_label("dyn-cursor-plan-proposal-grammar-migration"),
+        "Cursor-dyn-Proposal Grammar Migration"
+    );
+    assert_eq!(
+        format_launched_dynamic_archetypes([
+            "proposal-grammar-migration",
+            "proposal-grammar-migration",
+            "reuse",
+        ]),
+        Some("2 (proposal-grammar-migration, reuse)".to_owned())
+    );
+    assert_eq!(format_launched_dynamic_archetypes(["", "  "]), None);
 }
