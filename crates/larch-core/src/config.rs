@@ -11,6 +11,22 @@ pub const GIT_COMMIT_CO_AUTHORED_BY_TRAILER: &str =
 pub mod env {
     /// Anthropic API credential used by Claude subprocesses.
     pub const ANTHROPIC_API_KEY: &str = "ANTHROPIC_API_KEY";
+    /// AWS named-profile selector for S3/R2 run-log storage credentials.
+    pub const AWS_PROFILE: &str = "AWS_PROFILE";
+    /// AWS config-file override consulted for profile resolution.
+    pub const AWS_CONFIG_FILE: &str = "AWS_CONFIG_FILE";
+    /// AWS shared-credentials-file override consulted for profile resolution.
+    pub const AWS_SHARED_CREDENTIALS_FILE: &str = "AWS_SHARED_CREDENTIALS_FILE";
+    /// AWS static access-key credential for S3/R2 run-log storage.
+    pub const AWS_ACCESS_KEY_ID: &str = "AWS_ACCESS_KEY_ID";
+    /// AWS static secret-key credential for S3/R2 run-log storage.
+    pub const AWS_SECRET_ACCESS_KEY: &str = "AWS_SECRET_ACCESS_KEY";
+    /// AWS temporary session-token credential for S3/R2 run-log storage.
+    pub const AWS_SESSION_TOKEN: &str = "AWS_SESSION_TOKEN";
+    /// AWS region selector for S3/R2 run-log storage.
+    pub const AWS_REGION: &str = "AWS_REGION";
+    /// AWS fallback region selector for S3/R2 run-log storage.
+    pub const AWS_DEFAULT_REGION: &str = "AWS_DEFAULT_REGION";
     /// Plugin-provided fallback for the Codex effort setting.
     pub const CLAUDE_PLUGIN_OPTION_CODEX_EFFORT: &str = "CLAUDE_PLUGIN_OPTION_CODEX_EFFORT";
     /// Plugin-provided fallback for the Codex model setting.
@@ -132,8 +148,16 @@ pub mod env {
     pub const XDG_CACHE_HOME: &str = "XDG_CACHE_HOME";
 
     /// Shared names maintained by this module.
-    pub const ALL: [&str; 57] = [
+    pub const ALL: [&str; 65] = [
         ANTHROPIC_API_KEY,
+        AWS_PROFILE,
+        AWS_CONFIG_FILE,
+        AWS_SHARED_CREDENTIALS_FILE,
+        AWS_ACCESS_KEY_ID,
+        AWS_SECRET_ACCESS_KEY,
+        AWS_SESSION_TOKEN,
+        AWS_REGION,
+        AWS_DEFAULT_REGION,
         CLAUDE_PLUGIN_OPTION_CODEX_EFFORT,
         CLAUDE_PLUGIN_OPTION_CODEX_MODEL,
         CLAUDE_PLUGIN_OPTION_CURSOR_MODEL,
@@ -225,6 +249,12 @@ mod tests {
         assert_eq!(env::LARCH_STORAGE_BASE_URI, "LARCH_STORAGE_BASE_URI");
         assert_eq!(env::LARCH_R2_ACCOUNT_ID, "LARCH_R2_ACCOUNT_ID");
         assert_eq!(env::LARCH_R2_ENDPOINT, "LARCH_R2_ENDPOINT");
+        assert_eq!(env::AWS_PROFILE, "AWS_PROFILE");
+        assert_eq!(env::AWS_CONFIG_FILE, "AWS_CONFIG_FILE");
+        assert_eq!(
+            env::AWS_SHARED_CREDENTIALS_FILE,
+            "AWS_SHARED_CREDENTIALS_FILE"
+        );
     }
 
     #[test]

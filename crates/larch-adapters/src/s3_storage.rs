@@ -86,13 +86,13 @@ fn config_loader(environment: &HashMap<String, String>) -> Result<ConfigLoader, 
     let profile_files = ProfileFiles::builder()
         .with_contents(
             ProfileFileKind::Config,
-            read_hardened_profile(environment, "AWS_CONFIG_FILE", ".aws/config")?,
+            read_hardened_profile(environment, larch_core::env::AWS_CONFIG_FILE, ".aws/config")?,
         )
         .with_contents(
             ProfileFileKind::Credentials,
             read_hardened_profile(
                 environment,
-                "AWS_SHARED_CREDENTIALS_FILE",
+                larch_core::env::AWS_SHARED_CREDENTIALS_FILE,
                 ".aws/credentials",
             )?,
         )

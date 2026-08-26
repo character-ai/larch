@@ -550,6 +550,15 @@ and the hardened ADC boundary above. S3 and R2 use standard AWS credential
 resolution. R2 also requires a matching account ID and an HTTPS endpoint on the
 account's Cloudflare host.
 
+A nested larch composition child (for example the Step 0 bootstrap
+`run-log lifecycle-start`) resolves storage credentials from its own process
+environment, so the S3/R2 credential selectors the operator shell sets are
+forwarded to it through the verified-larch child allowlist: the AWS profile,
+config-file and shared-credentials-file overrides, static and session keys,
+region selectors, and the R2 account ID and endpoint. They are scoped to nested
+larch children and never join the generic child-inheritance list used by `gh` or
+vendor reviewer CLIs.
+
 Repository-root `tools-config.toml` may select a credential-free storage base.
 `LARCH_STORAGE_BASE_URI` may enable storage without a file value, but it never
 hides an invalid present file. When neither source configures storage, remote

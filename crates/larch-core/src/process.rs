@@ -420,6 +420,26 @@ pub enum ChildEnvironment {
     GitTerminalPrompt,
     GitEditor,
     AnthropicApiKey,
+    /// AWS named-profile selector forwarded to nested larch storage children.
+    AwsProfile,
+    /// AWS config-file override forwarded to nested larch storage children.
+    AwsConfigFile,
+    /// AWS shared-credentials-file override forwarded to nested larch storage children.
+    AwsSharedCredentialsFile,
+    /// AWS static access-key credential forwarded to nested larch storage children.
+    AwsAccessKeyId,
+    /// AWS static secret-key credential forwarded to nested larch storage children.
+    AwsSecretAccessKey,
+    /// AWS temporary session-token credential forwarded to nested larch storage children.
+    AwsSessionToken,
+    /// AWS region selector forwarded to nested larch storage children.
+    AwsRegion,
+    /// AWS fallback region selector forwarded to nested larch storage children.
+    AwsDefaultRegion,
+    /// Cloudflare R2 account identifier forwarded to nested larch storage children.
+    LarchR2AccountId,
+    /// Cloudflare R2 endpoint override forwarded to nested larch storage children.
+    LarchR2Endpoint,
     OpenAiApiKey,
     CursorApiKey,
     CursorConfigDir,
@@ -553,6 +573,8 @@ pub enum ChildEnvironment {
 
 impl ChildEnvironment {
     #[must_use]
+    // One exhaustive variant-to-name mapping stays contiguous for auditable review.
+    #[allow(clippy::too_many_lines)]
     pub const fn name(self) -> &'static str {
         match self {
             Self::Path => "PATH",
@@ -576,6 +598,16 @@ impl ChildEnvironment {
             Self::GitTerminalPrompt => "GIT_TERMINAL_PROMPT",
             Self::GitEditor => "GIT_EDITOR",
             Self::AnthropicApiKey => env::ANTHROPIC_API_KEY,
+            Self::AwsProfile => env::AWS_PROFILE,
+            Self::AwsConfigFile => env::AWS_CONFIG_FILE,
+            Self::AwsSharedCredentialsFile => env::AWS_SHARED_CREDENTIALS_FILE,
+            Self::AwsAccessKeyId => env::AWS_ACCESS_KEY_ID,
+            Self::AwsSecretAccessKey => env::AWS_SECRET_ACCESS_KEY,
+            Self::AwsSessionToken => env::AWS_SESSION_TOKEN,
+            Self::AwsRegion => env::AWS_REGION,
+            Self::AwsDefaultRegion => env::AWS_DEFAULT_REGION,
+            Self::LarchR2AccountId => env::LARCH_R2_ACCOUNT_ID,
+            Self::LarchR2Endpoint => env::LARCH_R2_ENDPOINT,
             Self::OpenAiApiKey => env::OPENAI_API_KEY,
             Self::CursorApiKey => env::CURSOR_API_KEY,
             Self::CursorConfigDir => env::CURSOR_CONFIG_DIR,
