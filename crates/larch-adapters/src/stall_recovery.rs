@@ -375,6 +375,7 @@ pub fn classify(request: &ClassificationRequest) -> Result<ClassificationOutput,
     let mut step = first_nonempty(&[&request.stall_step, state_value(&state, "STALL_STEP")]).to_owned();
     let phase = first_nonempty(&[&request.phase, state_value(&state, "PHASE")]).to_owned();
     let bail = first_nonempty(&[&request.bail_reason, state_value(&state, "BAIL_REASON"), state_value(&state, "IMPLEMENT_BAIL_REASON")]).to_owned();
+    let governance_reasons = state_value(&primary_values, "GOVERNANCE_REASONS");
     let (detail, detail_valid, detail_value, warning) = read_detail_with_fallback(&root, &request.failure_detail_log, &request.artifact_prefix);
     let mut any_stall = [request.memory_stall.as_str(), state_value(&primary_values, "STALL_TRACKING"), state_value(&finalize_values, "STALL_TRACKING"), state_value(&session_values, "STALL_TRACKING")].into_iter().any(truthy);
     let abandoned = if any_stall { None } else { abandoned_checks_stall_step(root.path()) };
@@ -410,6 +411,7 @@ pub fn classify(request: &ClassificationRequest) -> Result<ClassificationOutput,
             text: &evidence,
             bail: &bail,
             step: &step,
+            governance_reasons,
             detail_log_valid: detail_valid,
             exit_code: raw_exit,
             implement: true,
@@ -450,6 +452,7 @@ fn classify_generic(root: &TemporaryRoot, request: &ClassificationRequest) -> Re
             text: &evidence,
             bail,
             step,
+            governance_reasons: "",
             detail_log_valid: detail_valid,
             exit_code,
             implement: false,
@@ -2973,6 +2976,31 @@ mod tests {
         assert_eq!(
             super::generic_classification_branch(false),
             super::GenericClassificationBranch::Text
+        );
+    }
+
+    #[test]
+    fn classifier_uses_ship_governance_reasons_without_bail_prose() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(
+            temp.path().join("ship-pr-state.sh"),
+            "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=migration-governance-blocked-stale-plan-body\nBAIL_REASON=\nEXIT_CODE=4\nGOVERNANCE_REASONS=stale-plan-body\n",
+        )
+        .expect("ship state");
+
+        let output = classify(&classification_request(temp.path())).expect("classify");
+        let value = |key: &str| {
+            output
+                .values
+                .iter()
+                .find(|(found, _)| found == key)
+                .map(|(_, value)| value.as_str())
+        };
+        assert_eq!(value("FAILURE_CLASS"), Some("contract-failure"));
+        assert_eq!(value("RESUME_HINT"), Some("none"));
+        assert_eq!(
+            value("MATCHED_CLASSIFIER_PATTERN"),
+            Some("migration-governance-block")
         );
     }
 

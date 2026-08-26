@@ -24,12 +24,12 @@ use larch_core::{
     GitHubService, GovernanceGateVerdict, GovernanceIssueSnapshot, IssueMutationSnapshot,
     OrderedJson, OwnerAdmissionRequest, OwnerAdmissionVerdict, PLAN_MARKER, ParityVerdict,
     PlanReceipt, REASON_BLOCKER_READ_UNAVAILABLE, REASON_PLAN_BASE_SCOPE_UNAVAILABLE,
-    REASON_STALE_PLAN_BASE_SCOPE, ReceiptFreshnessRequest, RepositoryName, RepositoryRead,
-    Revision, ScopeFile, ScopeSnapshot, compare_blocker_parity, declared_scope_paths,
-    evaluate_governance_gate, evaluate_owner_admission, format_gate_refusal, hash_blocker_rows,
-    hash_owner_rows, hash_plan_block, parse_named_block, parse_native_blocker_refs,
-    parse_owner_block, parse_receipt, python_json_dumps, redact_secrets_only, upsert_receipt,
-    validate_receipt_freshness, validate_run_id,
+    REASON_STALE_PLAN_BASE_SCOPE, ReceiptFreshnessRequest, ReceiptRefreshStage, RepositoryName,
+    RepositoryRead, Revision, ScopeFile, ScopeSnapshot, compare_blocker_parity,
+    declared_scope_paths, evaluate_governance_gate, evaluate_owner_admission, format_gate_refusal,
+    hash_blocker_rows, hash_owner_rows, hash_plan_block, parse_named_block,
+    parse_native_blocker_refs, parse_owner_block, parse_receipt, python_json_dumps,
+    redact_secrets_only, upsert_receipt, validate_receipt_freshness, validate_run_id,
 };
 
 use crate::{
@@ -46,8 +46,8 @@ const GATE_PROGRAM: &str = "larch issue governance-gate";
 const GATE_USAGE: &str = "usage: larch issue governance-gate [-h] --issue ISSUE --repo REPO --body-file\n                                   BODY_FILE --repo-root REPO_ROOT --head-sha\n                                   HEAD_SHA [--preflight-envelope]";
 const GATE_HELP: &str = "usage: larch issue governance-gate [-h] --issue ISSUE --repo REPO --body-file\n                                   BODY_FILE --repo-root REPO_ROOT --head-sha\n                                   HEAD_SHA [--preflight-envelope]\n\noptions:\n  -h, --help            show this help message and exit\n  --issue ISSUE\n  --repo REPO\n  --body-file BODY_FILE\n  --repo-root REPO_ROOT\n  --head-sha HEAD_SHA\n  --preflight-envelope";
 const REFRESH_PROGRAM: &str = "larch plan-receipt refresh";
-const REFRESH_USAGE: &str = "usage: larch plan-receipt refresh [-h] --issue ISSUE [--repo REPO] --repo-root\n                                  REPO_ROOT --preflight-tmpdir\n                                  PREFLIGHT_TMPDIR --base-ref BASE_REF\n                                  --previous-base-sha PREVIOUS_BASE_SHA\n                                  --base-sha BASE_SHA [--run-id RUN_ID]";
-const REFRESH_HELP: &str = "usage: larch plan-receipt refresh [-h] --issue ISSUE [--repo REPO] --repo-root\n                                  REPO_ROOT --preflight-tmpdir\n                                  PREFLIGHT_TMPDIR --base-ref BASE_REF\n                                  --previous-base-sha PREVIOUS_BASE_SHA\n                                  --base-sha BASE_SHA [--run-id RUN_ID]\n\noptions:\n  -h, --help            show this help message and exit\n  --issue ISSUE\n  --repo REPO\n  --repo-root REPO_ROOT\n  --preflight-tmpdir PREFLIGHT_TMPDIR\n  --base-ref BASE_REF\n  --previous-base-sha PREVIOUS_BASE_SHA\n  --base-sha BASE_SHA\n  --run-id RUN_ID       implementation run lease; required after Step 0 when\n                        no RUN_ID/LARCH_RUN_ID/SESSION_ID env key names it";
+const REFRESH_USAGE: &str = "usage: larch plan-receipt refresh [-h] --issue ISSUE [--repo REPO] --repo-root\n                                  REPO_ROOT --preflight-tmpdir\n                                  PREFLIGHT_TMPDIR --base-ref BASE_REF\n                                  --previous-base-sha PREVIOUS_BASE_SHA\n                                  --base-sha BASE_SHA [--run-id RUN_ID]\n                                  [--stage STAGE]";
+const REFRESH_HELP: &str = "usage: larch plan-receipt refresh [-h] --issue ISSUE [--repo REPO] --repo-root\n                                  REPO_ROOT --preflight-tmpdir\n                                  PREFLIGHT_TMPDIR --base-ref BASE_REF\n                                  --previous-base-sha PREVIOUS_BASE_SHA\n                                  --base-sha BASE_SHA [--run-id RUN_ID]\n                                  [--stage STAGE]\n\noptions:\n  -h, --help            show this help message and exit\n  --issue ISSUE\n  --repo REPO\n  --repo-root REPO_ROOT\n  --preflight-tmpdir PREFLIGHT_TMPDIR\n  --base-ref BASE_REF\n  --previous-base-sha PREVIOUS_BASE_SHA\n  --base-sha BASE_SHA\n  --run-id RUN_ID       implementation run lease; required after Step 0 when\n                        no RUN_ID/LARCH_RUN_ID/SESSION_ID env key names it\n  --stage STAGE         scope-drift record stage: preflight (default) or ship";
 /// Operator guidance appended to the lease refusal a managed-prefix title raises.
 const MISSING_LEASE_GUIDANCE: &str = "missing-lease: a managed-prefix title ([IMPLEMENTING] after Step 0) accepts the receipt refresh only under the implementation run lease; pass --run-id <LARCH_RUN_ID from session-env.sh> or export LARCH_RUN_ID";
 const MAX_SCOPE_FILES: usize = 20_000;
@@ -71,6 +71,7 @@ struct RefreshArguments {
     previous_base_sha: String,
     base_sha: String,
     run_id: String,
+    stage: ReceiptRefreshStage,
 }
 
 struct RemoteGateEvidence {
@@ -523,6 +524,7 @@ fn parse_refresh_arguments(arguments: &[OsString]) -> Result<RefreshArguments, E
             "--previous-base-sha",
             "--base-sha",
             "--run-id",
+            "--stage",
         ],
         &[],
         &[
@@ -544,6 +546,7 @@ fn parse_refresh_arguments(arguments: &[OsString]) -> Result<RefreshArguments, E
     if !run_id.is_empty() {
         validate_run_id(&run_id).map_err(|error| fail(&format!("--run-id {error}")))?;
     }
+    let stage = receipt_refresh_stage(parsed.value("--stage")).map_err(|detail| fail(&detail))?;
     let base_ref = text_value(parsed.value("--base-ref"));
     if !matches!(base_ref.as_str(), "origin/main" | "upstream/main") {
         return Err(fail("--base-ref must be origin/main or upstream/main"));
@@ -579,7 +582,16 @@ fn parse_refresh_arguments(arguments: &[OsString]) -> Result<RefreshArguments, E
         previous_base_sha,
         base_sha,
         run_id,
+        stage,
     })
+}
+
+fn receipt_refresh_stage(value: Option<&OsStr>) -> Result<ReceiptRefreshStage, String> {
+    let Some(value) = value else {
+        return Ok(ReceiptRefreshStage::Preflight);
+    };
+    ReceiptRefreshStage::parse(&value.to_string_lossy())
+        .ok_or_else(|| "--stage must be preflight or ship".to_owned())
 }
 
 fn refresh_error(detail: &str) -> ExitCode {
@@ -764,8 +776,11 @@ fn render_scope_drift(
     }
     let indented = render_scope_diff_rows(&rows)?;
     Ok(format!(
-        "- **Preflight plan-receipt scope refresh**: semantic materiality passed.\n  - Receipt base: `{}`\n  - Reviewed target: `{}`\n  - Scope diff (JSON-quoted name-status rows):\n    ```text\n{}    ```\n",
-        request.previous_base_sha, request.base_sha, indented
+        "{}\n  - Receipt base: `{}`\n  - Reviewed target: `{}`\n  - Scope diff (JSON-quoted name-status rows):\n    ```text\n{}    ```\n",
+        request.stage.heading(),
+        request.previous_base_sha,
+        request.base_sha,
+        indented
     ))
 }
 
@@ -982,11 +997,16 @@ const fn state_upper(state: GitHubIssueState) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{governance_gate, plan_receipt_refresh};
+    use super::{
+        governance_gate, parse_refresh_arguments, plan_receipt_refresh, receipt_refresh_stage,
+        render_scope_drift,
+    };
     use crate::github_service::with_test_github_service;
+    use larch_adapters::GixRepository;
     use larch_core::{
-        BlockerSnapshotRow, DESIGNED_PREFIX, PLAN_MARKER, PlanReceipt, hash_blocker_rows,
-        hash_owner_rows, hash_plan_block, parse_named_block, parse_owner_block, upsert_receipt,
+        BlockerSnapshotRow, DESIGNED_PREFIX, PLAN_MARKER, PlanReceipt, ReceiptRefreshStage,
+        hash_blocker_rows, hash_owner_rows, hash_plan_block, parse_named_block, parse_owner_block,
+        upsert_receipt,
     };
     use larch_test_support::{GitFixture, GitRepository, IssueServiceExchange, IssueServiceStub};
     use serde_json::json;
@@ -1045,6 +1065,28 @@ mod tests {
             blockers_sha256: hash_blocker_rows(&[] as &[BlockerSnapshotRow]),
             owners_sha256: hash_owner_rows(&parse_owner_block(body).raw_rows),
         }
+    }
+
+    #[test]
+    fn receipt_refresh_stage_defaults_only_when_the_flag_is_absent() {
+        assert_eq!(
+            receipt_refresh_stage(None),
+            Ok(ReceiptRefreshStage::Preflight)
+        );
+        assert_eq!(
+            receipt_refresh_stage(Some(std::ffi::OsStr::new("preflight"))),
+            Ok(ReceiptRefreshStage::Preflight)
+        );
+        assert_eq!(
+            receipt_refresh_stage(Some(std::ffi::OsStr::new("ship"))),
+            Ok(ReceiptRefreshStage::Ship)
+        );
+        assert!(receipt_refresh_stage(Some(std::ffi::OsStr::new(""))).is_err());
+        assert!(receipt_refresh_stage(Some(std::ffi::OsStr::new("postflight"))).is_err());
+        assert_eq!(
+            ReceiptRefreshStage::Ship.heading(),
+            "- **Ship plan-receipt scope refresh**: semantic materiality passed."
+        );
     }
 
     #[test]
@@ -1210,7 +1252,22 @@ mod tests {
         assert_eq!(refreshed["updatedAt"], "2026-08-20T00:00:01Z");
         let drift = fs::read_to_string(preflight.path().join("receipt-scope-drift.md"))
             .expect("scope drift");
+        assert!(drift.starts_with(
+            "- **Preflight plan-receipt scope refresh**: semantic materiality passed.\n"
+        ));
         assert!(drift.contains(&base_sha));
         assert!(drift.contains("no declared path changed"));
+
+        let mut ship_arguments = arguments;
+        ship_arguments.extend(["--stage".into(), "ship".into()]);
+        let ship_request = parse_refresh_arguments(&ship_arguments).expect("ship arguments");
+        let git = GixRepository::open(repository.root()).expect("repository");
+        let ship_drift = render_scope_drift(&ship_request, &git, plan).expect("ship drift");
+        assert!(
+            ship_drift.starts_with(
+                "- **Ship plan-receipt scope refresh**: semantic materiality passed.\n"
+            )
+        );
+        assert!(!ship_drift.contains("**Preflight plan-receipt scope refresh**"));
     }
 }

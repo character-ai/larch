@@ -90,7 +90,8 @@ pub fn is_terminal_merge_result(value: &str) -> bool {
 #[rustfmt::skip]
 pub struct ClassifyTextInput<'a> {
     pub text: &'a str, pub bail: &'a str, pub step: &'a str,
-    pub detail_log_valid: bool, pub exit_code: &'a str, pub implement: bool,
+    pub governance_reasons: &'a str, pub detail_log_valid: bool,
+    pub exit_code: &'a str, pub implement: bool,
 }
 
 /// Stable classifier result fields.
@@ -451,7 +452,7 @@ pub fn first_nonempty<'a>(values: &[&'a str]) -> &'a str { values.iter().copied(
 #[rustfmt::skip]
 fn rule_matches(matcher: RuleMatcher, input: ClassifyTextInput<'_>, lower: &str) -> bool {
     match matcher {
-        RuleMatcher::MigrationGovernance => input.implement && migration_governance_blocked(input.bail),
+        RuleMatcher::MigrationGovernance => input.implement && migration_governance_blocked(input.bail, input.governance_reasons),
         RuleMatcher::Step(step) => input.step == step, RuleMatcher::ChecksChild => checks_child_failed(input.bail, input.step, input.exit_code),
         RuleMatcher::Steps(steps) => has(steps, input.step), RuleMatcher::Bail(bail) => input.bail == bail, RuleMatcher::BailSet(bails) => has(bails, input.bail),
         RuleMatcher::CiFixExhausted => input.bail == "ci-fix-exhausted",
@@ -465,7 +466,11 @@ fn rule_matches(matcher: RuleMatcher, input: ClassifyTextInput<'_>, lower: &str)
 fn checks_child_failed(bail: &str, step: &str, exit_code: &str) -> bool { let raw = exit_code.trim(); let digits = raw.strip_prefix(['+', '-']).unwrap_or(raw); bail == "checks-child-failed" && has("3 6", step) && (raw == "unknown" || digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) || (raw.starts_with('-') && digits.bytes().any(|byte| byte != b'0'))) }
 
 #[rustfmt::skip]
-fn migration_governance_blocked(bail: &str) -> bool {
+fn migration_governance_blocked(bail: &str, governance_reasons: &str) -> bool {
+    let governance_reasons = governance_reasons.trim();
+    if !governance_reasons.is_empty() && governance_reasons != "no-verdict" {
+        return true;
+    }
     let line = bail.split_once('\n').map_or(bail, |(line, _)| line);
     let lower = line.to_ascii_lowercase();
     lower.find("migration governance blocked:").is_some_and(|index| !lower[index + "migration governance blocked:".len()..].trim().is_empty())
@@ -743,10 +748,49 @@ fn safe_run_identifier(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        IssueNormalization, NormalizeOutcomeInput, normalize_issue_output,
-        normalize_outcome_values, public_text_is_sensitive, terminal_state_valid, token_valid,
+        ClassifyTextInput, IssueNormalization, NormalizeOutcomeInput, classify_text,
+        normalize_issue_output, normalize_outcome_values, public_text_is_sensitive,
+        terminal_state_valid, token_valid,
     };
     use std::collections::BTreeMap;
+
+    #[test]
+    fn migration_governance_classifier_accepts_step2_bail_or_ship_state() {
+        for input in [
+            ClassifyTextInput {
+                bail: "migration governance blocked: stale-plan-body",
+                implement: true,
+                ..ClassifyTextInput::default()
+            },
+            ClassifyTextInput {
+                governance_reasons: "stale-plan-body",
+                implement: true,
+                ..ClassifyTextInput::default()
+            },
+            ClassifyTextInput {
+                governance_reasons: "stale-plan-body,stale-blocker-snapshot",
+                implement: true,
+                ..ClassifyTextInput::default()
+            },
+        ] {
+            let result = classify_text(input);
+            assert_eq!(result.failure_class, "contract-failure");
+            assert_eq!(result.resume_hint, "none");
+            assert_eq!(result.pattern, "migration-governance-block");
+        }
+
+        for governance_reasons in ["", "no-verdict"] {
+            assert_ne!(
+                classify_text(ClassifyTextInput {
+                    governance_reasons,
+                    implement: true,
+                    ..ClassifyTextInput::default()
+                })
+                .pattern,
+                "migration-governance-block"
+            );
+        }
+    }
 
     #[test]
     fn token_rejections_cover_raw_and_kind_specific_branches() {

@@ -30,6 +30,36 @@ pub const REASON_MISSING_OWNER_BLOCK: &str = "missing-owner-block";
 pub const REASON_OWNER_SCAN_UNAVAILABLE: &str = "owner-scan-unavailable";
 pub const REASON_REUSE_SOURCE_UNAVAILABLE: &str = "reuse-source-unavailable";
 
+/// Site that owns one durable plan-receipt scope-drift record.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReceiptRefreshStage {
+    Preflight,
+    Ship,
+}
+
+impl ReceiptRefreshStage {
+    /// Parse one explicit CLI stage value.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "preflight" => Some(Self::Preflight),
+            "ship" => Some(Self::Ship),
+            _ => None,
+        }
+    }
+
+    /// Return the exact durable record heading for this site.
+    #[must_use]
+    pub const fn heading(self) -> &'static str {
+        match self {
+            Self::Preflight => {
+                "- **Preflight plan-receipt scope refresh**: semantic materiality passed."
+            }
+            Self::Ship => "- **Ship plan-receipt scope refresh**: semantic materiality passed.",
+        }
+    }
+}
+
 const OWNERS_START: &str = "<!-- larch:owners:start -->";
 const OWNERS_END: &str = "<!-- larch:owners:end -->";
 static NATIVE_BLOCKER_RE: LazyLock<Regex> = LazyLock::new(|| {

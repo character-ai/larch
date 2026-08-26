@@ -433,8 +433,9 @@ base advance, so the driver exits with
 attempts per run, then `operator-bail`). The orchestrator re-runs the same
 bounded semantic-materiality probe against the rebased branch and, only on a
 current result, invokes `scripts/larch.sh ship governance-refresh`, which binds
-the handoff SHAs, delegates `plan-receipt refresh --run-id <lease>`, appends the
-scope-drift record to the run `Warnings` ledger, and reships. A later base
+the handoff SHAs, delegates `plan-receipt refresh --run-id <lease> --stage ship`,
+appends the Ship-labeled scope-drift record to the run `Warnings` ledger, and
+reships. A later base
 advance therefore never bypasses semantic materiality. Any other reason, a
 mixed reason set, or an unreadable gate remains a hard stop.
 

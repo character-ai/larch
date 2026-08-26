@@ -1098,7 +1098,7 @@ fn governance_fixture() -> GovernanceFixture {
     fs::write(
         preflight.join("receipt-scope-drift.md"),
         format!(
-            "- **Preflight plan-receipt scope refresh**: semantic materiality passed.\n  - Receipt base: `{receipt_base}`\n  - Reviewed target: `{target_base}`\n  - Scope diff (JSON-quoted name-status rows):\n    ```text\n    \"M\\tMakefile\"\n    ```\n"
+            "- **Ship plan-receipt scope refresh**: semantic materiality passed.\n  - Receipt base: `{receipt_base}`\n  - Reviewed target: `{target_base}`\n  - Scope diff (JSON-quoted name-status rows):\n    ```text\n    \"M\\tMakefile\"\n    ```\n"
         ),
     )
     .expect("drift");
@@ -1216,7 +1216,7 @@ fn governance_refresh_delegates_the_lease_bound_refresh_and_logs_the_drift() {
     assert_eq!(
         refresh,
         format!(
-            "plan-receipt refresh --issue 8993 --repo owner/repo --repo-root {} --preflight-tmpdir {} --base-ref origin/main --previous-base-sha {} --base-sha {} --run-id run-a",
+            "plan-receipt refresh --issue 8993 --repo owner/repo --repo-root {} --preflight-tmpdir {} --base-ref origin/main --previous-base-sha {} --base-sha {} --run-id run-a --stage ship",
             fs::canonicalize(&fixture.driver.repo).expect("canonical repo").display(),
             fixture.driver.root.path().join("preflight").display(),
             fixture.receipt_base,
@@ -1233,6 +1233,12 @@ fn governance_refresh_delegates_the_lease_bound_refresh_and_logs_the_drift() {
         "{log}"
     );
     assert!(fixture.driver.tmpdir.join(".ship-governance-drift-logged").is_file());
+    let staged = fs::read_to_string(fixture.driver.tmpdir.join("receipt-scope-drift.md"))
+        .expect("staged scope drift");
+    assert!(staged.starts_with(
+        "- **Ship plan-receipt scope refresh**: semantic materiality passed.\n"
+    ));
+    assert!(!staged.contains("**Preflight plan-receipt"));
 }
 
 #[test]
@@ -1247,9 +1253,14 @@ fn governance_refresh_bails_when_the_drift_record_cannot_reach_the_ledger() {
     );
     assert!(!fixture.driver.tmpdir.join(".ship-governance-drift-logged").exists());
 
-    // A malformed record never reaches the ledger.
+    // A Preflight record cannot be mislabeled as a Ship record in the ledger.
     let preflight = fixture.driver.root.path().join("preflight");
-    fs::write(preflight.join("receipt-scope-drift.md"), "- drift\n").expect("drift");
+    let drift = fs::read_to_string(preflight.join("receipt-scope-drift.md")).expect("drift");
+    fs::write(
+        preflight.join("receipt-scope-drift.md"),
+        drift.replacen("**Ship", "**Preflight", 1),
+    )
+    .expect("mislabeled drift");
     let malformed = governance_refresh(&fixture, "success");
     assert!(malformed.status.success());
     assert!(output_text(&malformed.stdout).contains("DETAIL=receipt-scope-drift.md is malformed\n"));

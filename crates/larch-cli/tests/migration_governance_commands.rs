@@ -26,7 +26,7 @@ fn plan_receipt_refresh_help_matches_frozen_argparse_output() {
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "usage: larch plan-receipt refresh [-h] --issue ISSUE [--repo REPO] --repo-root\n                                  REPO_ROOT --preflight-tmpdir\n                                  PREFLIGHT_TMPDIR --base-ref BASE_REF\n                                  --previous-base-sha PREVIOUS_BASE_SHA\n                                  --base-sha BASE_SHA [--run-id RUN_ID]\n\noptions:\n  -h, --help            show this help message and exit\n  --issue ISSUE\n  --repo REPO\n  --repo-root REPO_ROOT\n  --preflight-tmpdir PREFLIGHT_TMPDIR\n  --base-ref BASE_REF\n  --previous-base-sha PREVIOUS_BASE_SHA\n  --base-sha BASE_SHA\n  --run-id RUN_ID       implementation run lease; required after Step 0 when\n                        no RUN_ID/LARCH_RUN_ID/SESSION_ID env key names it\n"
+        "usage: larch plan-receipt refresh [-h] --issue ISSUE [--repo REPO] --repo-root\n                                  REPO_ROOT --preflight-tmpdir\n                                  PREFLIGHT_TMPDIR --base-ref BASE_REF\n                                  --previous-base-sha PREVIOUS_BASE_SHA\n                                  --base-sha BASE_SHA [--run-id RUN_ID]\n                                  [--stage STAGE]\n\noptions:\n  -h, --help            show this help message and exit\n  --issue ISSUE\n  --repo REPO\n  --repo-root REPO_ROOT\n  --preflight-tmpdir PREFLIGHT_TMPDIR\n  --base-ref BASE_REF\n  --previous-base-sha PREVIOUS_BASE_SHA\n  --base-sha BASE_SHA\n  --run-id RUN_ID       implementation run lease; required after Step 0 when\n                        no RUN_ID/LARCH_RUN_ID/SESSION_ID env key names it\n  --stage STAGE         scope-drift record stage: preflight (default) or ship\n"
     );
     assert!(output.stderr.is_empty());
 }
@@ -119,4 +119,39 @@ fn refresh_rejects_an_invalid_run_id_lease_before_any_read() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+fn refresh_rejects_an_unknown_scope_drift_stage_before_any_read() {
+    for stage in ["postflight", ""] {
+        let output = larch(&[
+            "plan-receipt",
+            "refresh",
+            "--issue",
+            "9006",
+            "--repo-root",
+            "/missing/repo",
+            "--preflight-tmpdir",
+            "/missing/preflight",
+            "--base-ref",
+            "origin/main",
+            "--previous-base-sha",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "--base-sha",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "--stage",
+            stage,
+        ]);
+        assert_eq!(output.status.code(), Some(2), "stage={stage:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "PLAN_RECEIPT_REFRESHED=false\n",
+            "stage={stage:?}"
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "ERROR: plan-receipt refresh: --stage must be preflight or ship\n",
+            "stage={stage:?}"
+        );
+    }
 }

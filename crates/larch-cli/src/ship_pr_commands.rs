@@ -1454,6 +1454,9 @@ fn terminal_clear_updates() -> Vec<(&'static str, String)> {
         ("EXIT_CODE", "0".to_owned()), ("BAIL_REASON", String::new()),
         ("BAIL_NEEDS_USER_INPUT", "false".to_owned()), ("FAILED_RUN_ID", String::new()),
         ("BAIL_FAILURE_DETAIL_LOG", String::new()),
+        (GOVERNANCE_REASONS_KEY, String::new()),
+        (GOVERNANCE_RECEIPT_BASE_KEY, String::new()),
+        (GOVERNANCE_TARGET_BASE_KEY, String::new()),
     ]
 }
 
@@ -2255,6 +2258,9 @@ mod tests {
                 ("PR_URL", "https://github.com/owner/repo/pull/12".to_owned()),
                 ("MERGE_RESULT", "queued".to_owned()),
                 ("CONFLICT_FILES", String::new()),
+                (GOVERNANCE_REASONS_KEY, "stale-plan-body".to_owned()),
+                (GOVERNANCE_RECEIPT_BASE_KEY, "a".repeat(40)),
+                (GOVERNANCE_TARGET_BASE_KEY, "b".repeat(40)),
             ],
         )
         .expect("patch");
@@ -2271,6 +2277,9 @@ mod tests {
         patch_done(&context).expect("done");
         assert_eq!(state_value(&context, "PHASE"), "done");
         assert_eq!(state_value(&context, "BAIL_REASON"), "");
+        assert_eq!(state_value(&context, GOVERNANCE_REASONS_KEY), "");
+        assert_eq!(state_value(&context, GOVERNANCE_RECEIPT_BASE_KEY), "");
+        assert_eq!(state_value(&context, GOVERNANCE_TARGET_BASE_KEY), "");
 
         let fields = output_fields(b"A=first\nA=last\n").expect("wire");
         assert_eq!(required_field(&fields, "A").expect("field"), "last");

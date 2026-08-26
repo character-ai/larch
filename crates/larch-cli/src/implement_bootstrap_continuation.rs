@@ -24,8 +24,8 @@ use larch_adapters::{
 };
 use larch_core::{
     CodexGateMessage, CrStrip, DegradedToolsResult, DuplicatePolicy, KvDocument, ParseOptions,
-    ProcessOutput, RepositoryRead, Revision, compose_plan_goals_test, redact, role_default,
-    single_line as core_single_line,
+    ProcessOutput, ReceiptRefreshStage, RepositoryRead, Revision, compose_plan_goals_test, redact,
+    role_default, single_line as core_single_line,
 };
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -771,7 +771,7 @@ fn append_receipt_scope_drift(state: &BootstrapState, options: &BootstrapOptions
     let Ok(entry) = read_regular_text(&source) else {
         return false;
     };
-    if !valid_receipt_scope_drift(&entry) {
+    if !valid_receipt_scope_drift(&entry, ReceiptRefreshStage::Preflight) {
         return false;
     }
     if write_session_file(&state.implement_tmpdir, "receipt-scope-drift.md", &entry).is_err() {
@@ -803,11 +803,11 @@ fn append_receipt_scope_drift(state: &BootstrapState, options: &BootstrapOptions
 }
 
 /// Return whether `entry` is one well-formed, bounded receipt scope-drift record.
-pub fn valid_receipt_scope_drift(entry: &str) -> bool {
+pub fn valid_receipt_scope_drift(entry: &str, stage: ReceiptRefreshStage) -> bool {
     let lines: Vec<&str> = entry.lines().collect();
     if lines.len() < 7
         || lines.len() > RECEIPT_SCOPE_DRIFT_MAX_ROWS + 6
-        || lines[0] != "- **Preflight plan-receipt scope refresh**: semantic materiality passed."
+        || lines[0] != stage.heading()
         || !receipt_scope_sha_line(lines[1], "  - Receipt base: `")
         || !receipt_scope_sha_line(lines[2], "  - Reviewed target: `")
         || lines[3] != "  - Scope diff (JSON-quoted name-status rows):"
@@ -2204,6 +2204,7 @@ mod tests {
         strip_plan_provenance_headers, valid_receipt_scope_drift,
     };
     use crate::bootstrap_commands::{BootstrapOptions, BootstrapState, InvokeMode};
+    use larch_core::ReceiptRefreshStage;
     use std::{collections::BTreeMap, fs, process::ExitCode};
 
     fn test_options() -> BootstrapOptions {
@@ -2359,15 +2360,33 @@ mod tests {
             "a".repeat(40),
             "b".repeat(40),
         );
-        assert!(valid_receipt_scope_drift(&valid));
-        assert!(!valid_receipt_scope_drift(&valid.replace(&row, "```")));
-        assert!(!valid_receipt_scope_drift(&valid.replacen('a', "A", 1)));
+        assert!(valid_receipt_scope_drift(
+            &valid,
+            ReceiptRefreshStage::Preflight
+        ));
+        assert!(!valid_receipt_scope_drift(
+            &valid,
+            ReceiptRefreshStage::Ship
+        ));
+        let ship = valid.replacen("**Preflight", "**Ship", 1);
+        assert!(valid_receipt_scope_drift(&ship, ReceiptRefreshStage::Ship));
+        assert!(!valid_receipt_scope_drift(
+            &valid.replace(&row, "```"),
+            ReceiptRefreshStage::Preflight
+        ));
+        assert!(!valid_receipt_scope_drift(
+            &valid.replacen('a', "A", 1),
+            ReceiptRefreshStage::Preflight
+        ));
         let too_many_rows = valid.replacen(
             "    ```\n",
             &format!("{}    ```\n", format!("    {row}\n").repeat(128)),
             1,
         );
-        assert!(!valid_receipt_scope_drift(&too_many_rows));
+        assert!(!valid_receipt_scope_drift(
+            &too_many_rows,
+            ReceiptRefreshStage::Preflight
+        ));
     }
 
     #[test]
