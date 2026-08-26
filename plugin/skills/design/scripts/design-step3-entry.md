@@ -13,7 +13,6 @@ Thin launcher-compat wrapper for the `/design` Step 3 entry block.
 - The `.sh` file only derives and exports `CLAUDE_PLUGIN_ROOT`, then execs `scripts/larch.sh design step3-entry`.
 - `scripts/larch.sh design step3-entry` owns panel-init failure, scope-anchor materialization, and the Step 3 entry preview.
 - Accepts `--reentry` for Gate A / Gate C routed review re-entry, writes `$DESIGN_TMPDIR/.step3-reentry`, and clears `$DESIGN_TMPDIR/oos-aggregate-pool.md` after validating `DESIGN_TMPDIR`.
-- A direct `--reentry` revokes the Gate B oversize override hash and reason state before the new review starts.
 - `--reentry` does not clear `$DESIGN_TMPDIR/.step3-entry-plan-printed`; the continuation entry point owns that cleanup.
 - Keeps the combined entry order: clear `.pause-save-complete`, call `plan-review step3-entry-state`, exit on `.pause-save-complete`, then materialize the scope anchor and call `plan-review step3-entry-preview`.
 - Materializes and validates `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` before the Step 3 review launch can be scheduled. The anchor uses the issue title plus `issue-body.txt` with any prior `larch:plan` block stripped, falling back to `feature-description.txt` or a verbal prompt only when no issue body existed, and appends an approved outline when present.
