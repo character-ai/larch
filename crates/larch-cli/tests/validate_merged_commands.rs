@@ -15,11 +15,13 @@ const SHA_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const SHA_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const TIP: &str = "cccccccccccccccccccccccccccccccccccccccc";
 
-const PREPARE_USAGE: &str = "usage: python/cli.py validate-merged prepare [-h] [--root ROOT] --run-dir\n                                             RUN_DIR [--repo REPO]\n                                             [--max-merges MAX_MERGES]\n";
+const PREPARE_USAGE: &str = "usage: larch validate-merged prepare [-h] [--root ROOT] --run-dir\n                                     RUN_DIR [--repo REPO]\n                                     [--max-merges MAX_MERGES]\n";
 const FINDER_USAGE: &str =
-    "usage: python/cli.py validate-merged ingest-finder [-h] --run-dir RUN_DIR\n";
-const REPORT_USAGE: &str = "usage: python/cli.py validate-merged report [-h] [--root ROOT] --run-dir\n                                            RUN_DIR [--repo REPO]\n                                            --state-output STATE_OUTPUT\n";
-const WRITE_USAGE: &str = "usage: python/cli.py validate-merged write-state [-h] [--root ROOT] --repo\n                                                 REPO --state-input\n                                                 STATE_INPUT\n                                                 [--expected-digest EXPECTED_DIGEST]\n";
+    "usage: larch validate-merged ingest-finder [-h] --run-dir RUN_DIR\n";
+const REFUTER_USAGE: &str =
+    "usage: larch validate-merged ingest-refuter [-h] --run-dir RUN_DIR\n";
+const REPORT_USAGE: &str = "usage: larch validate-merged report [-h] [--root ROOT] --run-dir\n                                    RUN_DIR [--repo REPO]\n                                    --state-output STATE_OUTPUT\n";
+const WRITE_USAGE: &str = "usage: larch validate-merged write-state [-h] [--root ROOT] --repo\n                                         REPO --state-input\n                                         STATE_INPUT\n                                         [--expected-digest EXPECTED_DIGEST]\n";
 
 struct Fixture {
     _temporary: TempDir,
@@ -151,7 +153,7 @@ fn prepare_help_and_argument_failures_match_argparse() {
         .assert()
         .success()
         .stdout(predicate::str::starts_with(
-            "usage: python/cli.py validate-merged prepare",
+            "usage: larch validate-merged prepare",
         ));
     fixture
         .command()
@@ -160,7 +162,7 @@ fn prepare_help_and_argument_failures_match_argparse() {
         .failure()
         .code(2)
         .stderr(format!(
-            "{PREPARE_USAGE}python/cli.py validate-merged prepare: error: the following arguments are required: --run-dir\n"
+            "{PREPARE_USAGE}larch validate-merged prepare: error: the following arguments are required: --run-dir\n"
         ));
     fixture
         .command()
@@ -176,7 +178,7 @@ fn prepare_help_and_argument_failures_match_argparse() {
         .failure()
         .code(2)
         .stderr(format!(
-            "{PREPARE_USAGE}python/cli.py validate-merged prepare: error: argument --max-merges: invalid int value: 'abc'\n"
+            "{PREPARE_USAGE}larch validate-merged prepare: error: argument --max-merges: invalid int value: 'abc'\n"
         ));
     fixture
         .command()
@@ -201,13 +203,23 @@ fn prepare_help_and_argument_failures_match_argparse() {
         .failure()
         .code(2)
         .stderr(format!(
-            "{PREPARE_USAGE}python/cli.py validate-merged prepare: error: argument -h/--help: ignored explicit argument 'x'\n"
+            "{PREPARE_USAGE}larch validate-merged prepare: error: argument -h/--help: ignored explicit argument 'x'\n"
         ));
 }
 
 #[test]
 fn ingest_and_report_help_match_argparse() {
     let fixture = Fixture::create();
+    for verb in ["ingest-finder", "ingest-refuter", "report", "write-state"] {
+        fixture
+            .command()
+            .args(["validate-merged", verb, "--help"])
+            .assert()
+            .success()
+            .stdout(predicate::str::starts_with(format!(
+                "usage: larch validate-merged {verb}"
+            )));
+    }
     fixture
         .command()
         .args(["validate-merged", "ingest-finder"])
@@ -215,7 +227,16 @@ fn ingest_and_report_help_match_argparse() {
         .failure()
         .code(2)
         .stderr(format!(
-            "{FINDER_USAGE}python/cli.py validate-merged ingest-finder: error: the following arguments are required: --run-dir\n"
+            "{FINDER_USAGE}larch validate-merged ingest-finder: error: the following arguments are required: --run-dir\n"
+        ));
+    fixture
+        .command()
+        .args(["validate-merged", "ingest-refuter"])
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(format!(
+            "{REFUTER_USAGE}larch validate-merged ingest-refuter: error: the following arguments are required: --run-dir\n"
         ));
     fixture
         .command()
@@ -224,7 +245,7 @@ fn ingest_and_report_help_match_argparse() {
         .failure()
         .code(2)
         .stderr(format!(
-            "{REPORT_USAGE}python/cli.py validate-merged report: error: the following arguments are required: --run-dir, --state-output\n"
+            "{REPORT_USAGE}larch validate-merged report: error: the following arguments are required: --run-dir, --state-output\n"
         ));
     fixture
         .command()
@@ -233,7 +254,7 @@ fn ingest_and_report_help_match_argparse() {
         .failure()
         .code(2)
         .stderr(format!(
-            "{WRITE_USAGE}python/cli.py validate-merged write-state: error: the following arguments are required: --repo, --state-input\n"
+            "{WRITE_USAGE}larch validate-merged write-state: error: the following arguments are required: --repo, --state-input\n"
         ));
 }
 

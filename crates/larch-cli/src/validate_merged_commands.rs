@@ -34,23 +34,21 @@ use crate::{
     github_repository_resolution::ambient_repo,
 };
 
-const PREPARE_PROGRAM: &str = "python/cli.py validate-merged prepare";
-const PREPARE_USAGE: &str = "usage: python/cli.py validate-merged prepare [-h] [--root ROOT] --run-dir\n                                             RUN_DIR [--repo REPO]\n                                             [--max-merges MAX_MERGES]";
-const PREPARE_HELP: &str = "usage: python/cli.py validate-merged prepare [-h] [--root ROOT] --run-dir\n                                             RUN_DIR [--repo REPO]\n                                             [--max-merges MAX_MERGES]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT\n  --run-dir RUN_DIR\n  --repo REPO\n  --max-merges MAX_MERGES\n";
-const FINDER_PROGRAM: &str = "python/cli.py validate-merged ingest-finder";
-const FINDER_USAGE: &str =
-    "usage: python/cli.py validate-merged ingest-finder [-h] --run-dir RUN_DIR";
-const FINDER_HELP: &str = "usage: python/cli.py validate-merged ingest-finder [-h] --run-dir RUN_DIR\n\noptions:\n  -h, --help         show this help message and exit\n  --run-dir RUN_DIR\n";
-const REFUTER_PROGRAM: &str = "python/cli.py validate-merged ingest-refuter";
-const REFUTER_USAGE: &str =
-    "usage: python/cli.py validate-merged ingest-refuter [-h] --run-dir RUN_DIR";
-const REFUTER_HELP: &str = "usage: python/cli.py validate-merged ingest-refuter [-h] --run-dir RUN_DIR\n\noptions:\n  -h, --help         show this help message and exit\n  --run-dir RUN_DIR\n";
-const REPORT_PROGRAM: &str = "python/cli.py validate-merged report";
-const REPORT_USAGE: &str = "usage: python/cli.py validate-merged report [-h] [--root ROOT] --run-dir\n                                            RUN_DIR [--repo REPO]\n                                            --state-output STATE_OUTPUT";
-const REPORT_HELP: &str = "usage: python/cli.py validate-merged report [-h] [--root ROOT] --run-dir\n                                            RUN_DIR [--repo REPO]\n                                            --state-output STATE_OUTPUT\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT\n  --run-dir RUN_DIR\n  --repo REPO\n  --state-output STATE_OUTPUT\n";
-const WRITE_PROGRAM: &str = "python/cli.py validate-merged write-state";
-const WRITE_USAGE: &str = "usage: python/cli.py validate-merged write-state [-h] [--root ROOT] --repo\n                                                 REPO --state-input\n                                                 STATE_INPUT\n                                                 [--expected-digest EXPECTED_DIGEST]";
-const WRITE_HELP: &str = "usage: python/cli.py validate-merged write-state [-h] [--root ROOT] --repo\n                                                 REPO --state-input\n                                                 STATE_INPUT\n                                                 [--expected-digest EXPECTED_DIGEST]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT\n  --repo REPO\n  --state-input STATE_INPUT\n  --expected-digest EXPECTED_DIGEST\n";
+const PREPARE_PROGRAM: &str = "larch validate-merged prepare";
+const PREPARE_USAGE: &str = "usage: larch validate-merged prepare [-h] [--root ROOT] --run-dir\n                                     RUN_DIR [--repo REPO]\n                                     [--max-merges MAX_MERGES]";
+const PREPARE_HELP: &str = "usage: larch validate-merged prepare [-h] [--root ROOT] --run-dir\n                                     RUN_DIR [--repo REPO]\n                                     [--max-merges MAX_MERGES]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT\n  --run-dir RUN_DIR\n  --repo REPO\n  --max-merges MAX_MERGES\n";
+const FINDER_PROGRAM: &str = "larch validate-merged ingest-finder";
+const FINDER_USAGE: &str = "usage: larch validate-merged ingest-finder [-h] --run-dir RUN_DIR";
+const FINDER_HELP: &str = "usage: larch validate-merged ingest-finder [-h] --run-dir RUN_DIR\n\noptions:\n  -h, --help         show this help message and exit\n  --run-dir RUN_DIR\n";
+const REFUTER_PROGRAM: &str = "larch validate-merged ingest-refuter";
+const REFUTER_USAGE: &str = "usage: larch validate-merged ingest-refuter [-h] --run-dir RUN_DIR";
+const REFUTER_HELP: &str = "usage: larch validate-merged ingest-refuter [-h] --run-dir RUN_DIR\n\noptions:\n  -h, --help         show this help message and exit\n  --run-dir RUN_DIR\n";
+const REPORT_PROGRAM: &str = "larch validate-merged report";
+const REPORT_USAGE: &str = "usage: larch validate-merged report [-h] [--root ROOT] --run-dir\n                                    RUN_DIR [--repo REPO]\n                                    --state-output STATE_OUTPUT";
+const REPORT_HELP: &str = "usage: larch validate-merged report [-h] [--root ROOT] --run-dir\n                                    RUN_DIR [--repo REPO]\n                                    --state-output STATE_OUTPUT\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT\n  --run-dir RUN_DIR\n  --repo REPO\n  --state-output STATE_OUTPUT\n";
+const WRITE_PROGRAM: &str = "larch validate-merged write-state";
+const WRITE_USAGE: &str = "usage: larch validate-merged write-state [-h] [--root ROOT] --repo\n                                         REPO --state-input\n                                         STATE_INPUT\n                                         [--expected-digest EXPECTED_DIGEST]";
+const WRITE_HELP: &str = "usage: larch validate-merged write-state [-h] [--root ROOT] --repo\n                                         REPO --state-input\n                                         STATE_INPUT\n                                         [--expected-digest EXPECTED_DIGEST]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT\n  --repo REPO\n  --state-input STATE_INPUT\n  --expected-digest EXPECTED_DIGEST\n";
 
 const STATE_SCHEMA_VERSION: u64 = 1;
 const STATE_RELPATH: &str = "validate-merged/state.json";
