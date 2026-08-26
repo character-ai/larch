@@ -206,11 +206,12 @@ GitHub, Git, network, filesystem, process, or issue mutation behavior.
 
 ## Workflow handoff
 
-`.github/workflows/migration-governance.yaml` runs every day at 07:17 UTC and
-supports `workflow_dispatch`. It checks out the audited commit, loads the
-pinned Rust toolchain, builds the `larch-cli` package from the lockfile, and
-verifies the `larch` binary. It creates the repository's private GitHub CLI
-configuration for the typed client, then selects that binary with
+After Chief umbrella #7687 closed,
+`.github/workflows/migration-governance.yaml` became an on-demand workflow with
+only the `workflow_dispatch` trigger. A dispatch checks out the audited commit,
+loads the pinned Rust toolchain, builds the `larch-cli` package from the
+lockfile, and verifies the `larch` binary. It creates the repository's private
+GitHub CLI configuration for the typed client, then selects that binary with
 `LARCH_BINARY` and runs through the verified bootstrap:
 
 ```bash
@@ -226,6 +227,10 @@ This includes clean and finding reports. An audit failure also uploads a report
 if the command produced one before failing. Exit `0` passes the workflow. Exit
 `1` publishes the finding report and then fails the workflow. Exit `2`, or an
 unexpected exit, fails the workflow as an unavailable audit.
+
+The six `*-python-free` lint rules listed in
+`docs/rust-command-registry.md` remain permanent tripwires against restoring
+the retired Python runtime.
 
 The aggregate's count-table renderer supplies the bounded Chief summary. The
 workflow passes that file to `tracking-issue upsert-summary`, which redacts

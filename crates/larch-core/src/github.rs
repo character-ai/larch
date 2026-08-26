@@ -944,7 +944,7 @@ impl GitHubTransportPolicy {
         }
     }
 
-    /// Reviewed exhaustive-history policy for the daily migration audit.
+    /// Reviewed exhaustive-history policy for the migration audit.
     ///
     /// The aggregate must account for historical managed leaves, so its issue
     /// corpus is larger than ordinary interactive command snapshots. This is
