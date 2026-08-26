@@ -14,6 +14,7 @@ fn run(root: Option<&Path>, verb: &str, extra: &[&str], envs: &[(&str, &Path)]) 
     for (key,value) in envs { command.env(key,value); }
     command.output().expect("run larch")
 }
+fn run_plan(root:&Path,verb:&str)->Output { Command::new(env!("CARGO_BIN_EXE_larch")).args(["plan",verb,"--design-tmpdir"]).arg(root).env("LARCH_QUIET_DISABLE","1").output().expect("run plan command") }
 fn out(output:&Output)->String { String::from_utf8_lossy(&output.stdout).into_owned() }
 fn err(output:&Output)->String { String::from_utf8_lossy(&output.stderr).into_owned() }
 fn text(path:impl AsRef<Path>)->String { fs::read_to_string(path).expect("read text") }
@@ -86,6 +87,26 @@ fn step3_state_and_continuation_round_trip() {
     let auto=run(Some(&root),"step3-state",&["--auto-continuation-entry"],&[]); assert_eq!(out(&auto),"STEP3_STATE=auto-continuation-entry\nREVIEW_ROUND_COUNT=1\n"); assert!(!root.join(".completed/step-3").exists());
     fs::write(root.join("plan.txt"),"# Plan\n\ndiff_lines: 1\n").expect("plan"); fs::write(root.join(".step3-review-result.env"),"LOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=ok\nDEGRADED_PANEL=0\n").expect("result");
     let continuation=run(Some(&root),"continuation",&["--approve-requested","false"],&[]); assert!(continuation.status.success()); assert_eq!(out(&continuation),"PLAN_REVIEW_CONTINUE=false\nPLAN_REVIEW_CONTINUE_REASON=small-clean\nREVIEW_ROUND_COUNT=1\nREVIEW_ROUND_CAP=2\nPANEL_TIER=\nACCEPTED_COUNT=0\nNIT_ACCEPTED_COUNT=0\nNON_NIT_ACCEPTED_COUNT=0\nHIGH_ACCEPTED_COUNT=0\nNEW_HIGH_ACCEPTED_COUNT=0\nNEW_NON_NIT_ACCEPTED_COUNT=0\nDUPLICATE_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nSTRUCTURAL_OR_LARGE_CHANGE=false\n"); assert_eq!(text(root.join(".step3-applied-finding-keys.tsv")),"");
+}
+
+#[test]
+fn direct_review_reentry_revokes_oversize_override_authority() {
+    let sandbox=TempDir::new().expect("sandbox"); let root=design(&sandbox); fs::create_dir(root.join(".completed")).expect("completed");
+    fs::write(root.join(".step3-reentry"),"").expect("reentry"); fs::write(root.join(".gate-b-oversize-override.sha256"),"stale\n").expect("hash authority"); fs::write(root.join(".gate-b-oversize-override.env"),"OVERSIZE_OVERRIDE=operator\nTRIGGER_REASONS=surfaces\n").expect("carry authority");
+    let direct=run(Some(&root),"step3-state",&["--direct-review-entry"],&[]); assert!(direct.status.success(),"{}",err(&direct));
+    assert!(!root.join(".gate-b-oversize-override.sha256").exists()); assert!(!root.join(".gate-b-oversize-override.env").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn live_review_driver_forwards_oversize_override_carry_notice_once() {
+    let sandbox=TempDir::new().expect("sandbox"); let root=design(&sandbox); let plan=root.join("plan.txt");
+    let original="# Plan\n\n## Files to modify/create\n\n### UPDATED: crates/larch-cli/src/a.rs\n### UPDATED: skills/design/SKILL.md\n### UPDATED: docs/example.md\n### UPDATED: scripts/example.sh\n### UPDATED: README.md\n\n## Approach\n\nKeep the behavior.\n\ndifficulty: HARD\nmechanical_churn: false\ndiff_lines: 20\n";
+    fs::write(&plan,original).expect("plan"); let armed=run_plan(&root,"set-oversize-override"); assert!(armed.status.success(),"{}",err(&armed)); fs::copy(&plan,root.join("plan-pre-apply-round-1.txt")).expect("pre-apply plan");
+    let revised=text(&plan).replace("Keep the behavior.\n","Keep the behavior.\nApply the accepted finding.\n"); fs::write(&plan,revised).expect("review rewrite"); fs::write(root.join(".step3-round-1.phase"),"awaiting-post-apply\n").expect("phase");
+    let postplan=sandbox.path().join("postplan.sh"); script(&postplan,"exit 13");
+    let resumed=run(Some(&root),"run",&["--mode","loop","--starting-round","1","--no-preview"],&[("RUN_STEP3_POSTPLAN_EMIT_SH",&postplan)]); assert!(resumed.status.success(),"{}",err(&resumed));
+    assert_eq!(out(&resumed).matches("ℹ oversize override carried forward (reasons: surfaces)\n").count(),1,"{}",out(&resumed));
 }
 
 #[cfg(unix)]

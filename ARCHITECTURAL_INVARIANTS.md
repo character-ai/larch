@@ -19,6 +19,11 @@ metadata may soften presentation, never the trigger condition. Evidence of
 violation: a gate whose disarm inputs are all writable by the entity under
 evaluation (#6542, #6524).
 
+An operator size override may carry across an automated Gate B rewrite only
+when the independently recomputed trigger reasons are a subset of the reasons
+recorded with that decision. A new trigger reason or direct review re-entry
+revokes the authority and requires a new operator decision (#8967).
+
 ### I-Gate-2: A variant path runs every persistence step its mainline gate runs
 
 A flag carve-out, fallback lane, or legacy-shape path may skip pauses,

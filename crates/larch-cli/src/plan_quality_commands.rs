@@ -30,7 +30,7 @@
 )]
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     env,
     ffi::OsString,
     fs,
@@ -38,13 +38,17 @@ use std::{
     process::{Command, ExitCode, Stdio},
 };
 
-use larch_adapters::validate_design_tmpdir;
+use larch_adapters::{
+    TemporaryRoot, atomic_write_utf8_in, remove_file_if_present, validate_design_tmpdir,
+};
 use larch_core::{
-    DuplicatePolicy, KvDocument, OVERSIZE_OVERRIDE_OPERATOR, ParseOptions, PlanCommandRow,
-    ValidationSummary, assess_plan_size, cleanup_cache_sessions_root, compose_plan_goals_test,
+    DuplicatePolicy, KeyPolicy, KvDocument, KvRow, OVERSIZE_OVERRIDE_OPERATOR, ParseOptions,
+    PlanCommandRow, RenderOptions, ValidationSummary, assess_plan_size,
+    cleanup_cache_sessions_root, compose_plan_goals_test, covered_plan_size_trigger_reasons,
     drift_exceeds, drift_ratio_token, emit_kv, parse_final_trailers, parse_optional_metadata,
-    parse_plan_commands, redact_secrets, render_plan_command_tsv, set_oversize_override_text,
-    tier_valid, trailing_plan_difficulty, trailing_plan_metadata_lines,
+    parse_plan_commands, parse_plan_size_trigger_reason_set, plan_size_trigger_reasons,
+    redact_secrets, render_plan_command_tsv, set_oversize_override_text, tier_valid,
+    trailing_plan_difficulty, trailing_plan_metadata_lines,
 };
 use regex::Regex;
 
@@ -60,6 +64,8 @@ use crate::{
 
 const RC2: u8 = 2;
 const RC3: u8 = 3;
+const OVERSIZE_OVERRIDE_HASH_FILE: &str = ".gate-b-oversize-override.sha256";
+const OVERSIZE_OVERRIDE_STATE_FILE: &str = ".gate-b-oversize-override.env";
 
 fn usage(program: &str, usage: &str, error: &str) -> ExitCode {
     argparse_usage_error(usage, program, error, RC2)
@@ -947,7 +953,61 @@ pub fn optional_trailers(arguments: &[OsString]) -> ExitCode {
 }
 
 fn authority_path(design_tmpdir: &Path) -> PathBuf {
-    design_tmpdir.join(".gate-b-oversize-override.sha256")
+    design_tmpdir.join(OVERSIZE_OVERRIDE_HASH_FILE)
+}
+
+fn authority_state_path(design_tmpdir: &Path) -> PathBuf {
+    design_tmpdir.join(OVERSIZE_OVERRIDE_STATE_FILE)
+}
+
+fn write_authority_file(design_tmpdir: &Path, name: &str, text: &str) -> Result<(), String> {
+    let root = TemporaryRoot::resolve(Some(design_tmpdir)).map_err(|error| error.to_string())?;
+    let target = root.path().join(name);
+    atomic_write_utf8_in(&root, &target, text, false, 0o600).map_err(|error| error.to_string())
+}
+
+fn oversize_override_state_text(plan_text: &str) -> Result<String, String> {
+    let reasons = plan_size_trigger_reasons(plan_text)
+        .ok_or_else(|| "cannot record oversize override reasons without diff_lines".to_owned())?;
+    let rows = vec![
+        KvRow::new(
+            "OVERSIZE_OVERRIDE",
+            OVERSIZE_OVERRIDE_OPERATOR,
+            KeyPolicy::Environment,
+        )
+        .map_err(|error| error.to_string())?,
+        KvRow::new("TRIGGER_REASONS", reasons.join(","), KeyPolicy::Environment)
+            .map_err(|error| error.to_string())?,
+    ];
+    KvDocument::from_rows(rows)
+        .render(RenderOptions::environment())
+        .map_err(|error| error.to_string())
+}
+
+fn recorded_oversize_override_reasons(design_tmpdir: &Path) -> Option<BTreeSet<String>> {
+    let path = authority_state_path(design_tmpdir);
+    if !path.is_file() || path.is_symlink() {
+        return None;
+    }
+    let document = KvDocument::parse(&read_text(&path), ParseOptions::environment()).ok()?;
+    let values = document.select(DuplicatePolicy::First);
+    if values.len() != 2
+        || values.get("OVERSIZE_OVERRIDE").map(String::as_str) != Some(OVERSIZE_OVERRIDE_OPERATOR)
+    {
+        return None;
+    }
+    let raw = values.get("TRIGGER_REASONS")?;
+    parse_plan_size_trigger_reason_set(raw)
+}
+
+/// Revoke the operator authority at a direct review re-entry boundary.
+pub(crate) fn clear_oversize_override_authority(design_tmpdir: &Path) -> Result<(), String> {
+    let root = TemporaryRoot::resolve(Some(design_tmpdir)).map_err(|error| error.to_string())?;
+    for name in [OVERSIZE_OVERRIDE_STATE_FILE, OVERSIZE_OVERRIDE_HASH_FILE] {
+        root.revalidate().map_err(|error| error.to_string())?;
+        remove_file_if_present(&root.path().join(name))?;
+    }
+    Ok(())
 }
 
 fn trusted_oversize_override(design_tmpdir: &Path, plan_text: &str) -> Option<String> {
@@ -967,18 +1027,73 @@ fn trusted_oversize_override(design_tmpdir: &Path, plan_text: &str) -> Option<St
     }
 }
 
-fn sync_oversize_override_authority(design_tmpdir: &Path, plan: &Path) {
+fn sync_oversize_override_authority(design_tmpdir: &Path, plan: &Path) -> Result<(), String> {
     let plan_text = read_text(plan);
-    let path = authority_path(design_tmpdir);
     if parse_optional_metadata(&plan_text)
         .oversize_override
         .as_deref()
         == Some(OVERSIZE_OVERRIDE_OPERATOR)
     {
-        let _ = atomic_write(&path, &(sha256_text(&plan_text) + "\n"));
+        let state = oversize_override_state_text(&plan_text)?;
+        if let Err(error) =
+            write_authority_file(design_tmpdir, OVERSIZE_OVERRIDE_STATE_FILE, &state).and_then(
+                |()| {
+                    write_authority_file(
+                        design_tmpdir,
+                        OVERSIZE_OVERRIDE_HASH_FILE,
+                        &(sha256_text(&plan_text) + "\n"),
+                    )
+                },
+            )
+        {
+            let _ = clear_oversize_override_authority(design_tmpdir);
+            return Err(error);
+        }
+        Ok(())
     } else {
-        let _ = fs::remove_file(&path);
+        clear_oversize_override_authority(design_tmpdir)
     }
+}
+
+/// Re-arm a Gate B-invalidated plan hash when no new size trigger appeared.
+pub(crate) fn reconcile_gate_b_oversize_override(
+    design_tmpdir: &Path,
+    before: &str,
+    after: &str,
+) -> Result<Option<String>, String> {
+    if parse_optional_metadata(after).oversize_override.as_deref()
+        != Some(OVERSIZE_OVERRIDE_OPERATOR)
+    {
+        clear_oversize_override_authority(design_tmpdir)?;
+        return Ok(None);
+    }
+    let hash_path = authority_path(design_tmpdir);
+    let hash_is_regular = hash_path.is_file() && !hash_path.is_symlink();
+    if hash_is_regular && read_text(&hash_path).trim() == sha256_text(before) {
+        write_authority_file(
+            design_tmpdir,
+            OVERSIZE_OVERRIDE_HASH_FILE,
+            &(sha256_text(after) + "\n"),
+        )?;
+        return Ok(None);
+    }
+    let Some(recorded) = hash_is_regular
+        .then(|| recorded_oversize_override_reasons(design_tmpdir))
+        .flatten()
+    else {
+        clear_oversize_override_authority(design_tmpdir)?;
+        return Ok(None);
+    };
+    let Some(current) = covered_plan_size_trigger_reasons(&recorded, after) else {
+        clear_oversize_override_authority(design_tmpdir)?;
+        return Ok(None);
+    };
+    write_authority_file(
+        design_tmpdir,
+        OVERSIZE_OVERRIDE_HASH_FILE,
+        &(sha256_text(after) + "\n"),
+    )?;
+    Ok((!current.is_empty()).then(|| current.join(",")))
 }
 
 fn canonical_plan_for_override(
@@ -1039,7 +1154,7 @@ pub fn set_oversize_override(arguments: &[OsString]) -> ExitCode {
         if updated != original {
             atomic_write(&plan, &updated)?;
         }
-        sync_oversize_override_authority(&design_tmpdir, &plan);
+        sync_oversize_override_authority(&design_tmpdir, &plan)?;
         Ok(())
     })() {
         Ok(()) => {
@@ -1799,7 +1914,7 @@ invocation_no_flags\t11\tscripts/demo.sh\t\t\t\tu2\n",
         assert!(trusted_oversize_override(&root, &read_text(&plan)).is_none());
         let with_override = set_oversize_override_text(&read_text(&plan), false).expect("override");
         fs::write(&plan, &with_override).expect("rewrite");
-        sync_oversize_override_authority(&root, &plan);
+        sync_oversize_override_authority(&root, &plan).expect("sync authority");
         assert_eq!(
             trusted_oversize_override(&root, &with_override).as_deref(),
             Some(OVERSIZE_OVERRIDE_OPERATOR)

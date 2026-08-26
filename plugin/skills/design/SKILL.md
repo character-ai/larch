@@ -371,7 +371,7 @@ Print: `> **🔶 /design 3: plan review**`
 
 **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review-runtime.md` completely before invoking `design-step3-entry.sh`; the entry wrapper emits the preview internally.
 
-Caller sets the Step 3 entry flag explicitly. Use `STEP3_REENTRY_FLAG=""` for first-time Step 3 entry on the normal post-Step-2b.5 path. Use `STEP3_REENTRY_FLAG="--reentry"` only for Gate A **Ready for review**, Gate C **Re-run review panel**, or other backward review re-entry. Do not auto-detect re-entry from disk state. The `--reentry` path writes `.step3-reentry`, clears stale downstream sentinels, idempotently writes `.completed/step-1e`, and restores the direct-review bypass package.
+Caller sets the Step 3 entry flag explicitly. Use `STEP3_REENTRY_FLAG=""` for first-time Step 3 entry on the normal post-Step-2b.5 path. Use `STEP3_REENTRY_FLAG="--reentry"` only for Gate A **Ready for review**, Gate C **Re-run review panel**, or other backward review re-entry. Do not auto-detect re-entry from disk state. The `--reentry` path writes `.step3-reentry`, clears stale downstream sentinels, revokes carried Gate B oversize authority, idempotently writes `.completed/step-1e`, and restores the direct-review bypass package.
 
 ```bash
 STEP3_REENTRY_FLAG=""

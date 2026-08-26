@@ -13,9 +13,15 @@ fn run(root: &Path, verb: &str, extra: &[String]) -> Output {
     arguments.push(root.display().to_string()); arguments.extend_from_slice(extra);
     Command::new(env!("CARGO_BIN_EXE_larch")).args(arguments).env("LARCH_QUIET_DISABLE", "1").output().expect("run larch")
 }
+fn run_plan(root: &Path, verb: &str) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_larch")).args(["plan", verb, "--design-tmpdir"]).arg(root).env("LARCH_QUIET_DISABLE", "1").output().expect("run plan command")
+}
 fn stdout(output: &Output) -> String { String::from_utf8_lossy(&output.stdout).into_owned() }
 fn stderr(output: &Output) -> String { String::from_utf8_lossy(&output.stderr).into_owned() }
 fn text(path: impl AsRef<Path>) -> String { fs::read_to_string(path).expect("read fixture artifact") }
+fn oversize_plan(diff_added: Option<u64>) -> String {
+    format!("# Plan\n\n## Files to modify/create\n\n### UPDATED: crates/larch-cli/src/a.rs\n### UPDATED: skills/design/SKILL.md\n### UPDATED: docs/example.md\n### UPDATED: scripts/example.sh\n### UPDATED: README.md\n\n## Approach\n\nKeep the behavior.\n\ndifficulty: HARD\n{}mechanical_churn: false\ndiff_lines: 20\n", diff_added.map_or_else(String::new, |value| format!("diff_added: {value}\n")))
+}
 
 #[test]
 fn argparse_help_bytes_match_the_retired_owners() {
@@ -106,6 +112,35 @@ fn gate_b_lines_and_dedup_wire_are_frozen() {
     let loose = "## Plan\noversize_override: operator\nbody\ndiff_lines: 1\n"; fs::write(sandbox.path().join("plan.txt"), loose).expect("loose override"); fs::write(sandbox.path().join(".gate-b-oversize-override.sha256"), format!("{:x}\n", Sha256::digest(loose.as_bytes()))).expect("authority"); assert!(run(sandbox.path(), "gate-b-dedup", &strings(&["--snapshot-trailers"])).status.success()); assert!(run(sandbox.path(), "gate-b-dedup", &strings(&["--dedup"])).status.success()); assert!(!sandbox.path().join(".gate-b-oversize-override.sha256").exists());
     fs::create_dir(sandbox.path().join(".gate-b-oversize-override.sha256")).expect("authority directory");
     let failed = run(sandbox.path(), "gate-b-dedup", &strings(&["--dedup"])); assert_eq!(failed.status.code(), Some(1)); assert!(stdout(&failed).is_empty());
+}
+
+#[test]
+fn gate_b_carries_operator_override_only_for_recorded_trigger_reasons() {
+    let sandbox = TempDir::new().expect("sandbox"); let plan = sandbox.path().join("plan.txt");
+    fs::write(&plan, oversize_plan(None)).expect("oversize plan"); fs::write(sandbox.path().join("drift-baseline.env"), "BASELINE_PLAN_LINES=1\nBASELINE_DIFF_LINES=1\n").expect("baseline");
+    let armed = run_plan(sandbox.path(), "set-oversize-override"); assert!(armed.status.success(), "{}", stderr(&armed));
+    assert_eq!(text(sandbox.path().join(".gate-b-oversize-override.env")), "OVERSIZE_OVERRIDE=operator\nTRIGGER_REASONS=surfaces\n");
+
+    let revised = text(&plan).replace("Keep the behavior.\n", "Keep the behavior.\nApply the accepted finding.\n"); fs::write(&plan, revised).expect("review rewrite");
+    assert!(run(sandbox.path(), "gate-b-dedup", &strings(&["--snapshot-trailers"])).status.success());
+    let dedup = run(sandbox.path(), "gate-b-dedup", &strings(&["--dedup"])); assert!(dedup.status.success(), "{}", stderr(&dedup));
+    assert_eq!(stdout(&dedup), "ℹ oversize override carried forward (reasons: surfaces)\ndedup-sweep: removed 0 duplicate line(s) from plan.txt\nGATE_B_DEDUP_STATUS=ok\n");
+    assert_eq!(text(sandbox.path().join(".gate-b-oversize-override.sha256")).trim(), format!("{:x}", Sha256::digest(text(&plan).as_bytes())));
+    let size = run_plan(sandbox.path(), "check-size"); assert!(size.status.success(), "{}", stderr(&size)); let size_out = stdout(&size);
+    assert!(size_out.contains("SIZE_TRIGGER_FIRED=false\n"), "{size_out}"); assert!(size_out.contains("TRIGGER_REASONS=surfaces\n"), "{size_out}"); assert!(size_out.contains("OVERSIZE_OVERRIDE=operator\n"), "{size_out}");
+
+    let new_reason = text(&plan).replace("mechanical_churn: false\n", "diff_added: 2001\nmechanical_churn: false\n"); fs::write(&plan, new_reason).expect("new trigger rewrite");
+    assert!(run(sandbox.path(), "gate-b-dedup", &strings(&["--snapshot-trailers"])).status.success());
+    let revoked = run(sandbox.path(), "gate-b-dedup", &strings(&["--dedup"])); assert!(revoked.status.success(), "{}", stderr(&revoked)); assert!(!stdout(&revoked).contains("carried forward"));
+    assert!(!sandbox.path().join(".gate-b-oversize-override.sha256").exists()); assert!(!sandbox.path().join(".gate-b-oversize-override.env").exists());
+    let size = run_plan(sandbox.path(), "check-size"); assert!(size.status.success(), "{}", stderr(&size)); let size_out = stdout(&size);
+    assert!(size_out.contains("SIZE_TRIGGER_FIRED=true\n"), "{size_out}"); assert!(size_out.contains("TRIGGER_REASONS=diff-added,surfaces\n"), "{size_out}"); assert!(size_out.contains("OVERSIZE_OVERRIDE=\n"), "{size_out}");
+
+    let rearmed = run_plan(sandbox.path(), "set-oversize-override"); assert!(rearmed.status.success(), "{}", stderr(&rearmed));
+    assert_eq!(text(sandbox.path().join(".gate-b-oversize-override.env")), "OVERSIZE_OVERRIDE=operator\nTRIGGER_REASONS=diff-added,surfaces\n");
+    let subset = text(&plan).replace("diff_added: 2001\n", ""); fs::write(&plan, subset).expect("subset rewrite");
+    assert!(run(sandbox.path(), "gate-b-dedup", &strings(&["--snapshot-trailers"])).status.success());
+    let carried_subset = run(sandbox.path(), "gate-b-dedup", &strings(&["--dedup"])); assert!(carried_subset.status.success(), "{}", stderr(&carried_subset)); assert!(stdout(&carried_subset).starts_with("ℹ oversize override carried forward (reasons: surfaces)\n"));
 }
 
 #[test]
