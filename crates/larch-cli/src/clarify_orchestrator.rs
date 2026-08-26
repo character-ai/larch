@@ -29,6 +29,7 @@ use crate::design_step0_commands::{
 };
 use crate::github_repository_resolution::validate_repo_slug;
 use crate::implement_dispatch_commands::{delegate_verified_larch, run_verified_larch_env_in};
+use crate::issue_wire_commands::resolve_named_block_run_id;
 use crate::runtime_entrypoint::plugin_root_directory;
 
 /// Environment keys the source-env merge carries into the driver.
@@ -243,6 +244,17 @@ pub fn plan_named_block_args(
     ];
     args.extend(repo_args.iter().cloned());
     args
+}
+
+/// Carry one resolved plan run identity through the verified-child boundary.
+pub fn plan_named_block_child_environment(
+    run_id: Option<&str>,
+) -> Vec<(ChildEnvironment, OsString)> {
+    run_id
+        .filter(|value| !value.is_empty())
+        .map(|value| (ChildEnvironment::RunId, OsString::from(value)))
+        .into_iter()
+        .collect()
 }
 
 /// Read allowlisted rows from a result env, or `Err` on a trust-boundary miss.
@@ -694,8 +706,14 @@ fn handle_publish(
         vec!["--repo".to_owned(), repo.clone()]
     };
 
+    let session_id = env.get("SESSION_ID").cloned().unwrap_or_default();
+    let run_id = resolve_named_block_run_id(&session_id);
+    let plan_environment = plan_named_block_child_environment(run_id.as_deref());
     let plan_args = plan_named_block_args(&args.issue, &redacted_plan, &repo_args);
-    let plan_write = runner.run_larch(&plan_args.iter().map(OsString::from).collect::<Vec<_>>());
+    let plan_write = runner.run_larch_env(
+        &plan_args.iter().map(OsString::from).collect::<Vec<_>>(),
+        &plan_environment,
+    );
     if plan_write.rc != 0 {
         let _ = fs::write(
             design_tmpdir.join("clarify-plan-write.failure.log"),
@@ -722,7 +740,6 @@ fn handle_publish(
 
     persist_difficulty_record(runner, design_tmpdir, env, &rating);
 
-    let session_id = env.get("SESSION_ID").cloned().unwrap_or_default();
     publish_finalize(&PublishTail {
         effects,
         runner,

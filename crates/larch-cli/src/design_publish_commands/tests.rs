@@ -11,7 +11,7 @@ mod design_publish_commands_tests {
     use std::fs;
     use std::path::Path;
 
-    use larch_core::AssessmentKind;
+    use larch_core::{AssessmentKind, ChildEnvironment, IssueMutationLease};
     use tempfile::TempDir;
 
     use super::super::{
@@ -25,6 +25,7 @@ mod design_publish_commands_tests {
     struct ScriptReceipt {
         detail: Option<&'static str>,
         calls: RefCell<u32>,
+        run_ids: RefCell<Vec<String>>,
     }
 
     impl ScriptReceipt {
@@ -32,6 +33,7 @@ mod design_publish_commands_tests {
             Self {
                 detail: None,
                 calls: RefCell::new(0),
+                run_ids: RefCell::new(Vec::new()),
             }
         }
 
@@ -39,13 +41,23 @@ mod design_publish_commands_tests {
             Self {
                 detail: Some(detail),
                 calls: RefCell::new(0),
+                run_ids: RefCell::new(Vec::new()),
             }
         }
     }
 
     impl ReceiptWriter for ScriptReceipt {
-        fn persist(&self, _repo: &str, _issue: u64, _repo_root: &Path) -> Result<(), String> {
+        fn persist(
+            &self,
+            _repo: &str,
+            _issue: u64,
+            _repo_root: &Path,
+            lease: Option<&IssueMutationLease>,
+        ) -> Result<(), String> {
             *self.calls.borrow_mut() += 1;
+            self.run_ids
+                .borrow_mut()
+                .push(lease.map(|lease| lease.run_id.clone()).unwrap_or_default());
             self.detail.map_or(Ok(()), |detail| Err(detail.to_owned()))
         }
     }
@@ -75,6 +87,7 @@ mod design_publish_commands_tests {
         replies: HashMap<String, (i32, String, String)>,
         calls: RefCell<Vec<String>>,
         larch_calls: RefCell<Vec<String>>,
+        environment_calls: RefCell<Vec<(String, String, String)>>,
     }
 
     impl ScriptRunner {
@@ -91,6 +104,7 @@ mod design_publish_commands_tests {
                     .collect(),
                 calls: RefCell::new(Vec::new()),
                 larch_calls: RefCell::new(Vec::new()),
+                environment_calls: RefCell::new(Vec::new()),
             }
         }
 
@@ -146,10 +160,42 @@ mod design_publish_commands_tests {
                 .cloned()
                 .unwrap_or_default()
         }
+
+        /// The environment value delegated with the first matching verb.
+        fn environment_value(&self, prefix: &str, key: &str) -> String {
+            self.environment_calls
+                .borrow()
+                .iter()
+                .find(|(call, name, _value)| call.starts_with(prefix) && name == key)
+                .map(|(_call, _name, value)| value.clone())
+                .unwrap_or_default()
+        }
     }
 
     impl SiblingRunner for ScriptRunner {
         fn run_larch(&self, args: &[std::ffi::OsString]) -> CapturedRun {
+            self.reply(args, true)
+        }
+
+        fn run_larch_env(
+            &self,
+            args: &[std::ffi::OsString],
+            environment: &[(ChildEnvironment, std::ffi::OsString)],
+        ) -> CapturedRun {
+            let joined = args
+                .iter()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join(" ");
+            self.environment_calls
+                .borrow_mut()
+                .extend(environment.iter().map(|(key, value)| {
+                    (
+                        joined.clone(),
+                        key.name().to_owned(),
+                        value.to_string_lossy().into_owned(),
+                    )
+                }));
             self.reply(args, true)
         }
     }
@@ -371,7 +417,18 @@ mod design_publish_commands_tests {
     #[test]
     fn a_failed_plan_write_stages_the_terminal_state_and_reports_exit_one() {
         let session = Session::ready();
-        let runner = ScriptRunner::new(&[SIZE_OK, ("named-block write", 1, "")]);
+        let runner = ScriptRunner::with_stderr(
+            &[
+                SIZE_OK,
+                (
+                    "named-block write",
+                    2,
+                    "FAILED=true\nERROR=protected-issue-mutation:missing-lease\n",
+                ),
+            ],
+            "named-block write",
+            "verified child failed\n",
+        );
 
         let rc = publish_core(&runner, &ScriptReceipt::ok(), &session.args());
 
@@ -385,6 +442,33 @@ mod design_publish_commands_tests {
                 .join("design-plan-write.failure.log")
                 .is_file()
         );
+        let detail = session.read("design-plan-write.failure.log");
+        assert!(detail.contains("exit_code=2"), "detail: {detail}");
+        assert!(
+            detail.contains("ERROR=protected-issue-mutation:missing-lease"),
+            "detail: {detail}"
+        );
+        assert!(detail.contains("verified child failed"), "detail: {detail}");
+    }
+
+    #[test]
+    fn the_plan_write_delegates_the_active_run_id() {
+        let session = Session::ready();
+        let mut args = session.args();
+        args.session_id = "design-session-8968".to_owned();
+        let expected = super::super::plan_named_block_lease(&args.session_id)
+            .map_or_else(|| args.session_id.clone(), |lease| lease.run_id);
+        let runner = ScriptRunner::new(&[SIZE_OK]);
+        let receipt = ScriptReceipt::ok();
+
+        let rc = publish_core(&runner, &receipt, &args);
+
+        assert_eq!(rc, 0);
+        assert_eq!(
+            runner.environment_value("named-block write", "RUN_ID"),
+            expected
+        );
+        assert_eq!(receipt.run_ids.borrow().as_slice(), &[expected]);
     }
 
     #[test]
@@ -427,6 +511,7 @@ mod design_publish_commands_tests {
     #[test]
     fn a_failed_receipt_write_reverts_the_plan_write_row_and_reports_exit_one() {
         let session = Session::ready();
+        session.write("design-plan-write.failure.log", "stale prior attempt\n");
         let runner = ScriptRunner::new(&[SIZE_OK]);
 
         let rc = publish_core(
@@ -439,6 +524,29 @@ mod design_publish_commands_tests {
         let recorded = session.result_env();
         assert_eq!(env_value(&recorded, "PLAN_WRITE_OK"), "false");
         assert!(!runner.ran("tracking-issue rename"));
+        let detail = session.read("design-plan-write.failure.log");
+        assert!(!detail.contains("stale prior attempt"), "detail: {detail}");
+        assert!(detail.contains("plan receipt failed"), "detail: {detail}");
+        assert!(
+            detail.contains("plan-receipt-readback-mismatch"),
+            "detail: {detail}"
+        );
+    }
+
+    #[test]
+    fn oversized_plan_write_diagnostics_keep_the_child_error_tail() {
+        let text = format!(
+            "{}\nERROR=protected-issue-mutation:missing-lease\n",
+            "x".repeat(super::super::TAIL_BYTE_CAP + 512)
+        );
+
+        let bounded = super::super::bounded_failure_stream(&text);
+
+        assert!(bounded.starts_with("[truncated: earlier bytes omitted]\n"));
+        assert!(
+            bounded.contains("ERROR=protected-issue-mutation:missing-lease"),
+            "bounded: {bounded}"
+        );
     }
 
     #[test]
@@ -1311,8 +1419,17 @@ mod design_publish_commands_tests {
             updated_at: "2026-08-20T00:00:00Z".to_owned(),
         };
 
-        let block =
-            super::super::receipt_mutation(&repository, &snapshot, "updated".to_owned(), true);
+        let lease = larch_core::IssueMutationLease {
+            run_id: "design-session-8591".to_owned(),
+            marker: larch_core::PLAN_MARKER.to_owned(),
+        };
+        let block = super::super::receipt_mutation(
+            &repository,
+            &snapshot,
+            "updated".to_owned(),
+            true,
+            Some(&lease),
+        );
         assert_eq!(block.marker.as_deref(), Some(larch_core::PLAN_MARKER));
         assert!(
             block
@@ -1321,9 +1438,15 @@ mod design_publish_commands_tests {
         );
         assert_eq!(block.expected_updated_at, snapshot.updated_at);
         assert_eq!(block.issue, 8591);
+        assert_eq!(block.lease.as_ref(), Some(&lease));
 
-        let body =
-            super::super::receipt_mutation(&repository, &snapshot, "updated".to_owned(), false);
+        let body = super::super::receipt_mutation(
+            &repository,
+            &snapshot,
+            "updated".to_owned(),
+            false,
+            Some(&lease),
+        );
         assert!(body.marker.is_none());
         assert!(body.lease.is_none());
         assert!(body.fields.contains(&larch_core::IssueMutationField::Body));
@@ -1343,7 +1466,7 @@ mod design_publish_commands_tests {
 
     #[test]
     fn the_plan_named_block_lease_binds_to_the_ambient_run_id() {
-        let lease = super::super::plan_named_block_lease();
+        let lease = super::super::plan_named_block_lease("");
         let ambient = ["RUN_ID", "LARCH_RUN_ID", "SESSION_ID"]
             .iter()
             .any(|key| std::env::var(key).is_ok_and(|value| !value.trim().is_empty()));
@@ -1556,7 +1679,12 @@ mod design_publish_commands_tests {
         ]);
 
         let outcome = crate::github_service::with_test_github_service(github, || {
-            super::super::persist_published_plan_receipt("owner/repo", 8591, repository.root())
+            super::super::persist_published_plan_receipt(
+                "owner/repo",
+                8591,
+                repository.root(),
+                None,
+            )
         });
 
         assert_eq!(outcome, Ok(()));
@@ -1583,7 +1711,12 @@ mod design_publish_commands_tests {
         .expect("issue exchange")]);
 
         let outcome = crate::github_service::with_test_github_service(github, || {
-            super::super::persist_published_plan_receipt("owner/repo", 8591, repository.root())
+            super::super::persist_published_plan_receipt(
+                "owner/repo",
+                8591,
+                repository.root(),
+                None,
+            )
         });
 
         assert_eq!(outcome, Err("plan-block-missing-for-receipt".to_owned()));
@@ -1640,7 +1773,12 @@ mod design_publish_commands_tests {
         ]);
 
         let outcome = crate::github_service::with_test_github_service(github, || {
-            super::super::persist_published_plan_receipt("owner/repo", 8591, repository.root())
+            super::super::persist_published_plan_receipt(
+                "owner/repo",
+                8591,
+                repository.root(),
+                None,
+            )
         });
 
         assert_eq!(outcome, Ok(()));
@@ -1658,7 +1796,8 @@ mod design_publish_commands_tests {
         let root = TempDir::new().expect("temporary root");
         // The live writer resolves the base commit before it contacts GitHub,
         // so a directory that is not a checkout fails without any network use.
-        let outcome = super::super::LiveReceiptWriter.persist("owner/repo", 8591, root.path());
+        let outcome =
+            super::super::LiveReceiptWriter.persist("owner/repo", 8591, root.path(), None);
         assert!(
             outcome.is_err(),
             "a non-repository cannot supply a base sha"

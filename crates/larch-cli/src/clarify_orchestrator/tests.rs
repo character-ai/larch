@@ -74,6 +74,7 @@ mod clarify_orchestrator_tests {
     /// A scripted sibling runner recording calls and returning queued outputs.
     struct FakeRunner {
         calls: RefCell<Vec<Vec<String>>>,
+        environments: RefCell<Vec<(String, String, String)>>,
         stdout: RefCell<Vec<String>>,
         failures: RefCell<BTreeMap<String, i32>>,
     }
@@ -82,6 +83,7 @@ mod clarify_orchestrator_tests {
         fn new() -> Self {
             Self {
                 calls: RefCell::new(Vec::new()),
+                environments: RefCell::new(Vec::new()),
                 stdout: RefCell::new(Vec::new()),
                 failures: RefCell::new(BTreeMap::new()),
             }
@@ -103,6 +105,15 @@ mod clarify_orchestrator_tests {
                 .iter()
                 .filter_map(|call| Some((call.first()?.clone(), call.get(1)?.clone())))
                 .collect()
+        }
+
+        fn environment_value(&self, verb: &str, key: &str) -> String {
+            self.environments
+                .borrow()
+                .iter()
+                .find(|(recorded_verb, name, _value)| recorded_verb == verb && name == key)
+                .map(|(_verb, _name, value)| value.clone())
+                .unwrap_or_default()
         }
     }
 
@@ -134,6 +145,29 @@ mod clarify_orchestrator_tests {
                     format!("{verb} failed\n")
                 },
             }
+        }
+
+        fn run_larch_env(
+            &self,
+            args: &[OsString],
+            environment: &[(ChildEnvironment, OsString)],
+        ) -> CapturedRun {
+            let verb = args
+                .iter()
+                .take(2)
+                .map(|value| value.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(" ");
+            self.environments
+                .borrow_mut()
+                .extend(environment.iter().map(|(key, value)| {
+                    (
+                        verb.clone(),
+                        key.name().to_owned(),
+                        value.to_string_lossy().into_owned(),
+                    )
+                }));
+            self.run_larch(args)
         }
     }
 
@@ -280,6 +314,10 @@ mod clarify_orchestrator_tests {
         assert!(verbs.contains(&("difficulty".to_owned(), "sync-labels".to_owned())));
         assert!(verbs.contains(&("tracking-issue".to_owned(), "upsert-summary".to_owned())));
         assert!(verbs.contains(&("tracking-issue".to_owned(), "rename".to_owned())));
+        assert_eq!(
+            runner.environment_value("named-block write", "RUN_ID"),
+            resolve_named_block_run_id("RUN1").unwrap()
+        );
         assert!(
             !fs::read_to_string(dir.path().join("clarify-plan.redacted.md"))
                 .unwrap()
