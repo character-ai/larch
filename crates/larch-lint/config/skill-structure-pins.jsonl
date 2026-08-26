@@ -1577,7 +1577,8 @@
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"excludes `summary`, suggested-fix sections","id":"ported _structure_learn_from_bugs_specialized.py:261 [e1fb713051]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"preserves repeated root-cause headings in document order","id":"ported _structure_learn_from_bugs_specialized.py:263 [40fc9b8a67]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"Origin classification is best-effort","id":"ported _structure_learn_from_bugs_specialized.py:265 [d7d98ece56]"}
-{"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"`python_lints`, `script_lints`, and `rust_lints`","id":"ported _structure_learn_from_bugs_specialized.py:267 [57b508d07c]"}
+{"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"`script_lints`, and `rust_lints`","id":"ported _structure_learn_from_bugs_specialized.py:267 [57b508d07c]"}
+{"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"guidelines, invariants, script lints, and Rust lints","id":"learn-from-bugs-section-3-rust-lints"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"single-sourcing","id":"ported _structure_learn_from_bugs_specialized.py:269 [934aa656bc]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"insert that generated block **verbatim** as the first content","id":"ported _structure_learn_from_bugs_specialized.py:273 [57386863ef]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"`regression`, `new-code`, `spec-gap`, `unknown`","id":"ported _structure_learn_from_bugs_specialized.py:275 [3d17bfba98]"}

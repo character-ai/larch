@@ -30,7 +30,7 @@ fn proposal(id: &str, status: &str, filed_issue: Option<i64>) -> Proposal {
     Proposal {
         id: id.to_owned(),
         kind: "lint".to_owned(),
-        target: "module:python/larch/lint/lint_delta.py".to_owned(),
+        target: "registration:learn-from-bugs".to_owned(),
         run_date: "2026-08-09".to_owned(),
         status: status.to_owned(),
         filed_issue,
@@ -84,13 +84,6 @@ fn coverage_index_filters_sources_and_ignores_fenced_guidelines() {
         "```markdown\n### G-Fake-1: ignored\n```\n### G-Rs-1: used\n",
     )
     .unwrap();
-    fs::create_dir_all(directory.path().join("python/larch/lint")).unwrap();
-    fs::write(
-        directory.path().join("python/larch/lint/lint_nested.py"),
-        "# fixture\n",
-    )
-    .unwrap();
-    fs::create_dir_all(directory.path().join("python/larch/lint/lint_directory.py")).unwrap();
     fs::create_dir_all(directory.path().join("scripts")).unwrap();
     fs::write(
         directory.path().join("scripts/lint-alpha"),
@@ -148,7 +141,6 @@ fn coverage_index_filters_sources_and_ignores_fenced_guidelines() {
         coverage.guidelines,
         vec![("G-Rs-1".to_owned(), "used".to_owned())]
     );
-    assert_eq!(coverage.python_lints, vec!["lint_nested".to_owned()]);
     assert_eq!(
         coverage.script_lints,
         vec!["lint-alpha".to_owned(), "lint-zeta".to_owned()]
@@ -286,6 +278,7 @@ fn proposal_targets_keep_python_validation_boundaries() {
                 "filed_issue": null,
             }),
             None,
+            false,
         )
         .is_some()
     );
@@ -305,6 +298,7 @@ fn proposal_targets_keep_python_validation_boundaries() {
                 "filed_issue": null,
             }),
             None,
+            false,
         )
         .is_none());
     }
@@ -319,6 +313,7 @@ fn proposal_targets_keep_python_validation_boundaries() {
                 "filed_issue": null,
             }),
             None,
+            false,
         )
         .is_none()
     );
@@ -330,6 +325,7 @@ fn proposal_targets_keep_python_validation_boundaries() {
                     "run_date": "2026-08-09", "status": "pending", "filed_issue": filed_issue,
                 }),
                 None,
+                false,
             )
             .is_none()
         );
@@ -377,14 +373,15 @@ fn proposal_target_cannot_follow_an_escaping_symlink() {
     assert!(
         proposal_from_value(
             &json!({
-                "id": "escaping-module",
+                "id": "escaping-check",
                 "type": "lint",
-                "target": "module:escape/rule.py",
+                "target": "check:escape/rule.py#run",
                 "run_date": "2026-08-09",
                 "status": "pending",
                 "filed_issue": null,
             }),
             Some(root.path()),
+            false,
         )
         .is_none()
     );
@@ -918,7 +915,6 @@ fn coverage_scanners_handle_missing_marked_unmarked_and_sorted_sources() {
     let directory = tempfile::tempdir().unwrap();
     assert!(scan_guidelines(&directory.path().join("missing.md")).is_empty());
     assert!(scan_marked(&directory.path().join("missing.md"), &INVARIANT_HEADING_RE).is_empty());
-    assert!(scan_lints(&directory.path().join("missing"), "lint_", &[Some("py")]).is_empty());
     assert_eq!(
         coverage_index(directory.path()).guidelines_status,
         "missing"
@@ -962,16 +958,6 @@ fn coverage_scanners_handle_missing_marked_unmarked_and_sorted_sources() {
         scan_marked(&invariants, &INVARIANT_HEADING_RE),
         vec![("I-Real-1".to_owned(), "Real".to_owned())]
     );
-
-    let lints = directory.path().join("lints");
-    fs::create_dir_all(&lints).unwrap();
-    for name in ["lint_zeta.py", "lint_alpha.py", "lint_skip.txt", "other.py"] {
-        fs::write(lints.join(name), "").unwrap();
-    }
-    assert_eq!(
-        scan_lints(&lints, "lint_", &[Some("py")]),
-        vec!["lint_alpha".to_owned(), "lint_zeta".to_owned()]
-    );
 }
 
 #[test]
@@ -1002,7 +988,6 @@ fn scalar_date_and_target_validation_match_the_accepted_wire_forms() {
         ("lint", "check:crates/larch-cli/src/main.rs#run"),
         ("test", "check:crates/larch-cli/src/main.rs#run"),
         ("lint", "registration:learn-from-bugs"),
-        ("lint", "module:python/larch/lint/lint_delta.py"),
         ("invariant", "ARCHITECTURAL_INVARIANTS.md#I-One"),
         ("guideline", "ARCHITECTURAL_GUIDELINES.md#G-One"),
         ("test", "python/tests/test_delta.py::test_delta"),
@@ -1022,6 +1007,21 @@ fn scalar_date_and_target_validation_match_the_accepted_wire_forms() {
     ] {
         assert!(!valid_target(kind, target, None), "{kind}: {target}");
     }
+    assert!(valid_persisted_target(
+        "lint",
+        "module:python/larch/lint/lint_delta.py",
+        None
+    ));
+    assert!(!valid_target(
+        "lint",
+        "module:python/larch/lint/lint_delta.py",
+        None
+    ));
+    assert!(!valid_persisted_target(
+        "lint",
+        "module:python/larch/lint/lint_delta.rs",
+        None
+    ));
     assert!(valid_relative_path("nested/file.py", &[".py"], None));
     for path in [
         "",
@@ -1099,12 +1099,10 @@ fn state_values_support_legacy_current_and_rejected_wire_forms() {
 fn proposal_files_and_reconciliation_retain_stable_history() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path();
-    fs::create_dir_all(root.join("python/larch/lint")).unwrap();
-    fs::write(root.join("python/larch/lint/lint_delta.py"), "# fixture\n").unwrap();
     let proposals = root.join("proposals.jsonl");
     fs::write(
         &proposals,
-        "\n{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"module:python/larch/lint/lint_delta.py\",\"run_date\":\"2026-08-09\",\"status\":\"proposed\",\"filed_issue\":null}\n{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"module:python/larch/lint/lint_delta.py\",\"run_date\":\"2026-08-09\",\"status\":\"pending\",\"filed_issue\":17}\n",
+        "\n{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"registration:learn-from-bugs\",\"run_date\":\"2026-08-09\",\"status\":\"proposed\",\"filed_issue\":null}\n{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"registration:learn-from-bugs\",\"run_date\":\"2026-08-09\",\"status\":\"pending\",\"filed_issue\":17}\n",
     )
     .unwrap();
     let records = read_proposals(&proposals, root).unwrap();
@@ -1119,7 +1117,7 @@ fn proposal_files_and_reconciliation_retain_stable_history() {
     );
     fs::write(
         &proposals,
-        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"module:python/larch/lint/lint_delta.py\",\"run_date\":\"2026-08-09\",\"status\":\"pending\",\"filed_issue\":1}\n{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"module:python/larch/lint/lint_other.py\",\"run_date\":\"2026-08-09\",\"status\":\"pending\",\"filed_issue\":1}\n",
+        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"registration:learn-from-bugs\",\"run_date\":\"2026-08-09\",\"status\":\"pending\",\"filed_issue\":1}\n{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"registration:lint-other\",\"run_date\":\"2026-08-09\",\"status\":\"pending\",\"filed_issue\":1}\n",
     )
     .unwrap();
     assert_eq!(
@@ -1153,7 +1151,7 @@ fn proposal_files_and_reconciliation_retain_stable_history() {
         1
     );
     let mut changed = residual;
-    changed.target = "module:python/larch/lint/lint_other.py".to_owned();
+    changed.target = "registration:lint-other".to_owned();
     assert_eq!(
         reconcile_proposals(std::slice::from_ref(&historical), &[changed], &[]).unwrap_err(),
         "conflicting stable proposal content for lint-delta"
@@ -1224,11 +1222,9 @@ fn state_file_reads_snapshots_and_locked_writes_fail_closed() {
     let proposal_file = directory.path().join("residual.jsonl");
     fs::write(
         &proposal_file,
-        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"module:python/larch/lint/lint_delta.py\",\"run_date\":\"2026-08-09\",\"status\":\"pending\",\"filed_issue\":null}\n",
+        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"registration:learn-from-bugs\",\"run_date\":\"2026-08-09\",\"status\":\"pending\",\"filed_issue\":null}\n",
     )
     .unwrap();
-    fs::create_dir_all(directory.path().join("python/larch/lint")).unwrap();
-    fs::write(directory.path().join("python/larch/lint/lint_delta.py"), "").unwrap();
     write_state_locked(
         &proposal_state,
         state(Vec::new()),
@@ -1317,12 +1313,15 @@ fn typed_issue_fetch_uses_the_loopback_github_service_for_all_states() {
 #[test]
 fn proposal_refresh_uses_the_typed_issue_service_and_records_both_evidence() {
     let directory = tempfile::tempdir().expect("temporary repository");
-    fs::create_dir_all(directory.path().join("python/larch/lint")).expect("lint directory");
+    fs::create_dir_all(directory.path().join("crates/larch-lint/src/rules"))
+        .expect("lint directory");
     fs::write(
-        directory.path().join("python/larch/lint/lint_delta.py"),
-        "# adopted\n",
+        directory
+            .path()
+            .join("crates/larch-lint/src/rules/learn_from_bugs.rs"),
+        "const NAME: &str = \"learn-from-bugs\";\ncrate::register_rule!(METADATA, RULE);\n",
     )
-    .expect("lint module");
+    .expect("lint registration");
     let mut issue: Value = serde_json::from_str(include_str!(
         "../../../larch-adapters/fixtures/github_issue.json"
     ))
@@ -1395,12 +1394,10 @@ fn remaining_pure_branches_keep_zone_state_and_proposal_failures_explicit() {
     assert!(!valid_target("unknown", "anything", None));
 
     let root = directory.path();
-    fs::create_dir_all(root.join("python/larch/lint")).unwrap();
-    fs::write(root.join("python/larch/lint/lint_delta.py"), "").unwrap();
     let proposals = root.join("proposals.jsonl");
     fs::write(
         &proposals,
-        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"module:python/larch/lint/lint_delta.py\",\"run_date\":\"2026-08-09\",\"status\":\"pending\",\"filed_issue\":1}\n{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"module:python/larch/lint/lint_delta.py\",\"run_date\":\"2026-08-09\",\"status\":\"pending\",\"filed_issue\":2}\n",
+        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"registration:learn-from-bugs\",\"run_date\":\"2026-08-09\",\"status\":\"pending\",\"filed_issue\":1}\n{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"registration:learn-from-bugs\",\"run_date\":\"2026-08-09\",\"status\":\"pending\",\"filed_issue\":2}\n",
     )
     .unwrap();
     assert_eq!(
@@ -1433,7 +1430,7 @@ fn remaining_pure_branches_keep_zone_state_and_proposal_failures_explicit() {
     let next = state_snapshot(&state_path).unwrap();
     fs::write(
         &proposals,
-        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"module:python/larch/lint/lint_delta.py\",\"run_date\":\"2026-08-09\",\"status\":\"adopted\",\"filed_issue\":null}\n",
+        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"registration:learn-from-bugs\",\"run_date\":\"2026-08-09\",\"status\":\"adopted\",\"filed_issue\":null}\n",
     )
     .unwrap();
     let written = write_state_locked(

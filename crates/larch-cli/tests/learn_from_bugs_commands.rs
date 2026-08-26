@@ -156,8 +156,6 @@ fn write_coverage_fixture(fixture: &Fixture) {
         "ARCHITECTURAL_INVARIANTS.md",
         "### I-Example-1: First invariant\n\n```markdown\n### I-Fake-1: fenced\n```\n",
     );
-    fixture.write("python/larch/lint/lint_alpha.py", "# fixture\n");
-    fixture.write("python/larch/lint/lint_zeta.py", "# fixture\n");
     fixture.write(
         "crates/larch-lint/src/rules/lifecycle_prefix.rs",
         "//! Reject duplicated lifecycle prefixes.\ncrate::register_rule!(METADATA, RULE);\n",
@@ -206,10 +204,7 @@ fn coverage_index_exposes_all_enforcement_categories() {
         payload["invariants"],
         serde_json::json!([["I-Example-1", "First invariant"]])
     );
-    assert_eq!(
-        payload["python_lints"],
-        serde_json::json!(["lint_alpha", "lint_zeta"])
-    );
+    assert!(payload.get("python_lints").is_none());
     assert_eq!(
         payload["script_lints"],
         serde_json::json!(["lint-alpha", "lint-zeta"])
@@ -257,6 +252,7 @@ fn preparation_runs_without_github_when_limit_is_zero() {
     assert!(prepared.contains("INCREMENTAL=false\n"));
     assert!(prepared.contains("GUIDELINES_INDEXED=1\n"));
     assert!(prepared.contains("RUST_LINTS_INDEXED=2\n"));
+    assert!(!prepared.contains("PYTHON_LINTS_INDEXED="));
     let digest_path = output_path(&prepared, "DIGEST_PATH");
     assert_eq!(fs::read_to_string(digest_path).expect("empty digest"), "");
     assert_eq!(
@@ -268,11 +264,10 @@ fn preparation_runs_without_github_when_limit_is_zero() {
 #[test]
 fn state_round_trip_preserves_history_and_applies_residual_status() {
     let fixture = Fixture::create();
-    fixture.write("python/larch/lint/lint_delta.py", "# fixture\n");
     let initial = fixture.path("initial.jsonl");
     fixture.write(
         "initial.jsonl",
-        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"module:python/larch/lint/lint_delta.py\",\"run_date\":\"2026-08-09\",\"status\":\"proposed\",\"filed_issue\":null}\n",
+        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"registration:learn-from-bugs\",\"run_date\":\"2026-08-09\",\"status\":\"proposed\",\"filed_issue\":null}\n",
     );
     let written = write_state(&fixture, Some(&initial), None).success();
     let written_stdout = stdout(&written);
@@ -303,11 +298,11 @@ fn state_round_trip_preserves_history_and_applies_residual_status() {
     let base = fixture.path("base.jsonl");
     fixture.write(
         "residual.jsonl",
-        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"module:python/larch/lint/lint_delta.py\",\"run_date\":\"2026-08-09\",\"status\":\"pending\",\"filed_issue\":42}\n",
+        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"registration:learn-from-bugs\",\"run_date\":\"2026-08-09\",\"status\":\"pending\",\"filed_issue\":42}\n",
     );
     fixture.write(
         "base.jsonl",
-        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"module:python/larch/lint/lint_delta.py\",\"run_date\":\"2026-08-09\",\"status\":\"proposed\",\"filed_issue\":null}\n",
+        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"registration:learn-from-bugs\",\"run_date\":\"2026-08-09\",\"status\":\"proposed\",\"filed_issue\":null}\n",
     );
     let updated = write_state(&fixture, Some(&residual), Some(&base)).success();
     assert!(stdout(&updated).contains("PROPOSAL_COUNT=1\n"));
@@ -315,6 +310,108 @@ fn state_round_trip_preserves_history_and_applies_residual_status() {
         .expect("state JSON");
     assert_eq!(state["proposals"][0]["status"], "pending");
     assert_eq!(state["proposals"][0]["filed_issue"], 42);
+}
+
+#[test]
+fn persisted_module_lint_targets_orphan_and_new_module_targets_fail() {
+    let fixture = Fixture::create();
+    let initial = fixture.path("initial.jsonl");
+    fixture.write(
+        "initial.jsonl",
+        "{\"id\":\"lint-delta\",\"type\":\"lint\",\"target\":\"registration:learn-from-bugs\",\"run_date\":\"2026-08-09\",\"status\":\"proposed\",\"filed_issue\":null}\n",
+    );
+    let written = write_state(&fixture, Some(&initial), None).success();
+    let state_path = output_path(&stdout(&written), "STATE_PATH");
+    let mut marker: Value =
+        serde_json::from_str(&fs::read_to_string(&state_path).expect("state file"))
+            .expect("state JSON");
+    marker["proposals"] = serde_json::json!([{
+        "id": "lint-delta",
+        "type": "lint",
+        "target": "module:python/larch/lint/lint_delta.py",
+        "run_date": "2026-08-09",
+        "status": "proposed",
+        "filed_issue": null
+    }]);
+    fs::write(
+        &state_path,
+        serde_json::to_string_pretty(&marker).expect("rewritten marker"),
+    )
+    .expect("overwrite marker");
+
+    let root = fixture.root.to_str().expect("UTF-8 fixture root");
+    let proposals_out = fixture.path("out/checked.jsonl");
+    let adoption_out = fixture.path("out/adoption.md");
+    let base_out = fixture.path("out/base.jsonl");
+    fs::create_dir_all(fixture.path("out")).expect("check output directory");
+    let mut check = fixture.command();
+    check.args([
+        "learn-from-bugs",
+        "check-proposals",
+        "--root",
+        root,
+        "--repo",
+        "acme/widget",
+        "--proposals-out",
+        proposals_out.to_str().expect("UTF-8 proposals output"),
+        "--adoption-out",
+        adoption_out.to_str().expect("UTF-8 adoption output"),
+        "--base-proposals-out",
+        base_out.to_str().expect("UTF-8 base output"),
+    ]);
+    let check = check.assert().success();
+    let check_stdout = stdout(&check);
+    assert!(check_stdout.contains("PROPOSALS_ORPHANED=1\n"));
+    let checked = fs::read_to_string(&proposals_out).expect("checked JSONL");
+    assert!(checked.contains("\"status\": \"orphaned\""));
+    assert!(checked.contains("module:python/larch/lint/lint_delta.py"));
+
+    let mut publish = fixture.command();
+    publish.args([
+        "learn-from-bugs",
+        "state-publish",
+        "--root",
+        root,
+        "--repo",
+        "acme/widget",
+        "--run-dir",
+        fixture.path("out").to_str().expect("UTF-8 run directory"),
+        "--search",
+        "[BUG] in:title",
+        "--state",
+        "closed",
+        "--selected-count",
+        "0",
+        "--highest-closed-issue-number-scanned",
+        "0",
+        "--run-date",
+        "2026-08-09",
+        "--scan-started-at",
+        "2026-08-09T12:00:00Z",
+        "--proposals-file",
+        proposals_out.to_str().expect("UTF-8 proposals"),
+        "--base-proposals-file",
+        base_out.to_str().expect("UTF-8 base proposals"),
+    ]);
+    let publish = publish.assert().success();
+    assert!(stdout(&publish).starts_with("STATE_PUBLISH_STATUS=saved\nSTATE_PATH="));
+    let published: Value =
+        serde_json::from_str(&fs::read_to_string(&state_path).expect("published state"))
+            .expect("published JSON");
+    assert_eq!(published["proposals"][0]["status"], "orphaned");
+    assert_eq!(
+        published["proposals"][0]["target"],
+        "module:python/larch/lint/lint_delta.py"
+    );
+
+    let fresh = Fixture::create();
+    let new_module = fresh.path("new-module.jsonl");
+    fresh.write(
+        "new-module.jsonl",
+        "{\"id\":\"lint-new\",\"type\":\"lint\",\"target\":\"module:python/larch/lint/lint_delta.py\",\"run_date\":\"2026-08-09\",\"status\":\"proposed\",\"filed_issue\":null}\n",
+    );
+    let failed = write_state(&fresh, Some(&new_module), None).code(1);
+    assert!(stderr(&failed).contains("invalid proposal record"));
 }
 
 #[test]

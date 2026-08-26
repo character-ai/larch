@@ -17,10 +17,6 @@ pub enum RepoSizeCategory {
     BashScripts,
     /// Shell tests named `test-*.sh`.
     BashTests,
-    /// Non-test Python source files.
-    PythonCode,
-    /// Python tests identified by filename or a `tests/` directory.
-    PythonTests,
     /// Production Rust source lines.
     RustCode,
     /// Rust test source lines.
@@ -30,11 +26,9 @@ pub enum RepoSizeCategory {
 }
 
 impl RepoSizeCategory {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 5] = [
         Self::BashScripts,
         Self::BashTests,
-        Self::PythonCode,
-        Self::PythonTests,
         Self::RustCode,
         Self::RustTests,
         Self::Markdown,
@@ -44,11 +38,9 @@ impl RepoSizeCategory {
         match self {
             Self::BashScripts => 0,
             Self::BashTests => 1,
-            Self::PythonCode => 2,
-            Self::PythonTests => 3,
-            Self::RustCode => 4,
-            Self::RustTests => 5,
-            Self::Markdown => 6,
+            Self::RustCode => 2,
+            Self::RustTests => 3,
+            Self::Markdown => 4,
         }
     }
 
@@ -56,8 +48,6 @@ impl RepoSizeCategory {
         match self {
             Self::BashScripts => "Bash scripts (runtime, non-test *.sh)",
             Self::BashTests => "Bash tests (test-*.sh)",
-            Self::PythonCode => "Python code (non-test *.py)",
-            Self::PythonTests => "Python tests (test_*.py + tests/)",
             Self::RustCode => "Rust code (non-test *.rs)",
             Self::RustTests => "Rust tests (#[cfg(test)] + tests/ + benches/)",
             Self::Markdown => "All Markdown (*.md)",
@@ -80,18 +70,6 @@ pub fn line_count_category(path: &[u8]) -> Option<RepoSizeCategory> {
         } else {
             RepoSizeCategory::BashScripts
         });
-    }
-    if suffix == b".py" {
-        return Some(
-            if basename.starts_with(b"test_")
-                || basename == b"conftest.py"
-                || has_path_component(path, b"tests")
-            {
-                RepoSizeCategory::PythonTests
-            } else {
-                RepoSizeCategory::PythonCode
-            },
-        );
     }
     (suffix == b".md").then_some(RepoSizeCategory::Markdown)
 }
@@ -539,7 +517,7 @@ struct CategoryCounts {
 /// Aggregated values for the fixed repository-size report.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RepoSizeReport {
-    categories: [CategoryCounts; 7],
+    categories: [CategoryCounts; 5],
     repo_total: u64,
     larch_logs_total: u64,
     implement: u64,
@@ -731,22 +709,10 @@ mod tests {
             line_count_category(b"scripts/test-larch.sh"),
             Some(RepoSizeCategory::BashTests)
         );
-        assert_eq!(
-            line_count_category(b"python/tool.py"),
-            Some(RepoSizeCategory::PythonCode)
-        );
-        assert_eq!(
-            line_count_category(b"python/test_tool.py"),
-            Some(RepoSizeCategory::PythonTests)
-        );
-        assert_eq!(
-            line_count_category(b"python/tests/helper.py"),
-            Some(RepoSizeCategory::PythonTests)
-        );
-        assert_eq!(
-            line_count_category(b"python/conftest.py"),
-            Some(RepoSizeCategory::PythonTests)
-        );
+        assert_eq!(line_count_category(b"python/tool.py"), None);
+        assert_eq!(line_count_category(b"python/test_tool.py"), None);
+        assert_eq!(line_count_category(b"python/tests/helper.py"), None);
+        assert_eq!(line_count_category(b"python/conftest.py"), None);
         assert_eq!(
             line_count_category(b"docs/guide.md"),
             Some(RepoSizeCategory::Markdown)
