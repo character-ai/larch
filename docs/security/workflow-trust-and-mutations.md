@@ -300,8 +300,12 @@ Protected issue-body updates require an expected `updatedAt`, the expected
 state, a matching lease, one named block, redaction, and a strictly newer exact
 read-back. Named-block writers resolve the lease identity from `RUN_ID`, then
 the rehydrated `LARCH_RUN_ID` and `SESSION_ID`; missing all three still fails
-closed. Dependency and migration-governance paths bind blocker, owner, plan,
-base, and lease evidence. `/implement` evaluates receipt base-scope freshness
+closed. A composing parent that launches a named-block writer through the
+verified child boundary forwards that resolved identity through the closed
+`ChildEnvironment::RunId` allowlist. The `/design` publish paths use their
+explicit or rehydrated session id only when the parent has no run-id key.
+Dependency and migration-governance paths bind blocker, owner, plan, base, and
+lease evidence. `/implement` evaluates receipt base-scope freshness
 between the receipt base and the current base target (`origin/main`, or
 `upstream/main` for a fork run), never the implementation-branch `HEAD`.
 Plan, owner, and blocker hashes remain live checks, and in-scope base-target

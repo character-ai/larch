@@ -792,6 +792,14 @@ pub fn named_block_mutation_request(
 
 /// Bind a protected named-block write to the active run, when one is named.
 fn named_block_lease(marker: &str) -> Option<IssueMutationLease> {
+    resolve_named_block_run_id("").map(|run_id| IssueMutationLease {
+        run_id,
+        marker: marker.to_owned(),
+    })
+}
+
+/// Resolve the active run identity shared by named-block writers and callers.
+pub fn resolve_named_block_run_id(fallback: &str) -> Option<String> {
     RUN_ID_KEYS
         .into_iter()
         .find_map(|key| {
@@ -800,9 +808,9 @@ fn named_block_lease(marker: &str) -> Option<IssueMutationLease> {
                 .map(|value| value.trim().to_owned())
                 .filter(|value| !value.is_empty())
         })
-        .map(|run_id| IssueMutationLease {
-            run_id,
-            marker: marker.to_owned(),
+        .or_else(|| {
+            let run_id = fallback.trim();
+            (!run_id.is_empty()).then(|| run_id.to_owned())
         })
 }
 

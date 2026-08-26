@@ -26,15 +26,16 @@ use larch_core::{
     check_invariant_assessment_completeness, count_missing_script_defects, has_designed_prefix,
     hash_blocker_rows, hash_owner_rows, hash_plan_block, is_publish_attempt_id, is_repo_slug,
     parse_named_block, parse_native_blocker_refs, parse_owner_block, parse_receipt,
-    persisted_note_publishable, redact_secrets_only, review_provenance, rewrite_plan_difficulty,
-    sanitizer_reason_token, splice_plan_provenance, upsert_receipt, validate_plan_contract,
-    write_bounded_diagram_failure_log,
+    persisted_note_publishable, private_atomic_write, redact_run_log_payload, redact_secrets_only,
+    review_provenance, rewrite_plan_difficulty, sanitizer_reason_token, splice_plan_provenance,
+    upsert_receipt, validate_plan_contract, write_bounded_diagram_failure_log,
 };
 
 use crate::blocker_commands::resolve_repo_for;
 use crate::clarify_orchestrator::{
-    LiveRunner, SiblingRunner, kv_last, plan_named_block_args,
-    publish_artifact_ok as nonempty_file, resolve_publish_difficulty_rating, write_result_env,
+    CapturedRun, LiveRunner, SiblingRunner, kv_last, plan_named_block_args,
+    plan_named_block_child_environment, publish_artifact_ok as nonempty_file,
+    resolve_publish_difficulty_rating, write_result_env,
 };
 use crate::design_step0_commands::{exit_from_i32, stage_terminal_state_bridge};
 use crate::design_step1_commands::consumer_repo_root;
@@ -44,6 +45,7 @@ use crate::github_repository_resolution::repository_ref;
 use crate::github_service::{ServiceFailure, with_github_service};
 use crate::implement_bootstrap_continuation::resolve_revision_sha;
 use crate::issue_mutation_support::authorization_request;
+use crate::issue_wire_commands::resolve_named_block_run_id;
 use crate::run_log_entry_commands::append_execution_issue;
 use crate::runtime_entrypoint::plugin_root_directory;
 
@@ -531,15 +533,27 @@ pub trait ReceiptWriter {
     ///
     /// # Errors
     /// Returns the reason token publish reports to the operator.
-    fn persist(&self, repo: &str, issue: u64, repo_root: &Path) -> Result<(), String>;
+    fn persist(
+        &self,
+        repo: &str,
+        issue: u64,
+        repo_root: &Path,
+        lease: Option<&IssueMutationLease>,
+    ) -> Result<(), String>;
 }
 
 /// The live writer: the typed issue-mutation owner, never `gh api` (#7672).
 struct LiveReceiptWriter;
 
 impl ReceiptWriter for LiveReceiptWriter {
-    fn persist(&self, repo: &str, issue: u64, repo_root: &Path) -> Result<(), String> {
-        persist_published_plan_receipt(repo, issue, repo_root)
+    fn persist(
+        &self,
+        repo: &str,
+        issue: u64,
+        repo_root: &Path,
+        lease: Option<&IssueMutationLease>,
+    ) -> Result<(), String> {
+        persist_published_plan_receipt(repo, issue, repo_root, lease)
     }
 }
 
@@ -604,19 +618,11 @@ const fn state_token(state: GitHubIssueState) -> &'static str {
 
 /// Bind a plan named-block write to the active run id, matching
 /// `issue_wire_commands::named_block_lease` (`RUN_ID` / `LARCH_RUN_ID` / `SESSION_ID`).
-fn plan_named_block_lease() -> Option<IssueMutationLease> {
-    for key in ["RUN_ID", "LARCH_RUN_ID", "SESSION_ID"] {
-        if let Ok(value) = std::env::var(key) {
-            let run_id = value.trim();
-            if !run_id.is_empty() {
-                return Some(IssueMutationLease {
-                    run_id: run_id.to_owned(),
-                    marker: PLAN_MARKER.to_owned(),
-                });
-            }
-        }
-    }
-    None
+fn plan_named_block_lease(session_id: &str) -> Option<IssueMutationLease> {
+    resolve_named_block_run_id(session_id).map(|run_id| IssueMutationLease {
+        run_id,
+        marker: PLAN_MARKER.to_owned(),
+    })
 }
 
 /// True when a named-block apply failure is the protected-mutation class Python
@@ -640,6 +646,7 @@ fn receipt_mutation(
     snapshot: &IssueMutationSnapshot,
     body: String,
     named_block: bool,
+    lease: Option<&IssueMutationLease>,
 ) -> IssueMutationRequest {
     IssueMutationRequest {
         repository: repository.clone(),
@@ -657,7 +664,7 @@ fn receipt_mutation(
         marker: named_block.then(|| PLAN_MARKER.to_owned()),
         // Named-block receipt refresh needs the plan lease so a still-
         // `[DESIGNING]` issue can update the adjacent receipt marker.
-        lease: named_block.then(plan_named_block_lease).flatten(),
+        lease: named_block.then(|| lease.cloned()).flatten(),
     }
 }
 
@@ -665,7 +672,12 @@ fn receipt_mutation(
 ///
 /// Offline unit runs set `LARCH_ISSUE_MUTATION_DENY` and skip the live write,
 /// exactly as the retired Python receipt seam did.
-fn persist_published_plan_receipt(repo: &str, issue: u64, repo_root: &Path) -> Result<(), String> {
+fn persist_published_plan_receipt(
+    repo: &str,
+    issue: u64,
+    repo_root: &Path,
+    lease: Option<&IssueMutationLease>,
+) -> Result<(), String> {
     if mutation_denied() {
         return Ok(());
     }
@@ -714,7 +726,7 @@ fn persist_published_plan_receipt(repo: &str, issue: u64, repo_root: &Path) -> R
             .apply(
                 cancellation,
                 &authorization,
-                &receipt_mutation(&repository, &snapshot, updated.clone(), true),
+                &receipt_mutation(&repository, &snapshot, updated.clone(), true, lease),
             )
             .await
         {
@@ -737,7 +749,7 @@ fn persist_published_plan_receipt(repo: &str, issue: u64, repo_root: &Path) -> R
                     .apply(
                         cancellation,
                         &authorization,
-                        &receipt_mutation(&repository, &snapshot, updated, false),
+                        &receipt_mutation(&repository, &snapshot, updated, false, lease),
                     )
                     .await
                     .map_err(|error| error.reason().to_owned())?
@@ -755,6 +767,54 @@ fn persist_published_plan_receipt(repo: &str, issue: u64, repo_root: &Path) -> R
 // ---------------------------------------------------------------------------
 // failure staging and log publish
 // ---------------------------------------------------------------------------
+
+/// Bound one captured child stream at a complete-line boundary when possible.
+fn bounded_failure_stream(text: &str) -> String {
+    if text.len() <= TAIL_BYTE_CAP {
+        return text.trim_end_matches(['\n', '\r']).to_owned();
+    }
+    let bytes = text.as_bytes();
+    let tail = String::from_utf8_lossy(&bytes[bytes.len() - TAIL_BYTE_CAP..]);
+    let boundary = tail.find('\n').map_or(0, |index| index + 1);
+    format!(
+        "[truncated: earlier bytes omitted]\n{}",
+        tail[boundary..].trim_end_matches(['\n', '\r'])
+    )
+}
+
+/// Preserve the named-block child's bounded, redacted failure evidence.
+fn write_plan_write_failure_log(design_tmpdir: &Path, failure: &CapturedRun) {
+    let detail = format!(
+        "exit_code={}\n[stdout]\n{}\n[stderr]\n{}\n",
+        failure.rc,
+        bounded_failure_stream(&failure.stdout),
+        bounded_failure_stream(&failure.stderr),
+    );
+    let path = design_tmpdir.join("design-plan-write.failure.log");
+    let _ = private_atomic_write(&path, &redact_run_log_payload(&detail), design_tmpdir);
+}
+
+/// Preserve a failed adjacent receipt mutation without reviving stale evidence.
+fn write_plan_receipt_failure_log(design_tmpdir: &Path, detail: &str) {
+    let detail = format!(
+        "plan receipt failed\n[error]\n{}\n",
+        bounded_failure_stream(detail)
+    );
+    let path = design_tmpdir.join("design-plan-write.failure.log");
+    let _ = private_atomic_write(&path, &redact_run_log_payload(&detail), design_tmpdir);
+}
+
+/// Remove one prior attempt's plan-write detail without following an unsafe path.
+fn clear_plan_write_failure_log(design_tmpdir: &Path) -> bool {
+    let path = design_tmpdir.join("design-plan-write.failure.log");
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+            fs::remove_file(path).is_ok()
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Ok(_) | Err(_) => false,
+    }
+}
 
 /// Append the optional publish state a terminal-stage command carries.
 fn publish_failure_stage_args(design_tmpdir: &Path, rows: &Rows, detail_log: &Path) -> Vec<String> {
@@ -796,7 +856,7 @@ fn publish_failure_stage_args(design_tmpdir: &Path, rows: &Rows, detail_log: &Pa
 fn stage_failed_plan_write(design_tmpdir: &Path, rows: &Rows) {
     let detail_log = design_tmpdir.join("design-plan-write.failure.log");
     if !detail_log.is_file() {
-        let _ = fs::write(&detail_log, "named-block write failed\n");
+        let _ = private_atomic_write(&detail_log, "named-block write failed\n", design_tmpdir);
     }
     let stdout_log = design_tmpdir.join("design-plan-write-stage.stdout.log");
     let stderr_log = design_tmpdir.join("design-plan-write-stage.stderr.log");
@@ -1303,12 +1363,19 @@ fn publish_core(
     if redacted.is_empty() || fs::write(&redacted_plan, &redacted).is_err() {
         return RC_FAILED;
     }
+    if !clear_plan_write_failure_log(&paths.design_tmpdir) {
+        return RC_FAILED;
+    }
     let block = plan_named_block_args(&args.issue, &redacted_plan, &repo_args);
-    if runner
-        .run_larch(&block.iter().map(OsString::from).collect::<Vec<_>>())
-        .rc
-        != 0
-    {
+    let plan_lease = plan_named_block_lease(&args.session_id);
+    let environment =
+        plan_named_block_child_environment(plan_lease.as_ref().map(|lease| lease.run_id.as_str()));
+    let plan_write = runner.run_larch_env(
+        &block.iter().map(OsString::from).collect::<Vec<_>>(),
+        &environment,
+    );
+    if plan_write.rc != 0 {
+        write_plan_write_failure_log(&paths.design_tmpdir, &plan_write);
         return finalize_failed_plan_write(
             runner,
             context.as_ref(),
@@ -1323,7 +1390,13 @@ fn publish_core(
         return 1;
     }
     let issue_number = args.issue.parse::<u64>().unwrap_or_default();
-    if let Err(detail) = receipt.persist(&args.repo, issue_number, &paths.repo_root) {
+    if let Err(detail) = receipt.persist(
+        &args.repo,
+        issue_number,
+        &paths.repo_root,
+        plan_lease.as_ref(),
+    ) {
+        write_plan_receipt_failure_log(&paths.design_tmpdir, &detail);
         rows.set("PLAN_WRITE_OK", "false");
         if let Err(error) = checkpoint(&paths.result_env, &mut rows, "plan-receipt") {
             eprintln!("{error}");
