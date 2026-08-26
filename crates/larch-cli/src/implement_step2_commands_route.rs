@@ -1798,14 +1798,14 @@ esac
             COMPLETE_MANIFEST,
         );
         let observed_timeout = std::sync::Arc::new(std::sync::Mutex::new(None));
-        let observer = std::sync::Arc::clone(&observed_timeout);
+        let timeout_sink = std::sync::Arc::clone(&observed_timeout);
         crate::implement_dispatch_commands::install_test_request_observer(move |request| {
             let args = request.arguments();
             if args.first().and_then(|arg| arg.to_str()) == Some("agent")
                 && args.get(1).and_then(|arg| arg.to_str())
                     == Some("launch-codex-implement")
             {
-                *observer.lock().expect("observer lock") = Some(request.timeout());
+                *timeout_sink.lock().expect("timeout sink lock") = Some(request.timeout());
             }
         });
 

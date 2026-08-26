@@ -355,13 +355,13 @@ mod commands_tests {
             "STATUS=bailed\nREASON=stub-bail-for-coverage\nTOOL=codex\nORCHESTRATOR_EDIT_AUTHORITY=forbidden",
         );
         let observed_timeout = std::sync::Arc::new(std::sync::Mutex::new(None));
-        let observer = std::sync::Arc::clone(&observed_timeout);
+        let timeout_sink = std::sync::Arc::clone(&observed_timeout);
         crate::implement_dispatch_commands::install_test_request_observer(move |request| {
             let args = request.arguments();
             if args.first().and_then(|arg| arg.to_str()) == Some("implement")
                 && args.get(1).and_then(|arg| arg.to_str()) == Some("step2-dispatch")
             {
-                *observer.lock().expect("observer lock") = Some(request.timeout());
+                *timeout_sink.lock().expect("timeout sink lock") = Some(request.timeout());
             }
         });
         let code = run_dispatch(&test_arguments(&[
@@ -372,10 +372,10 @@ mod commands_tests {
         ]));
         crate::implement_dispatch_commands::clear_test_hooks();
         assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
-        let observed =
+        let child_cwd =
             fs::read_to_string(dir.path().join("step2-child-cwd.txt")).expect("observed child cwd");
         assert_eq!(
-            observed.trim(),
+            child_cwd.trim(),
             fs::canonicalize(dir.path().join("repo-root"))
                 .expect("canonical repo root")
                 .display()
