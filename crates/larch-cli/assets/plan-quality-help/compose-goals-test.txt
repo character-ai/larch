@@ -1,4 +1,4 @@
-usage: cli.py plan compose-goals-test [-h] --plan-file PLAN_FILE [--goal-text GOAL_TEXT]
+usage: larch plan compose-goals-test [-h] --plan-file PLAN_FILE [--goal-text GOAL_TEXT]
 
 options:
   -h, --help            show this help message and exit

@@ -1,4 +1,4 @@
-usage: cli.py plan check-size [-h] --design-tmpdir DESIGN_TMPDIR [--plan-file PLAN_FILE]
+usage: larch plan check-size [-h] --design-tmpdir DESIGN_TMPDIR [--plan-file PLAN_FILE]
 
 options:
   -h, --help            show this help message and exit
