@@ -123,10 +123,10 @@ echo "--- /implement post-/review Stop hook coverage (issue #1862) ---"
 check_contains "Post-/review boundary — Stop hook reads review-round-summary.md sentinel" \
   "skills/implement/scripts/hook-stop-fail-close.sh" \
   "review-round-summary.md"
-check_contains "Post-/review boundary — Stop hook calls Python resolver CLI" \
+check_contains "Post-/review boundary — Stop hook calls Rust resolver CLI" \
   "skills/implement/scripts/hook-stop-fail-close.sh" \
   "session resolve-implement-tmpdir"
-check_order "Post-/review boundary — Stop hook pre-check before Python resolver" \
+check_order "Post-/review boundary — Stop hook pre-check before Rust resolver" \
   "skills/implement/scripts/hook-stop-fail-close.sh" \
   "for dir in \"\$root\"/claude-implement-*; do" \
   "session resolve-implement-tmpdir --cwd \"\$HOOK_CWD\""

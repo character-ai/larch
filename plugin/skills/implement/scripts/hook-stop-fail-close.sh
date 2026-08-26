@@ -47,7 +47,7 @@ fi
 # into LARCH_TOKEN_SESSION_ID so the resolver's session-id binding branch
 # is reachable in production. Empty, missing, or null session_id unsets any
 # inherited LARCH_TOKEN_SESSION_ID before the resolver falls through to TTL.
-# The Python resolver consumes the `.larch-keepalive` `SESSION_ID=` slim
+# The Rust resolver consumes the `.larch-keepalive` `SESSION_ID=` slim
 # session-identity record this feeds.
 SID=""
 if command -v jq >/dev/null 2>&1; then

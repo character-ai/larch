@@ -70,7 +70,7 @@ impl TranscriptOutcome {
 pub fn checkpoint(arguments: &[OsString]) -> ExitCode {
     if let Some(argument) = arguments.first() {
         eprintln!(
-            "python3 python/cli.py run-log checkpoint: unknown argument: {}",
+            "larch run-log checkpoint: unknown argument: {}",
             argument.to_string_lossy()
         ); return ExitCode::SUCCESS;
     } let Some(tmpdir) = env::var_os("IMPLEMENT_TMPDIR").filter(|value| !value.is_empty()) else {

@@ -1,7 +1,7 @@
 ---
 # larch-run-lifecycle: shared-v1 skill=larch-size
 name: larch-size
-description: "Report tracked Bash, Python, Rust, and Markdown line counts plus larch-logs sizes, with production and test splits for Python and Rust."
+description: "Report tracked Bash, Rust, and Markdown line counts plus larch-logs sizes, with production and test splits for Rust."
 allowed-tools: Bash
 ---
 

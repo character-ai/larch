@@ -366,7 +366,6 @@ pub fn prepare(arguments: &[OsString]) -> ExitCode {
     println!("GUIDELINES_INDEXED={}", coverage.guidelines.len());
     println!("GUIDELINES_INDEX_STATUS={}", coverage.guidelines_status);
     println!("INVARIANTS_INDEXED={}", coverage.invariants.len());
-    println!("PYTHON_LINTS_INDEXED={}", coverage.python_lints.len());
     println!("SCRIPT_LINTS_INDEXED={}", coverage.script_lints.len());
     println!("RUST_LINTS_INDEXED={}", coverage.rust_lints.len());
     ExitCode::SUCCESS
@@ -1892,7 +1891,6 @@ fn write_digest_chunks(out: &Path, digests: &[Digest]) -> Result<(Vec<PathBuf>, 
 struct CoverageIndex {
     guidelines: Vec<(String, String)>,
     invariants: Vec<(String, String)>,
-    python_lints: Vec<String>,
     script_lints: Vec<String>,
     rust_lints: Vec<(String, String)>,
     #[serde(skip)]
@@ -1915,7 +1913,6 @@ fn coverage_index(root: &Path) -> CoverageIndex {
             &root.join("ARCHITECTURAL_INVARIANTS.md"),
             &INVARIANT_HEADING_RE,
         ),
-        python_lints: scan_lints(&root.join("python/larch/lint"), "lint_", &[Some("py")]),
         script_lints: scan_script_lints(&root.join("scripts")),
         rust_lints: scan_rust_lints(&root.join("crates/larch-lint/src/rules")),
         guidelines_status,
@@ -1978,31 +1975,6 @@ fn scan_marked(path: &Path, pattern: &Regex) -> Vec<(String, String)> {
             })
         })
         .collect()
-}
-
-fn scan_lints(directory: &Path, prefix: &str, extensions: &[Option<&str>]) -> Vec<String> {
-    let Ok(entries) = fs::read_dir(directory) else {
-        return Vec::new();
-    };
-    let mut names = entries
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-            if !entry.file_type().ok()?.is_file() {
-                return None;
-            }
-            let path = entry.path();
-            let name = path.file_name()?.to_str()?;
-            if !name.starts_with(prefix)
-                || !extensions.contains(&path.extension().and_then(|value| value.to_str()))
-            {
-                return None;
-            }
-            path.file_stem()?.to_str().map(str::to_owned)
-        })
-        .collect::<Vec<_>>();
-    names.sort();
-    names.dedup();
-    names
 }
 
 fn scan_script_lints(directory: &Path) -> Vec<String> {
@@ -2210,7 +2182,7 @@ fn refresh_proposals(
 ) -> Result<Vec<CheckedProposal>, String> {
     if proposals
         .iter()
-        .any(|proposal| !valid_target(&proposal.kind, &proposal.target, Some(root)))
+        .any(|proposal| !valid_persisted_target(&proposal.kind, &proposal.target, Some(root)))
     {
         return Err("invalid proposal record".to_owned());
     }
@@ -2233,7 +2205,9 @@ fn refresh_proposals(
                 || {
                     if target_verified {
                         "adopted".to_owned()
-                    } else if matches!(proposal.status.as_str(), "adopted" | "orphaned") {
+                    } else if matches!(proposal.status.as_str(), "adopted" | "orphaned")
+                        || retired_module_lint_target(proposal)
+                    {
                         "orphaned".to_owned()
                     } else {
                         "pending".to_owned()
@@ -2320,9 +2294,7 @@ fn proposal_target_adopted(proposal: &Proposal, root: &Path) -> Result<bool, Str
         return Ok(target_file(root, path).is_some_and(|path| file_has_symbol(&path, symbol)));
     }
     match proposal.kind.as_str() {
-        "lint" if proposal.target.starts_with("module:") => {
-            Ok(target_file(root, proposal.target.trim_start_matches("module:")).is_some())
-        }
+        "lint" if proposal.target.starts_with("module:") => Ok(false),
         "lint" if proposal.target.starts_with("registration:") => {
             let name = proposal.target.trim_start_matches("registration:");
             Ok(lint_registration_adopted(name, root))
@@ -2867,7 +2839,7 @@ fn state_from_value(value: &Value) -> Option<StateRecord> {
             .get("proposals")
             .and_then(Value::as_array)?
             .iter()
-            .map(|proposal| proposal_from_value(proposal, None))
+            .map(|proposal| proposal_from_value(proposal, None, true))
             .collect::<Option<Vec<_>>>()?
     } else {
         Vec::new()
@@ -2917,7 +2889,7 @@ fn int_field(value: Option<&Value>, default: i64) -> i64 {
         .unwrap_or(default)
 }
 
-fn proposal_from_value(value: &Value, root: Option<&Path>) -> Option<Proposal> {
+fn proposal_from_value(value: &Value, root: Option<&Path>, persisted: bool) -> Option<Proposal> {
     let object = value.as_object()?;
     let id = object.get("id").and_then(scalar_string)?;
     let kind = object.get("type").and_then(scalar_string)?;
@@ -2939,7 +2911,11 @@ fn proposal_from_value(value: &Value, root: Option<&Path>) -> Option<Proposal> {
             "proposed" | "adopted" | "pending" | "orphaned"
         )
         || !valid_date(&run_date)
-        || !valid_target(&kind, &target, root)
+        || if persisted {
+            !valid_persisted_target(&kind, &target, root)
+        } else {
+            !valid_target(&kind, &target, root)
+        }
     {
         return None;
     }
@@ -2966,7 +2942,19 @@ fn valid_date(value: &str) -> bool {
     }
 }
 
+fn retired_module_lint_target(proposal: &Proposal) -> bool {
+    proposal.kind == "lint" && proposal.target.starts_with("module:")
+}
+
 fn valid_target(kind: &str, target: &str, root: Option<&Path>) -> bool {
+    valid_target_for(kind, target, root, false)
+}
+
+fn valid_persisted_target(kind: &str, target: &str, root: Option<&Path>) -> bool {
+    valid_target_for(kind, target, root, true)
+}
+
+fn valid_target_for(kind: &str, target: &str, root: Option<&Path>, persisted: bool) -> bool {
     if kind == "fix" {
         return target
             .strip_prefix("fix:")
@@ -2991,7 +2979,7 @@ fn valid_target(kind: &str, target: &str, root: Option<&Path>) -> bool {
             FIX_TOKEN.is_match(target.trim_start_matches("registration:"))
         }
         "lint" if target.starts_with("module:") => {
-            valid_relative_path(target.trim_start_matches("module:"), &[".py"], root)
+            persisted && valid_relative_path(target.trim_start_matches("module:"), &[".py"], root)
         }
         "invariant" | "guideline" => {
             target.matches('#').count() == 1
@@ -3033,6 +3021,27 @@ fn valid_relative_path(value: &str, suffixes: &[&str], root: Option<&Path>) -> b
 }
 
 fn read_proposals(path: &Path, root: &Path) -> Result<Vec<Proposal>, String> {
+    read_proposal_records(path, root, false, None)
+}
+
+fn read_persisted_proposals(path: &Path, root: &Path) -> Result<Vec<Proposal>, String> {
+    read_proposal_records(path, root, true, None)
+}
+
+fn read_publish_proposals(
+    path: &Path,
+    root: &Path,
+    persist_ids: &HashSet<String>,
+) -> Result<Vec<Proposal>, String> {
+    read_proposal_records(path, root, false, Some(persist_ids))
+}
+
+fn read_proposal_records(
+    path: &Path,
+    root: &Path,
+    persist_all: bool,
+    persist_ids: Option<&HashSet<String>>,
+) -> Result<Vec<Proposal>, String> {
     let text =
         fs::read_to_string(path).map_err(|error| format!("cannot read proposals file: {error}"))?;
     let mut proposals: Vec<Proposal> = Vec::new();
@@ -3043,7 +3052,15 @@ fn read_proposals(path: &Path, root: &Path) -> Result<Vec<Proposal>, String> {
         }
         let value: Value = serde_json::from_str(line)
             .map_err(|error| format!("invalid proposal JSONL line {}: {error}", line_number + 1))?;
-        let proposal = proposal_from_value(&value, Some(root))
+        let persisted = persist_all
+            || persist_ids.is_some_and(|ids| {
+                value
+                    .as_object()
+                    .and_then(|object| object.get("id"))
+                    .and_then(scalar_string)
+                    .is_some_and(|id| ids.contains(&id))
+            });
+        let proposal = proposal_from_value(&value, Some(root), persisted)
             .ok_or_else(|| "invalid proposal record".to_owned())?;
         if let Some(index) = positions.get(&proposal.id).copied() {
             let prior = &proposals[index];
@@ -3168,10 +3185,19 @@ fn write_state_locked(
         return Err("existing state marker is invalid or unsupported".to_owned());
     }
     if let Some(proposals_path) = proposals_file {
-        let residuals = read_proposals(proposals_path, root)?;
+        let persist_ids: HashSet<String> = existing
+            .as_ref()
+            .into_iter()
+            .flat_map(|state| state.proposals.iter().map(|proposal| proposal.id.clone()))
+            .collect();
+        let residuals = if persist_ids.is_empty() {
+            read_proposals(proposals_path, root)?
+        } else {
+            read_publish_proposals(proposals_path, root, &persist_ids)?
+        };
         next.proposals = if let Some(existing) = &existing {
             let base = match base_file {
-                Some(path) => read_proposals(path, root)?,
+                Some(path) => read_persisted_proposals(path, root)?,
                 None => Vec::new(),
             };
             reconcile_proposals(&existing.proposals, &residuals, &base)?
