@@ -1095,7 +1095,13 @@ fn governance_fixture() -> GovernanceFixture {
         ),
     )
     .expect("issue snapshot");
-    fs::write(preflight.join("receipt-scope-drift.md"), "- drift\n").expect("drift");
+    fs::write(
+        preflight.join("receipt-scope-drift.md"),
+        format!(
+            "- **Preflight plan-receipt scope refresh**: semantic materiality passed.\n  - Receipt base: `{receipt_base}`\n  - Reviewed target: `{target_base}`\n  - Scope diff (JSON-quoted name-status rows):\n    ```text\n    \"M\\tMakefile\"\n    ```\n"
+        ),
+    )
+    .expect("drift");
     fs::write(
         driver.tmpdir.join("preflight-tmpdir.env"),
         format!("PREFLIGHT_TMPDIR={}\n", preflight.display()),
@@ -1161,12 +1167,20 @@ fn route_exit_routes_a_sole_stale_scope_to_a_bounded_governance_refresh() {
     assert!(third.status.success(), "{}", output_text(&third.stderr));
     assert_eq!(output_text(&third.stdout), "NEXT_ACTION=operator-bail\n");
     assert_eq!(fs::read_to_string(&count).expect("count"), "3\n");
-    assert!(handoff(&fixture).contains(&format!("NEEDS_USER_REASON={STALE_SCOPE_REASON}\n")));
-    assert!(!handoff(&fixture).contains("PRE_FIX_REBASE_REQUIRED"));
+    let exhausted = handoff(&fixture);
+    assert!(exhausted.contains("NEEDS_USER_REASON=governance-refresh-exhausted\n"));
+    assert!(exhausted.contains(
+        "DETAIL=migration governance blocked: stale-plan-base-scope; governance refresh attempts exhausted (2 per run)\n"
+    ));
+    assert!(!exhausted.contains("PRE_FIX_REBASE_REQUIRED"));
+    // The spent handoff no longer authorizes the refresh verb.
+    let refused = governance_refresh(&fixture, "success");
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(output_text(&refused.stderr).contains("NEXT_ACTION is not governance-refresh"));
 }
 
 #[test]
-fn route_exit_names_other_governance_reasons_in_the_stall_detail() {
+fn route_exit_passes_a_named_governance_stall_detail_through() {
     let tmp = TempDir::new().expect("tmp");
     write_result(
         tmp.path(),
@@ -1214,9 +1228,34 @@ fn governance_refresh_delegates_the_lease_bound_refresh_and_logs_the_drift() {
             == format!(
                 "run-log append-entry --log {} --category Warnings --entry-file {}",
                 fixture.driver.tmpdir.join("execution-issues.md").display(),
-                fixture.driver.root.path().join("preflight/receipt-scope-drift.md").display()
+                fixture.driver.tmpdir.join("receipt-scope-drift.md").display()
             )),
         "{log}"
+    );
+    assert!(fixture.driver.tmpdir.join(".ship-governance-drift-logged").is_file());
+}
+
+#[test]
+fn governance_refresh_bails_when_the_drift_record_cannot_reach_the_ledger() {
+    let fixture = governance_fixture();
+    assert!(route_exit(&fixture).status.success());
+    let output = governance_refresh(&fixture, "append-fail");
+    assert!(output.status.success(), "{}", output_text(&output.stderr));
+    assert_eq!(
+        output_text(&output.stdout),
+        "GOVERNANCE_REFRESH_STATUS=drift-log-failed\nPLAN_RECEIPT_BASE_SHA=\nGOVERNANCE_DRIFT_LOGGED=false\nDETAIL=run-log append-entry did not append the scope-drift record\nNEXT_ACTION=operator-bail\n"
+    );
+    assert!(!fixture.driver.tmpdir.join(".ship-governance-drift-logged").exists());
+
+    // A malformed record never reaches the ledger.
+    let preflight = fixture.driver.root.path().join("preflight");
+    fs::write(preflight.join("receipt-scope-drift.md"), "- drift\n").expect("drift");
+    let malformed = governance_refresh(&fixture, "success");
+    assert!(malformed.status.success());
+    assert!(output_text(&malformed.stdout).contains("DETAIL=receipt-scope-drift.md is malformed\n"));
+    assert_eq!(
+        events(&fixture).lines().filter(|line| line.starts_with("run-log append-entry")).count(),
+        1
     );
 }
 

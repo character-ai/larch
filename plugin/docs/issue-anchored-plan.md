@@ -441,7 +441,9 @@ mixed reason set, or an unreadable gate remains a hard stop.
 After Step 0 the issue carries a managed `[IMPLEMENTING]` title, so
 `plan-receipt refresh` mutates the receipt only under the implementation run
 lease: pass `--run-id` (the `LARCH_RUN_ID` from `session-env.sh`) or export
-`LARCH_RUN_ID`; otherwise the refresh refuses with `missing-lease` guidance.
+`LARCH_RUN_ID`; otherwise the refresh refuses with `missing-lease` guidance,
+and a run id that differs from the body's `larch:implementation-lease` is
+refused as `lease-run-mismatch`.
 The effect adapter is
 `crates/larch-cli/src/migration_governance_commands.rs`; effect-free policy is
 `larch_core::migration_governance`.

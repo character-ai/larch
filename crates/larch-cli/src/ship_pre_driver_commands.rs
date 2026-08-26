@@ -26,12 +26,14 @@ use larch_core::{
 
 use crate::{
     argparse_compat::parse_required_with_help,
+    implement_bootstrap_continuation::{RECEIPT_SCOPE_DRIFT_MAX_BYTES, valid_receipt_scope_drift},
     implement_child_seam::resolve_plugin_root,
     implement_dispatch_commands::{
         delegate_verified_larch, opt_string, rehydrate_session, resolve_repo_root_output,
     },
     implement_scope_disposition_commands::validate_ship_disposition,
     implement_ship_commands::{patch_ship_state_keys, state_has_shell_kv},
+    migration_governance_commands::lower_sha1,
     push_network::current_branch_from,
     push_rebase::sorted_lossy_unmerged_paths,
     ship_pr_commands::{
@@ -127,8 +129,12 @@ const GOVERNANCE_HANDOFF_KEYS: [&str; 3] = [
     GOVERNANCE_RECEIPT_BASE_KEY,
     GOVERNANCE_TARGET_BASE_KEY,
 ];
+/// `NEEDS_USER_REASON` route-exit substitutes once the refresh cap is spent.
+const GOVERNANCE_EXHAUSTED_REASON: &str = "governance-refresh-exhausted";
 const PREFLIGHT_POINTER: &str = "preflight-tmpdir.env";
 const SCOPE_DRIFT_RECORD: &str = "receipt-scope-drift.md";
+/// Written after the ship-time scope-drift record reached the Warnings ledger.
+const DRIFT_LOGGED_SENTINEL: &str = ".ship-governance-drift-logged";
 
 const LEDGER_KEYS: [&str; 8] = [
     "ledger_ready",
@@ -179,6 +185,7 @@ pub fn route_exit(arguments: &[OsString]) -> ExitCode {
         Ok(result) => result,
         Err(message) => return route_failure(&handoff, &message),
     };
+    let mut fields = fields;
     let mut action = match classify_route(driver_rc, &fields) {
         Ok(action) => action,
         Err(message) => return route_failure(&handoff, &message),
@@ -203,20 +210,10 @@ pub fn route_exit(arguments: &[OsString]) -> ExitCode {
     } else {
         BTreeMap::new()
     };
-    if action == GOVERNANCE_REFRESH_ACTION {
-        // Bound the re-probe loop: a base that keeps advancing under plan
-        // scope is an operator decision, not an unbounded refresh cycle.
-        let count_file = tmpdir.join(GOVERNANCE_COUNT_FILE);
-        let attempt = read_retry_count(&count_file).saturating_add(1);
-        if let Err(error) = write_private(&count_file, &format!("{attempt}\n"), &tmpdir) {
-            return route_failure(
-                &handoff,
-                &format!("cannot persist governance refresh counter: {error}"),
-            );
-        }
-        if attempt > GOVERNANCE_REFRESH_LIMIT {
-            "operator-bail".clone_into(&mut action);
-        }
+    if action == GOVERNANCE_REFRESH_ACTION
+        && let Err(error) = cap_governance_refresh(&tmpdir, &mut action, &mut fields)
+    {
+        return route_failure(&handoff, &error);
     }
     let mut delay = 0;
     if action == "transient" {
@@ -403,6 +400,11 @@ fn run_governance_refresh(tmpdir: &Path) -> Result<GovernanceRefreshReport, Stri
         });
     }
     if preflight_receipt_base(&inputs.preflight).as_deref() == Some(inputs.target_base.as_str()) {
+        // A re-entered turn: the receipt is already current, but the drift
+        // record may still be pending when the earlier append failed.
+        if let Err(detail) = append_scope_drift(tmpdir, &inputs) {
+            return Ok(drift_log_failed(detail));
+        }
         return Ok(GovernanceRefreshReport {
             status: "already-refreshed",
             action: "reship",
@@ -438,7 +440,8 @@ fn run_governance_refresh(tmpdir: &Path) -> Result<GovernanceRefreshReport, Stri
         let stderr = String::from_utf8_lossy(output.stderr());
         let detail = stderr
             .lines()
-            .find(|line| !line.trim().is_empty())
+            .find(|line| line.starts_with("ERROR:"))
+            .or_else(|| stderr.lines().find(|line| !line.trim().is_empty()))
             .unwrap_or("plan-receipt refresh published no refreshed receipt")
             .chars()
             .take(DETAIL_FILE_MAX)
@@ -451,32 +454,71 @@ fn run_governance_refresh(tmpdir: &Path) -> Result<GovernanceRefreshReport, Stri
             drift_logged: None,
         });
     }
-    #[rustfmt::skip]
-    let append: Vec<OsString> = vec![
-        "run-log".into(), "append-entry".into(),
-        "--log".into(), tmpdir.join("execution-issues.md").into_os_string(),
-        "--category".into(), "Warnings".into(),
-        "--entry-file".into(), inputs.preflight.join(SCOPE_DRIFT_RECORD).into_os_string(),
-    ];
-    let drift_logged = run_larch(&inputs.root, &append).is_ok_and(|result| {
-        result.status().success()
-            && KvDocument::parse(
-                &String::from_utf8_lossy(result.stdout()),
-                ParseOptions::legacy(),
-            )
-            .map(|document| document.select(DuplicatePolicy::Last))
-            .is_ok_and(|fields| fields.get("APPENDED").map(String::as_str) == Some("true"))
-    });
-    if !drift_logged {
-        eprintln!("ship governance-refresh: scope-drift record was not appended to Warnings");
+    if let Err(detail) = append_scope_drift(tmpdir, &inputs) {
+        return Ok(drift_log_failed(detail));
     }
     Ok(GovernanceRefreshReport {
         status: "refreshed",
         action: "reship",
         detail: String::new(),
         base_sha: inputs.target_base,
-        drift_logged: Some(drift_logged),
+        drift_logged: Some(true),
     })
+}
+
+const fn drift_log_failed(detail: String) -> GovernanceRefreshReport {
+    GovernanceRefreshReport {
+        status: "drift-log-failed",
+        action: "operator-bail",
+        detail,
+        base_sha: String::new(),
+        drift_logged: Some(false),
+    }
+}
+
+/// Append the refresh's scope-drift record to the run `Warnings` ledger once.
+///
+/// Mirrors Step 0's consumer: the record is bounded and validated before the
+/// append, and a sentinel marks completion only after the ledger accepted it.
+fn append_scope_drift(tmpdir: &Path, inputs: &GovernanceRefreshInputs) -> Result<(), String> {
+    let sentinel = tmpdir.join(DRIFT_LOGGED_SENTINEL);
+    if safe_regular(&sentinel) {
+        return Ok(());
+    }
+    let source = inputs.preflight.join(SCOPE_DRIFT_RECORD);
+    let metadata = fs::symlink_metadata(&source)
+        .map_err(|_| format!("{SCOPE_DRIFT_RECORD} is missing from PREFLIGHT_TMPDIR"))?;
+    if !metadata.is_file() || metadata.len() > RECEIPT_SCOPE_DRIFT_MAX_BYTES as u64 {
+        return Err(format!(
+            "{SCOPE_DRIFT_RECORD} is not a bounded regular file"
+        ));
+    }
+    let entry = fs::read_to_string(&source)
+        .map_err(|error| format!("cannot read {SCOPE_DRIFT_RECORD}: {error}"))?;
+    if !valid_receipt_scope_drift(&entry) {
+        return Err(format!("{SCOPE_DRIFT_RECORD} is malformed"));
+    }
+    let staged = tmpdir.join(SCOPE_DRIFT_RECORD);
+    write_private(&staged, &entry, tmpdir)?;
+    #[rustfmt::skip]
+    let append: Vec<OsString> = vec![
+        "run-log".into(), "append-entry".into(),
+        "--log".into(), tmpdir.join("execution-issues.md").into_os_string(),
+        "--category".into(), "Warnings".into(),
+        "--entry-file".into(), staged.into_os_string(),
+    ];
+    let output = run_larch(&inputs.root, &append)?;
+    let appended = output.status().success()
+        && KvDocument::parse(
+            &String::from_utf8_lossy(output.stdout()),
+            ParseOptions::legacy(),
+        )
+        .map(|document| document.select(DuplicatePolicy::Last))
+        .is_ok_and(|fields| fields.get("APPENDED").map(String::as_str) == Some("true"));
+    if !appended {
+        return Err("run-log append-entry did not append the scope-drift record".to_owned());
+    }
+    write_private(&sentinel, "", tmpdir)
 }
 
 /// Read the receipt base the refreshed preflight snapshot already carries.
@@ -488,13 +530,6 @@ fn preflight_receipt_base(preflight: &Path) -> Option<String> {
     let text = fs::read_to_string(path).ok()?;
     let value: serde_json::Value = serde_json::from_str(&text).ok()?;
     parse_receipt(value.get("body")?.as_str()?).map(|receipt| receipt.base_sha)
-}
-
-fn lower_sha1(value: &str) -> bool {
-    value.len() == 40
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 /// Normalize legacy assessment aliases into the canonical combined handoff.
@@ -1246,6 +1281,38 @@ fn conflict_handoff_fields(tmpdir: &Path) -> BTreeMap<String, String> {
     } else {
         BTreeMap::new()
     }
+}
+
+/// Bound the re-probe loop: a base that keeps advancing under plan scope is
+/// an operator decision, not an unbounded refresh cycle.
+fn cap_governance_refresh(
+    tmpdir: &Path,
+    action: &mut String,
+    fields: &mut BTreeMap<String, String>,
+) -> Result<(), String> {
+    let count_file = tmpdir.join(GOVERNANCE_COUNT_FILE);
+    let attempt = read_retry_count(&count_file).saturating_add(1);
+    write_private(&count_file, &format!("{attempt}\n"), tmpdir)
+        .map_err(|error| format!("cannot persist governance refresh counter: {error}"))?;
+    if attempt > GOVERNANCE_REFRESH_LIMIT {
+        // Name the exhaustion so the operator-bail branch and the run log
+        // can tell a spent cap from a first-time bail (G-Idem-5).
+        "operator-bail".clone_into(action);
+        fields.insert(
+            "NEEDS_USER_REASON".to_owned(),
+            GOVERNANCE_EXHAUSTED_REASON.to_owned(),
+        );
+        let detail = fields.get("DETAIL").cloned().unwrap_or_default();
+        fields.insert(
+            "DETAIL".to_owned(),
+            format!(
+                "{detail}; governance refresh attempts exhausted ({GOVERNANCE_REFRESH_LIMIT} per run)"
+            )
+            .trim_start_matches("; ")
+            .to_owned(),
+        );
+    }
+    Ok(())
 }
 
 /// Copy the driver's persisted governance evidence into the route handoff.

@@ -42,6 +42,7 @@ use crate::{
     },
     implement_preflight_commands::{GovernanceGateOutcome, parse_governance_gate_output},
     implement_scope_disposition_commands::{ship_pr_disposition, validate_ship_disposition},
+    migration_governance_commands::lower_sha1,
     ship_commands::validate_tmpdir,
 };
 
@@ -1253,7 +1254,7 @@ fn route_governance_outcome(
     match outcome {
         GovernanceGateOutcome::Passed => Ok(()),
         GovernanceGateOutcome::Blocked(_)
-            if outcome.sole_stale_plan_base_scope() && valid_oid(receipt_base) =>
+            if outcome.sole_stale_plan_base_scope() && lower_sha1(receipt_base) =>
         {
             Err(DriverFailure::Result(Box::new(ShipResult {
                 outcome: ShipOutcome::NeedsUserInput,

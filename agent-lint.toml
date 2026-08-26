@@ -1065,8 +1065,8 @@ conditional-sources = [
 # reviewed cap. These values match the pinned v4.0.2 report exactly.
 # Issue #8993 adds the Step 8 `governance-refresh` branch and its fence.
 root-max-lines = 886
-root-max-tokens = 35436
-root-max-content-tokens = 35353
+root-max-tokens = 35457
+root-max-content-tokens = 35374
 # Issue #7827 adds the mandatory universal skill lifecycle instruction.
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add focused trust boundaries;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface;
@@ -1090,8 +1090,8 @@ root-max-content-tokens = 35353
 # implement closure, so it equals the root set.
 # Issue #8993 adds the Step 8 `governance-refresh` branch and its fence.
 closure-max-lines = 886
-closure-max-tokens = 35436
-closure-max-content-tokens = 35353
+closure-max-tokens = 35457
+closure-max-content-tokens = 35374
 # Issue #7942: remeasurement of the declared conditional sources removes the
 # v3.0.1 transitive-discovery slack and matches v4.0.2 exactly.
 conditional-max-lines = 622

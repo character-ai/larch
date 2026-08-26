@@ -779,8 +779,8 @@ pub fn named_block_mutation_request(
     named_block_mutation_request_for_run(repository, issue, snapshot, marker, body, "")
 }
 
-/// Build the protected named-block mutation, binding `run_id` as the lease
-/// when no run-id environment key names the active run.
+/// Build the protected named-block mutation, binding an explicit `run_id` as
+/// the lease; an empty `run_id` falls back to the run-id environment keys.
 pub fn named_block_mutation_request_for_run(
     repository: &GitHubRepositoryRef,
     issue: u64,
@@ -804,8 +804,18 @@ pub fn named_block_mutation_request_for_run(
 }
 
 /// Bind a protected named-block write to the active run, when one is named.
-fn named_block_lease(marker: &str, fallback_run_id: &str) -> Option<IssueMutationLease> {
-    resolve_named_block_run_id(fallback_run_id).map(|run_id| IssueMutationLease {
+///
+/// An explicit `run_id` outranks the ambient `RUN_ID`/`LARCH_RUN_ID`/
+/// `SESSION_ID` keys so a caller that resolved the run from persisted state
+/// is not silently overridden by the orchestrator's environment.
+fn named_block_lease(marker: &str, run_id: &str) -> Option<IssueMutationLease> {
+    let explicit = run_id.trim();
+    let run_id = if explicit.is_empty() {
+        resolve_named_block_run_id("")?
+    } else {
+        explicit.to_owned()
+    };
+    Some(IssueMutationLease {
         run_id,
         marker: marker.to_owned(),
     })
@@ -1032,6 +1042,6 @@ mod tests {
         // An explicit run id binds the lease when no env key names the run.
         let bound = named_block_lease("plan", "run-8993").expect("explicit lease");
         assert_eq!(bound.marker, "plan");
-        assert!(!bound.run_id.is_empty());
+        assert_eq!(bound.run_id, "run-8993");
     }
 }

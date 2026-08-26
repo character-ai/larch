@@ -954,7 +954,8 @@ fn text_value(value: Option<&OsStr>) -> String {
     value.unwrap_or_default().to_string_lossy().into_owned()
 }
 
-fn lower_sha1(value: &str) -> bool {
+/// Return whether `value` is a 40-character lowercase hexadecimal SHA-1.
+pub fn lower_sha1(value: &str) -> bool {
     value.len() == 40
         && value
             .bytes()
