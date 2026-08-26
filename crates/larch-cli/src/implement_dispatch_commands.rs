@@ -528,11 +528,19 @@ impl LaunchIdentity {
 /// already branch on.
 #[must_use]
 pub fn resolve_repo_root_output(tmpdir: &Path) -> ProcessOutput {
-    let resolved = session_repo_root(tmpdir).and_then(|raw| validate_repo_root(Path::new(&raw)));
-    match resolved {
+    match resolve_session_repo_root(tmpdir) {
         Ok(root) => identity_stdout(&format!("REPO_ROOT={}\n", root.display())),
         Err(error) => identity_stderr(&error),
     }
+}
+
+/// Resolve and validate the repository root persisted for an implement session.
+///
+/// # Errors
+/// Returns the shared fail-closed identity error when the session state or Git
+/// top-level identity is unavailable.
+pub fn resolve_session_repo_root(tmpdir: &Path) -> Result<PathBuf, ChecksIdentityError> {
+    session_repo_root(tmpdir).and_then(|raw| validate_repo_root(Path::new(&raw)))
 }
 
 fn identity_stdout(text: &str) -> ProcessOutput {

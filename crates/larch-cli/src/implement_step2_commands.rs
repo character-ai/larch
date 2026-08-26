@@ -50,7 +50,7 @@ use crate::{
     implement_commands::{kv_value, read_kv_first, write_atomic},
     implement_dispatch_commands::{
         capture_postlaunch_porcelain, capture_prelaunch_porcelain, delegate_verified_larch,
-        rehydrate_session, run_verified_larch_env_in,
+        rehydrate_session, resolve_session_repo_root, run_verified_larch_env_in,
     },
     implement_launcher_commands::{CODEX_IMPLEMENT_MODEL, cursor_implement_model},
     implement_preflight_commands::governance_gate_argv,
@@ -121,6 +121,7 @@ pub fn run_dispatch(arguments: &[OsString]) -> ExitCode {
     let RunDispatchRequest {
         tmpdir,
         plugin_root,
+        repo_root,
         coder,
         answers,
         codex_binary_found,
@@ -138,12 +139,13 @@ pub fn run_dispatch(arguments: &[OsString]) -> ExitCode {
     let telemetry_marked = answers.is_empty()
         && mark_step2_telemetry(
             &tmpdir,
+            &repo_root,
             &plugin_root,
             &coder,
             &codex_binary_found,
             &cursor_binary_found,
         );
-    let outcome = run_verified_larch_env_in(&tmpdir, &plugin_root, &child, &[]);
+    let outcome = run_verified_larch_env_in(&repo_root, &plugin_root, &child, &[]);
     let result = match outcome {
         Ok(output) => output,
         Err(detail) => {
@@ -155,13 +157,6 @@ pub fn run_dispatch(arguments: &[OsString]) -> ExitCode {
     let stdout = String::from_utf8_lossy(result.stdout()).into_owned();
     if child_stdout_is_claude_fallback(&stdout) {
         clear_external_dispatch_seed(&tmpdir);
-        let Some(repo_root) = discover_repo_root() else {
-            drop(lock);
-            eprintln!(
-                "implement run-dispatch: git rev-parse --show-toplevel failed after claude_fallback"
-            );
-            return ExitCode::from(2);
-        };
         let rc = capture_prelaunch_porcelain(&repo_root, &tmpdir);
         if rc != 0 {
             drop(lock);
@@ -318,22 +313,54 @@ mod commands_tests {
     #[cfg(unix)]
     fn run_dispatch_stub_fixture(child_stdout: &str) -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = dir.path().join("repo-root");
+        fs::create_dir_all(&repo_root).expect("repo root");
+        test_git(&repo_root, &["init", "--quiet"]);
+        let repo_root = fs::canonicalize(repo_root).expect("canonical repo root");
         let plugin_root = dir.path().join("plugin-root");
         fs::create_dir_all(&plugin_root).expect("plugin root");
         test_write_fixture(
             &dir.path().join("session-env.sh"),
             &format!(
-                "LARCH_CLAUDE_PLUGIN_ROOT={}\nCODEX_BINARY_FOUND=true\n",
-                plugin_root.display()
+                "LARCH_CLAUDE_PLUGIN_ROOT={}\nREPO_ROOT={}\nCODEX_BINARY_FOUND=true\n",
+                plugin_root.display(),
+                repo_root.display()
             ),
         );
         test_write_fixture(&dir.path().join("feature-description.txt"), "feature\n");
         test_write_fixture(&dir.path().join("plan.txt"), "plan\n");
+        let observed_cwd = dir.path().join("step2-child-cwd.txt");
         let script = format!(
-            "#!/usr/bin/env bash\nset -euo pipefail\ncase \"${{1:-}} ${{2:-}}\" in\n  \"timing mark\")\n    exit 0\n    ;;\n  \"implement step2-dispatch\")\n    cat <<'STUBOUT'\n{child_stdout}\nSTUBOUT\n    exit 0\n    ;;\n  *)\n    exit 0\n    ;;\nesac\n"
+            "#!/usr/bin/env bash\nset -euo pipefail\ncase \"${{1:-}} ${{2:-}}\" in\n  \"timing mark\")\n    exit 0\n    ;;\n  \"implement step2-dispatch\")\n    pwd > '{observed_cwd}'\n    [ \"$PWD\" = '{repo_root}' ] || exit 42\n    cat <<'STUBOUT'\n{child_stdout}\nSTUBOUT\n    exit 0\n    ;;\n  *)\n    exit 0\n    ;;\nesac\n",
+            observed_cwd = observed_cwd.display(),
+            repo_root = repo_root.display(),
         );
         test_stub_larch_sh(&plugin_root, &script);
         dir
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn run_dispatch_starts_the_step2_child_from_the_persisted_repository_root() {
+        let dir = run_dispatch_stub_fixture(
+            "STATUS=bailed\nREASON=stub-bail-for-coverage\nTOOL=codex\nORCHESTRATOR_EDIT_AUTHORITY=forbidden",
+        );
+        let code = run_dispatch(&test_arguments(&[
+            "--implement-tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--coder",
+            "codex",
+        ]));
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        let observed =
+            fs::read_to_string(dir.path().join("step2-child-cwd.txt")).expect("observed child cwd");
+        assert_eq!(
+            observed.trim(),
+            fs::canonicalize(dir.path().join("repo-root"))
+                .expect("canonical repo root")
+                .display()
+                .to_string()
+        );
     }
 
     #[test]
