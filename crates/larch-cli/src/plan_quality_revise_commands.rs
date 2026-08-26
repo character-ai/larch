@@ -35,7 +35,7 @@ use std::{
 
 use larch_core::{
     DuplicatePolicy, KvDocument, ParseOptions, emit_kv, grammar_prompt, iter_plan_headings,
-    parse_optional_metadata, role_default, terminal_diff_lines, untrusted_content_block,
+    log_tail, parse_optional_metadata, role_default, terminal_diff_lines, untrusted_content_block,
 };
 use regex::Regex;
 use sha2::{Digest, Sha256};
@@ -125,12 +125,31 @@ fn heading_count(path: &Path) -> usize {
     iter_plan_headings(&read_text(path), None).len()
 }
 
-fn validate_optional_keys(plan_file: &Path, keys_file: &Path) -> bool {
-    let meta = parse_optional_metadata(&read_text(plan_file));
-    read_text(keys_file)
+fn validate_optional_keys(plan_file: &Path, keys_file: &Path) -> Result<(), String> {
+    let plan_text = read_text(plan_file);
+    let invalid_mechanical_churn = terminal_diff_lines(&plan_text).is_some()
+        && plan_text
+            .lines()
+            .rev()
+            .skip_while(|line| line.trim().is_empty())
+            .skip(1)
+            .take_while(|line| !line.trim().is_empty())
+            .any(|line| {
+                line.starts_with("mechanical_churn:")
+                    && !matches!(line, "mechanical_churn: true" | "mechanical_churn: false")
+            });
+    if invalid_mechanical_churn {
+        return Err("invalid-mechanical-churn".to_owned());
+    }
+    let meta = parse_optional_metadata(&plan_text);
+    if let Some(missing) = read_text(keys_file)
         .lines()
         .filter(|line| !line.is_empty())
-        .all(|key| meta.keys.iter().any(|item| item == key))
+        .find(|key| !meta.keys.iter().any(|item| item == *key))
+    {
+        return Err(format!("missing-optional-trailer-{missing}"));
+    }
+    Ok(())
 }
 
 fn extract_file_replacement(output: &str) -> String {
@@ -221,6 +240,24 @@ fn merge_tier4(current: &str, new: &str) -> String {
     }
 }
 
+fn set_tier_outcome(
+    ord: u8,
+    status: &str,
+    reason: &str,
+    statuses: &mut BTreeMap<u8, String>,
+    reasons: &mut BTreeMap<u8, String>,
+) {
+    let selected = if ord == 4 {
+        merge_tier4(statuses.get(&4).map_or("", String::as_str), status)
+    } else {
+        status.to_owned()
+    };
+    if ord != 4 || selected == status {
+        statuses.insert(ord, status.to_owned());
+        reasons.insert(ord, reason.to_owned());
+    }
+}
+
 fn compose_revise_prompt(
     plan: &Path,
     findings: &Path,
@@ -272,14 +309,73 @@ fn compose_revise_prompt(
     prompt.join("\n") + "\n"
 }
 
-fn emit_plan_gate(design_tmpdir: &Path, plugin: &Path) -> bool {
+fn bounded_diagnostic(text: &str) -> String {
+    let bounded = log_tail(text);
+    if bounded.is_empty() {
+        "<empty>".to_owned()
+    } else {
+        bounded
+    }
+}
+
+#[allow(clippy::unnecessary_debug_formatting)] // OsStr Debug quoting preserves exact argv boundaries in the failure record.
+fn command_description(command: &Command) -> String {
+    std::iter::once(command.get_program())
+        .chain(command.get_args())
+        .map(|part| format!("{part:?}"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn record_emit_plan_gate_failure(
+    revise_dir: &Path,
+    command: &str,
+    status: &str,
+    reason: &str,
+    stdout: &str,
+    stderr: &str,
+) {
+    let log_path = revise_dir.join("emit-plan-gate.log");
+    let command = bounded_diagnostic(command);
+    let stdout = bounded_diagnostic(stdout);
+    let stderr = bounded_diagnostic(stderr);
+    let entry = format!(
+        "command={command}\nstatus={status}\nreason={reason}\nstdout={stdout}\nstderr={stderr}\n"
+    );
+    let existing = read_text(&log_path);
+    let log_text = if existing.is_empty() {
+        entry
+    } else {
+        format!("{}\n{entry}", existing.trim_end())
+    };
+    let log_error = atomic_write(&log_path, &log_text).err();
+    let mut message = format!(
+        "revise-waterfall: emit-plan gate failed: command={command}; status={status}; reason={reason}; stdout={stdout}; stderr={stderr}; log={}",
+        log_path.display()
+    );
+    if let Some(error) = log_error {
+        message.push_str(&format!("; log-write-error={}", bounded_diagnostic(&error)));
+    }
+    diagnostic(&message);
+}
+
+fn emit_plan_gate(design_tmpdir: &Path, plugin: &Path, revise_dir: &Path) -> Result<(), String> {
     let mut command = if let Ok(raw) = env::var("LARCH_TEST_DESIGN_DRIVER") {
         let mut parts = raw
             .split_whitespace()
             .map(str::to_owned)
             .collect::<Vec<_>>();
         if parts.is_empty() {
-            return false;
+            let reason = "driver-command-empty";
+            record_emit_plan_gate_failure(
+                revise_dir,
+                "LARCH_TEST_DESIGN_DRIVER=<empty>",
+                "not-started",
+                reason,
+                "",
+                "",
+            );
+            return Err(reason.to_owned());
         }
         let mut command = Command::new(parts.remove(0)); // lint-subprocess-via-runner: ok retained design-driver harness override has no typed executable owner
         command.args(parts);
@@ -295,19 +391,69 @@ fn emit_plan_gate(design_tmpdir: &Path, plugin: &Path) -> bool {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let Ok(mut child) = command.spawn() else {
-        return false;
+    let command_text = command_description(&command);
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            let reason = "driver-spawn-failed";
+            record_emit_plan_gate_failure(
+                revise_dir,
+                &command_text,
+                "spawn-error",
+                reason,
+                "",
+                &error.to_string(),
+            );
+            return Err(reason.to_owned());
+        }
     };
     if let Some(mut stdin) = child.stdin.take() {
         use std::io::Write as _;
         let _ = writeln!(stdin, "ACTION=EMIT_PLAN");
     }
-    let Ok(output) = child.wait_with_output() else {
-        return false;
+    let output = match child.wait_with_output() {
+        Ok(output) => output,
+        Err(error) => {
+            let reason = "driver-wait-failed";
+            record_emit_plan_gate_failure(
+                revise_dir,
+                &command_text,
+                "wait-error",
+                reason,
+                "",
+                &error.to_string(),
+            );
+            return Err(reason.to_owned());
+        }
     };
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .any(|line| line == "EMIT_PLAN_STATUS=ok")
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success() {
+        let status = output
+            .status
+            .code()
+            .map_or_else(|| "signal".to_owned(), |code| code.to_string());
+        let reason = output.status.code().map_or_else(
+            || "driver-signal".to_owned(),
+            |code| format!("driver-exit-{code}"),
+        );
+        record_emit_plan_gate_failure(
+            revise_dir,
+            &command_text,
+            &status,
+            &reason,
+            &stdout,
+            &stderr,
+        );
+        return Err(reason);
+    }
+    if stdout.lines().any(|line| line == "EMIT_PLAN_STATUS=ok") {
+        Ok(())
+    } else {
+        let reason = "missing-emit-plan-status";
+        record_emit_plan_gate_failure(revise_dir, &command_text, "0", reason, &stdout, &stderr);
+        Err(reason.to_owned())
+    }
 }
 
 /// `plan revise-waterfall`
@@ -433,6 +579,10 @@ pub fn revise_waterfall(arguments: &[OsString]) -> ExitCode {
         .into_iter()
         .map(|key| (key, "not-attempted".to_owned()))
         .collect();
+    let mut reasons: BTreeMap<u8, String> = [1, 2, 3, 4]
+        .into_iter()
+        .map(|key| (key, String::new()))
+        .collect();
     let mut winner = String::new();
     let mut winner_output = String::new();
     let mut fallback = false;
@@ -476,6 +626,7 @@ pub fn revise_waterfall(arguments: &[OsString]) -> ExitCode {
             &cursor_binary,
             orig_headings,
             &mut statuses,
+            &mut reasons,
             &mut winner,
             &mut winner_output,
             &restore,
@@ -503,6 +654,7 @@ pub fn revise_waterfall(arguments: &[OsString]) -> ExitCode {
                 &cursor_binary,
                 orig_headings,
                 &mut statuses,
+                &mut reasons,
                 &mut winner,
                 &mut winner_output,
                 &restore,
@@ -535,11 +687,15 @@ pub fn revise_waterfall(arguments: &[OsString]) -> ExitCode {
         )
     };
     let env_text = format!(
-        "REVISE_TIER_1_STATUS={}\nREVISE_TIER_2_STATUS={}\nREVISE_TIER_3_STATUS={}\nREVISE_TIER_4_STATUS={}\nREVISE_STATUS={status}\nREVISE_TIER={tier_out}\nREVISE_WINNING_TIER={tier_out}\nREVISE_PATCH_PATH={patch_path}\nREVISE_PLAN_HASH_BEFORE={hash_before}\nREVISE_PLAN_HASH_AFTER={hash_after}\n",
+        "REVISE_TIER_1_STATUS={}\nREVISE_TIER_2_STATUS={}\nREVISE_TIER_3_STATUS={}\nREVISE_TIER_4_STATUS={}\nREVISE_TIER_1_REASON={}\nREVISE_TIER_2_REASON={}\nREVISE_TIER_3_REASON={}\nREVISE_TIER_4_REASON={}\nREVISE_STATUS={status}\nREVISE_TIER={tier_out}\nREVISE_WINNING_TIER={tier_out}\nREVISE_PATCH_PATH={patch_path}\nREVISE_PLAN_HASH_BEFORE={hash_before}\nREVISE_PLAN_HASH_AFTER={hash_after}\n",
         statuses.get(&1).cloned().unwrap_or_default(),
         statuses.get(&2).cloned().unwrap_or_default(),
         statuses.get(&3).cloned().unwrap_or_default(),
         statuses.get(&4).cloned().unwrap_or_default(),
+        reasons.get(&1).cloned().unwrap_or_default(),
+        reasons.get(&2).cloned().unwrap_or_default(),
+        reasons.get(&3).cloned().unwrap_or_default(),
+        reasons.get(&4).cloned().unwrap_or_default(),
     );
     let _ = atomic_write(&revise_dir.join("revise.env"), &env_text);
     if let Ok(document) = KvDocument::parse(&env_text, ParseOptions::legacy()) {
@@ -567,24 +723,20 @@ fn run_revise_attempt(
     cursor_binary: &str,
     orig_headings: usize,
     statuses: &mut BTreeMap<u8, String>,
+    reasons: &mut BTreeMap<u8, String>,
     winner: &mut String,
     winner_output: &mut String,
     restore: &dyn Fn(),
 ) -> bool {
-    let set_status = |statuses: &mut BTreeMap<u8, String>, status: &str| {
-        if ord == 4 {
-            let current = statuses.get(&4).cloned().unwrap_or_default();
-            statuses.insert(4, merge_tier4(&current, status));
-        } else {
-            statuses.insert(ord, status.to_owned());
-        }
+    let mut set_outcome = |status: &str, reason: &str| {
+        set_tier_outcome(ord, status, reason, statuses, reasons);
     };
     if tier == "codex" && codex_binary == "false" {
-        set_status(statuses, "skipped-binary-missing");
+        set_outcome("skipped-binary-missing", "binary-missing");
         return false;
     }
     if tier == "cursor" && cursor_binary == "false" {
-        set_status(statuses, "skipped-binary-missing");
+        set_outcome("skipped-binary-missing", "binary-missing");
         return false;
     }
     let out_path = revise_dir.join(format!("{tier}-output.txt"));
@@ -682,14 +834,20 @@ fn run_revise_attempt(
             Err(_) => 1,
         }
     };
-    if rc != 0
-        || !out_path.is_file()
-        || out_path
-            .metadata()
-            .map(|meta| meta.len() == 0)
-            .unwrap_or(true)
+    if rc != 0 {
+        set_outcome("no-patch", &format!("launcher-exit-{rc}"));
+        return false;
+    }
+    if !out_path.is_file() {
+        set_outcome("no-patch", "launcher-output-missing");
+        return false;
+    }
+    if out_path
+        .metadata()
+        .map(|meta| meta.len() == 0)
+        .unwrap_or(true)
     {
-        set_status(statuses, "no-patch");
+        set_outcome("no-patch", "launcher-output-empty");
         return false;
     }
     let output = read_text(&out_path);
@@ -698,7 +856,7 @@ fn run_revise_attempt(
         let patch = extract_unified_diff(&output);
         let _ = atomic_write(&patch_path, &patch);
         if patch.is_empty() || !validate_unified_headers(&patch) {
-            set_status(statuses, "invalid-patch");
+            set_outcome("invalid-patch", "invalid-unified-diff");
             restore();
             return false;
         }
@@ -721,7 +879,7 @@ fn run_revise_attempt(
             _ => false,
         };
         if !apply_ok {
-            set_status(statuses, "apply-failed");
+            set_outcome("apply-failed", "git-apply-failed");
             restore();
             return false;
         }
@@ -731,32 +889,36 @@ fn run_revise_attempt(
         let has_diff = Regex::new(r"(?m)^diff_lines:\s*[0-9]+\s*$")
             .expect("diff lines")
             .is_match(&replacement);
-        if replacement.is_empty() || !has_diff {
-            set_status(statuses, "invalid-patch");
+        if replacement.is_empty() {
+            set_outcome("invalid-patch", "missing-file-replacement");
             return false;
         }
-        if !validate_optional_keys(&patch_path, keys_file) {
-            set_status(statuses, "invalid-patch");
+        if !has_diff {
+            set_outcome("invalid-patch", "missing-diff-lines");
+            return false;
+        }
+        if let Err(reason) = validate_optional_keys(&patch_path, keys_file) {
+            set_outcome("invalid-patch", &reason);
             return false;
         }
         let _ = atomic_write(plan, &replacement);
     }
     if orig_headings > 0 && heading_count(plan) == 0 {
-        set_status(statuses, "invalid-patch");
+        set_outcome("invalid-patch", "missing-plan-heading");
         restore();
         return false;
     }
-    if !validate_optional_keys(plan, keys_file) {
-        set_status(statuses, "invalid-patch");
+    if let Err(reason) = validate_optional_keys(plan, keys_file) {
+        set_outcome("invalid-patch", &reason);
         restore();
         return false;
     }
-    if !emit_plan_gate(design_tmpdir, plugin) {
-        set_status(statuses, "emit-plan-failed");
+    if let Err(reason) = emit_plan_gate(design_tmpdir, plugin, revise_dir) {
+        set_outcome("emit-plan-failed", &reason);
         restore();
         return false;
     }
-    set_status(statuses, "ok");
+    set_outcome("ok", "");
     *winner = tier.to_owned();
     *winner_output = out_path.display().to_string();
     true
@@ -1281,6 +1443,12 @@ mod tests {
         assert_eq!(merge_tier4("ok", "no-patch"), "ok");
         assert_eq!(binary_arg("true", "does-not-matter"), "true");
         assert_eq!(binary_arg("false", "does-not-matter"), "false");
+        let mut command = Command::new("/tmp/plugin root/scripts/larch.sh"); // lint-subprocess-via-runner: ok test-only value verifies argv rendering without spawning
+        command.arg("design").arg("driver");
+        assert_eq!(
+            command_description(&command),
+            "\"/tmp/plugin root/scripts/larch.sh\" \"design\" \"driver\""
+        );
 
         let root = unique_root("helpers");
         let plan = root.join("plan.txt");
@@ -1292,9 +1460,24 @@ mod tests {
 
         let keys = root.join("keys");
         fs::write(&keys, "difficulty\nmechanical_churn\n").expect("keys");
-        assert!(validate_optional_keys(&plan, &keys));
+        assert!(validate_optional_keys(&plan, &keys).is_ok());
+        fs::write(&plan, format!("mechanical_churn: 25\n\n{}", mini_plan())).expect("body token");
+        assert!(validate_optional_keys(&plan, &keys).is_ok());
+        fs::write(
+            &plan,
+            mini_plan().replace("mechanical_churn: false", "mechanical_churn: 25"),
+        )
+        .expect("invalid trailer");
+        assert_eq!(
+            validate_optional_keys(&plan, &keys),
+            Err("invalid-mechanical-churn".to_owned())
+        );
+        fs::write(&plan, mini_plan()).expect("restore plan");
         fs::write(&keys, "missing-key\n").expect("bad keys");
-        assert!(!validate_optional_keys(&plan, &keys));
+        assert_eq!(
+            validate_optional_keys(&plan, &keys),
+            Err("missing-optional-trailer-missing-key".to_owned())
+        );
 
         let replacement =
             extract_file_replacement("## Plan\n### NEW: a\n\nbody\n\ndiff_lines: 1\n");
@@ -1425,6 +1608,7 @@ mod tests {
         fs::write(&feature, "feat\n").expect("feature");
         fs::write(&keys, "").expect("keys");
         let mut statuses = BTreeMap::new();
+        let mut reasons = BTreeMap::new();
         let mut winner = String::new();
         let mut winner_output = String::new();
         let restore = || {};
@@ -1444,6 +1628,7 @@ mod tests {
             "false",
             1,
             &mut statuses,
+            &mut reasons,
             &mut winner,
             &mut winner_output,
             &restore,
@@ -1468,6 +1653,7 @@ mod tests {
             "false",
             1,
             &mut statuses,
+            &mut reasons,
             &mut winner,
             &mut winner_output,
             &restore,

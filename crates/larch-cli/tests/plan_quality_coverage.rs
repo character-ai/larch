@@ -39,6 +39,35 @@ const fn mini_plan() -> &'static str {
     "### NEW: fixture\n\n1. Touch `scripts/noop.sh`.\n\ndifficulty: HARD\nmechanical_churn: false\ndiff_lines: 1\n"
 }
 
+fn write_replacement_launcher(path: &Path, mechanical_churn: &str) {
+    write_exec(
+        path,
+        &format!(
+            r#"#!/bin/sh
+out=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--output" ]; then
+    out="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+cat >"$out" <<'EOF'
+## Plan
+### NEW: fixture
+
+1. Touch `scripts/noop.sh`.
+
+difficulty: HARD
+mechanical_churn: {mechanical_churn}
+diff_lines: 1
+EOF
+"#
+        ),
+    );
+}
+
 fn larch() -> Command {
     Command::new(env!("CARGO_BIN_EXE_larch"))
 }
@@ -178,6 +207,44 @@ fn plan_quality_help_assets_do_not_name_the_retired_python_entry() {
     }
 }
 
+fn run_file_replacement_revise(
+    root: &Path,
+    plan: &Path,
+    findings: &Path,
+    feature: &Path,
+    round: u64,
+    launcher: &Path,
+    driver: &Path,
+) -> std::process::Output {
+    let mut command = larch();
+    command
+        .args(["plan", "revise-waterfall", "--design-tmpdir"])
+        .arg(root)
+        .arg("--plan-file")
+        .arg(plan)
+        .arg("--findings-file")
+        .arg(findings)
+        .arg("--feature-file")
+        .arg(feature)
+        .args([
+            "--round-num",
+            &round.to_string(),
+            "--codex-binary-found",
+            "true",
+            "--cursor-binary-found",
+            "false",
+            "--timeout",
+            "5",
+            "--patch-format",
+            "file-replacement",
+        ])
+        .env("LARCH_TEST_LAUNCH_CODEX_REVIEW", launcher)
+        .env("LARCH_TEST_LAUNCH_CLAUDE_REVIEW", launcher)
+        .env("LARCH_TEST_DESIGN_DRIVER", driver)
+        .output()
+        .expect("run revise")
+}
+
 #[test]
 fn auto_fix_commands_dispatch_and_validate_success_path() {
     let root = unique_root("autofix-ok");
@@ -281,65 +348,15 @@ fn revise_waterfall_with_launch_override_file_replacement() {
 
     let launcher = root.join("launch.sh");
     // Args include --output <path>; write a replacement plan there.
-    write_exec(
-        &launcher,
-        r#"#!/bin/sh
-out=""
-while [ "$#" -gt 0 ]; do
-  if [ "$1" = "--output" ]; then
-    out="$2"
-    shift 2
-    continue
-  fi
-  shift
-done
-cat >"$out" <<'EOF'
-## Plan
-### NEW: fixture
-
-1. Touch `scripts/noop.sh`.
-
-difficulty: HARD
-mechanical_churn: false
-diff_lines: 1
-EOF
-exit 0
-"#,
-    );
+    write_replacement_launcher(&launcher, "false");
     let driver = root.join("driver.sh");
     write_exec(
         &driver,
         "#!/bin/sh\nprintf 'EMIT_PLAN_STATUS=ok\\n'\nexit 0\n",
     );
 
-    let output = larch()
-        .args([
-            "plan",
-            "revise-waterfall",
-            "--design-tmpdir",
-            root.to_str().unwrap(),
-            "--plan-file",
-            plan.to_str().unwrap(),
-            "--findings-file",
-            findings.to_str().unwrap(),
-            "--feature-file",
-            feature.to_str().unwrap(),
-            "--round-num",
-            "2",
-            "--codex-binary-found",
-            "true",
-            "--cursor-binary-found",
-            "false",
-            "--timeout",
-            "5",
-            "--patch-format",
-            "file-replacement",
-        ])
-        .env("LARCH_TEST_LAUNCH_CODEX_REVIEW", &launcher)
-        .env("LARCH_TEST_LAUNCH_CLAUDE_REVIEW", &launcher)
-        .env("LARCH_TEST_DESIGN_DRIVER", &driver)
-        .output()
-        .expect("run revise");
+    let output =
+        run_file_replacement_revise(&root, &plan, &findings, &feature, 2, &launcher, &driver);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         output.status.success(),
@@ -349,6 +366,168 @@ exit 0
     assert!(
         stdout.contains("REVISE_STATUS=ok") || stdout.contains("REVISE_STATUS=ok-fallback"),
         "{stdout}"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn revise_waterfall_records_bounded_emit_plan_driver_failure() {
+    let root = unique_root("revise-driver-failure");
+    let plan = root.join("plan.txt");
+    let findings = root.join("findings.md");
+    let feature = root.join("feature.txt");
+    fs::write(&plan, mini_plan()).expect("plan");
+    fs::write(&findings, "finding\n").expect("findings");
+    fs::write(&feature, "feature\n").expect("feature");
+
+    let launcher = root.join("launch.sh");
+    write_replacement_launcher(&launcher, "false");
+    let driver = root.join("driver.sh");
+    write_exec(
+        &driver,
+        r#"#!/bin/sh
+i=0
+while [ "$i" -lt 600 ]; do
+  printf 'stdout-padding-%04d\n' "$i"
+  printf 'stderr-padding-%04d\n' "$i" >&2
+  i=$((i + 1))
+done
+printf 'driver stdout tail\n'
+printf 'driver stderr tail\n' >&2
+exit 7
+"#,
+    );
+
+    let output =
+        run_file_replacement_revise(&root, &plan, &findings, &feature, 3, &launcher, &driver);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "stderr={stderr}");
+    assert!(
+        stdout.contains("REVISE_TIER_1_STATUS=emit-plan-failed\n"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("REVISE_TIER_1_REASON=driver-exit-7\n"),
+        "{stdout}"
+    );
+    assert!(stderr.contains(&driver.display().to_string()), "{stderr}");
+    assert!(stderr.contains("status=7"), "{stderr}");
+    assert!(stderr.contains("driver stdout tail"), "{stderr}");
+    assert!(stderr.contains("driver stderr tail"), "{stderr}");
+    assert!(stderr.contains("earlier bytes"), "{stderr}");
+
+    let revise_dir = root.join("plan-review/round-3/revise");
+    let revise_env = fs::read_to_string(revise_dir.join("revise.env")).expect("revise.env");
+    assert!(
+        revise_env.contains("REVISE_TIER_1_REASON=driver-exit-7\n"),
+        "{revise_env}"
+    );
+    let log = revise_dir.join("emit-plan-gate.log");
+    let log_text = fs::read_to_string(&log).expect("emit-plan gate log");
+    assert!(
+        log_text.contains(&driver.display().to_string()),
+        "{log_text}"
+    );
+    assert!(log_text.contains("status=7"), "{log_text}");
+    assert!(log_text.contains("driver stdout tail"), "{log_text}");
+    assert!(log_text.contains("driver stderr tail"), "{log_text}");
+    assert!(log_text.contains("earlier bytes"), "{log_text}");
+    assert!(log_text.len() < 20_000, "log was not bounded");
+    assert_eq!(
+        fs::read_to_string(&plan).expect("restored plan"),
+        mini_plan()
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn revise_waterfall_names_invalid_mechanical_churn_reason() {
+    let root = unique_root("revise-invalid-mechanical-churn");
+    let plan = root.join("plan.txt");
+    let findings = root.join("findings.md");
+    let feature = root.join("feature.txt");
+    fs::write(&plan, mini_plan()).expect("plan");
+    fs::write(&findings, "finding\n").expect("findings");
+    fs::write(&feature, "feature\n").expect("feature");
+
+    let launcher = root.join("launch.sh");
+    write_replacement_launcher(&launcher, "25");
+    let driver = root.join("driver.sh");
+    write_exec(&driver, "#!/bin/sh\nprintf 'EMIT_PLAN_STATUS=ok\\n'\n");
+
+    let output =
+        run_file_replacement_revise(&root, &plan, &findings, &feature, 4, &launcher, &driver);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("REVISE_TIER_1_STATUS=invalid-patch\n"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("REVISE_TIER_1_REASON=invalid-mechanical-churn\n"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("REVISE_STATUS=failed-validation\n"),
+        "{stdout}"
+    );
+    let revise_env =
+        fs::read_to_string(root.join("plan-review/round-4/revise/revise.env")).expect("revise.env");
+    assert!(
+        revise_env.contains("REVISE_TIER_1_REASON=invalid-mechanical-churn\n"),
+        "{revise_env}"
+    );
+    assert_eq!(
+        fs::read_to_string(&plan).expect("restored plan"),
+        mini_plan()
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn revise_waterfall_names_no_patch_reason() {
+    let root = unique_root("revise-no-patch");
+    let plan = root.join("plan.txt");
+    let findings = root.join("findings.md");
+    let feature = root.join("feature.txt");
+    fs::write(&plan, mini_plan()).expect("plan");
+    fs::write(&findings, "finding\n").expect("findings");
+    fs::write(&feature, "feature\n").expect("feature");
+
+    let launcher = root.join("launch.sh");
+    write_exec(&launcher, "#!/bin/sh\nexit 9\n");
+    let driver = root.join("driver.sh");
+    write_exec(&driver, "#!/bin/sh\nprintf 'EMIT_PLAN_STATUS=ok\\n'\n");
+    let output =
+        run_file_replacement_revise(&root, &plan, &findings, &feature, 5, &launcher, &driver);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("REVISE_TIER_1_STATUS=no-patch\n"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("REVISE_TIER_1_REASON=launcher-exit-9\n"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("REVISE_STATUS=failed-no-patch\n"),
+        "{stdout}"
+    );
+    let revise_env =
+        fs::read_to_string(root.join("plan-review/round-5/revise/revise.env")).expect("revise.env");
+    assert!(
+        revise_env.contains("REVISE_TIER_1_REASON=launcher-exit-9\n"),
+        "{revise_env}"
     );
     let _ = fs::remove_dir_all(&root);
 }
