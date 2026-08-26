@@ -14,8 +14,8 @@ use larch_adapters::{GixRepository, SystemProcessIdentityHost};
 use larch_core::{
     CHECKS_TERMINAL_ACTIONS, ChildEnvironment, CommentPolicy, DuplicateInputPolicy,
     DuplicatePolicy, ExternalProgram, KvDocument, LarchProgram, ParseOptions, ProcessOutput,
-    ProcessStatus, RecoveryPorcelainInputs, StatusOptions, bgjob_dir, child_liveness,
-    compute_recovery_paths, daemon_liveness, ensure_under,
+    ProcessRequest, ProcessStatus, RecoveryPorcelainInputs, StatusOptions, bgjob_dir,
+    child_liveness, compute_recovery_paths, daemon_liveness, ensure_under,
     implement::{
         ChecksIdentityError, ChecksInputIdentity, checks_run_relevant_args,
         classify_completed_result, classify_live_seed, identities_match, parse_porcelain_z,
@@ -31,7 +31,10 @@ use crate::{
     checks_identity_commands::{live_identity, validate_repo_root},
     child_process::{bounded_request_in, run_bounded},
     implement_child_seam::resolve_plugin_root,
-    runtime_entrypoint::{publish_session_environment, run_verified_larch_with_options_in},
+    runtime_entrypoint::{
+        publish_session_environment, run_verified_larch_with_options_in,
+        with_verified_larch_context,
+    },
 };
 
 const RECOVERY_PROG: &str = "cli.py implement recovery-paths";
@@ -993,7 +996,7 @@ pub fn run_verified_larch_env_in_timeout(
 ) -> Result<ProcessOutput, String> {
     let program = LarchProgram::bootstrap(root)
         .map_err(|error| format!("could not select verified larch entrypoint: {error}"))?;
-    let mut request = bounded_request_in(
+    let request = bounded_request_in(
         ExternalProgram::Larch(program),
         args.iter().cloned(),
         cwd,
@@ -1001,19 +1004,55 @@ pub fn run_verified_larch_env_in_timeout(
         ADAPT_GRACE,
         ADAPT_OUTPUT_LIMIT,
     )?;
+    let request = decorate_verified_larch_env_in(request, root, cwd, extra);
+    run_bounded(request).map_err(|error| format!("could not start verified larch: {error}"))
+}
+
+/// Apply the verified-larch context allowlist plus the site-specific overrides
+/// used by [`run_verified_larch_env_in_timeout`].
+///
+/// Context rows land first so `ClaudePluginRoot`, `ImplementTmpdir`, `RepoRoot`,
+/// and caller `extra` rows still win. Without the shared context allowlist the
+/// Step 2 dispatcher child drops vendor credentials and model overrides that
+/// Step 0's probe already saw through [`crate::runtime_entrypoint`].
+#[must_use]
+pub fn decorate_verified_larch_env_in(
+    request: ProcessRequest,
+    root: &Path,
+    cwd: &Path,
+    extra: &[(ChildEnvironment, OsString)],
+) -> ProcessRequest {
+    apply_verified_larch_env_in_overrides(
+        with_verified_larch_context(request),
+        root,
+        cwd,
+        env::var_os("IMPLEMENT_TMPDIR").unwrap_or_default(),
+        extra,
+    )
+}
+
+/// Pure site-override layer for [`decorate_verified_larch_env_in`].
+///
+/// Tests assemble a request that already carries verified-context rows, then
+/// confirm those rows survive while the site overrides still win.
+#[must_use]
+pub fn apply_verified_larch_env_in_overrides(
+    mut request: ProcessRequest,
+    root: &Path,
+    cwd: &Path,
+    implement_tmpdir: OsString,
+    extra: &[(ChildEnvironment, OsString)],
+) -> ProcessRequest {
     request = request.with_environment(
         ChildEnvironment::ClaudePluginRoot,
         root.as_os_str().to_owned(),
     );
-    request = request.with_environment(
-        ChildEnvironment::ImplementTmpdir,
-        env::var_os("IMPLEMENT_TMPDIR").unwrap_or_default(),
-    );
+    request = request.with_environment(ChildEnvironment::ImplementTmpdir, implement_tmpdir);
     request = request.with_environment(ChildEnvironment::RepoRoot, cwd.as_os_str().to_owned());
     for (key, value) in extra {
         request = request.with_environment(*key, value.clone());
     }
-    run_bounded(request).map_err(|error| format!("could not start verified larch: {error}"))
+    request
 }
 
 pub fn forward_output(output: &ProcessOutput) {
@@ -1475,5 +1514,70 @@ mod tests {
             OsString::from("maybe"),
         ]);
         assert_eq!(code, std::process::ExitCode::from(2));
+    }
+
+    #[test]
+    fn dispatcher_request_keeps_vendor_credentials_and_model_overrides() {
+        use super::apply_verified_larch_env_in_overrides;
+        use larch_core::{ChildEnvironment, ExternalProgram, HostUtilityProgram, ProcessRequest};
+        use std::{num::NonZeroUsize, time::Duration};
+
+        let cwd = TempDir::new().expect("cwd");
+        let root = TempDir::new().expect("root");
+        let mut request = ProcessRequest::new(
+            ExternalProgram::HostUtility(HostUtilityProgram::Ps),
+            std::iter::empty::<OsString>(),
+            cwd.path().to_path_buf(),
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+            NonZeroUsize::new(1024).expect("limit"),
+        )
+        .expect("request");
+        // Simulate the verified-context rows `with_verified_larch_context` would
+        // copy when CURSOR_API_KEY / OPENAI_API_KEY / LARCH_CODEX_MODEL are set.
+        request = request.with_environment(ChildEnvironment::CursorApiKey, "crsr_test_key");
+        request = request.with_environment(ChildEnvironment::OpenAiApiKey, "sk-test-key");
+        request = request.with_environment(ChildEnvironment::LarchCodexModel, "o4-mini");
+        let decorated = apply_verified_larch_env_in_overrides(
+            request,
+            root.path(),
+            cwd.path(),
+            OsString::from("/tmp/implement-session"),
+            &[(ChildEnvironment::LarchCodexEffort, OsString::from("high"))],
+        );
+        let env = decorated.environment();
+        let value = |key: ChildEnvironment| {
+            env.iter()
+                .find(|(existing, _)| *existing == key)
+                .map(|(_, value)| value.as_os_str())
+        };
+        assert_eq!(
+            value(ChildEnvironment::CursorApiKey),
+            Some(OsStr::new("crsr_test_key"))
+        );
+        assert_eq!(
+            value(ChildEnvironment::OpenAiApiKey),
+            Some(OsStr::new("sk-test-key"))
+        );
+        assert_eq!(
+            value(ChildEnvironment::LarchCodexModel),
+            Some(OsStr::new("o4-mini"))
+        );
+        assert_eq!(
+            value(ChildEnvironment::LarchCodexEffort),
+            Some(OsStr::new("high"))
+        );
+        assert_eq!(
+            value(ChildEnvironment::ClaudePluginRoot),
+            Some(root.path().as_os_str())
+        );
+        assert_eq!(
+            value(ChildEnvironment::ImplementTmpdir),
+            Some(OsStr::new("/tmp/implement-session"))
+        );
+        assert_eq!(
+            value(ChildEnvironment::RepoRoot),
+            Some(cwd.path().as_os_str())
+        );
     }
 }

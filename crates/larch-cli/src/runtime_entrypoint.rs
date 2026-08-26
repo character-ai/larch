@@ -15,7 +15,8 @@ use std::{
 };
 
 use larch_core::{
-    ChildEnvironment, ExternalProgram, LarchProgram, ProcessOutput, is_valid_plugin_root_value,
+    ChildEnvironment, ExternalProgram, LarchProgram, ProcessOutput, ProcessRequest,
+    is_valid_plugin_root_value,
 };
 
 use crate::child_process::{bounded_request, bounded_request_in, run_bounded};
@@ -47,7 +48,7 @@ fn session_environment() -> Vec<(ChildEnvironment, OsString)> {
 /// The shared runner clears every other ambient variable, while this allowlist
 /// preserves session placement, operator-selected model/probe settings, and
 /// vendor credentials that the previously inherited first-party call used.
-const VERIFIED_LARCH_CONTEXT: &[ChildEnvironment] = &[
+pub const VERIFIED_LARCH_CONTEXT: &[ChildEnvironment] = &[
     ChildEnvironment::AnthropicApiKey,
     ChildEnvironment::AwsProfile,
     ChildEnvironment::AwsConfigFile,
@@ -206,6 +207,19 @@ fn run_verified_larch_at(
     run_verified_larch_at_root(&root, arguments, environment, working_directory, timeout)
 }
 
+/// Forward every set [`VERIFIED_LARCH_CONTEXT`] key from the current process.
+///
+/// Callers apply this before explicit overrides so site-specific rows still win.
+#[must_use]
+pub fn with_verified_larch_context(mut request: ProcessRequest) -> ProcessRequest {
+    for key in VERIFIED_LARCH_CONTEXT {
+        if let Some(value) = env::var_os(key.name()) {
+            request = request.with_environment(*key, value);
+        }
+    }
+    request
+}
+
 fn run_verified_larch_at_root(
     root: &Path,
     arguments: &[OsString],
@@ -236,11 +250,7 @@ fn run_verified_larch_at_root(
             VERIFIED_LARCH_OUTPUT_LIMIT,
         ),
     }?;
-    for key in VERIFIED_LARCH_CONTEXT {
-        if let Some(value) = env::var_os(key.name()) {
-            request = request.with_environment(*key, value);
-        }
-    }
+    request = with_verified_larch_context(request);
     request = request.with_environment(
         ChildEnvironment::ClaudePluginRoot,
         root.as_os_str().to_owned(),
@@ -338,6 +348,27 @@ mod tests {
             ChildEnvironment::AwsDefaultRegion,
             ChildEnvironment::LarchR2AccountId,
             ChildEnvironment::LarchR2Endpoint,
+        ] {
+            assert!(
+                VERIFIED_LARCH_CONTEXT.contains(&key),
+                "nested larch context must forward {}",
+                key.name()
+            );
+        }
+    }
+
+    #[test]
+    fn nested_larch_context_forwards_vendor_credentials_and_model_overrides() {
+        // Step 2's dispatcher child must see the same vendor credentials and
+        // model overrides as Step 0's probe; otherwise Cursor falls back to the
+        // keychain JWT and Codex loses OPENAI_API_KEY / LARCH_CODEX_*.
+        for key in [
+            ChildEnvironment::CursorApiKey,
+            ChildEnvironment::OpenAiApiKey,
+            ChildEnvironment::AnthropicApiKey,
+            ChildEnvironment::LarchCodexModel,
+            ChildEnvironment::LarchCodexEffort,
+            ChildEnvironment::LarchCursorModel,
         ] {
             assert!(
                 VERIFIED_LARCH_CONTEXT.contains(&key),
