@@ -25,8 +25,8 @@ use larch_core::{
     AssessmentKind, ChildEnvironment, DuplicatePolicy, Head, KvDocument, ParseOptions,
     RepositoryRead, Revision, ShipOutcome, ShipPrBody, ShipResult, ShipState, StatusOptions,
     compose_ship_pr_body, current_ship_assessment, ensure_under, guideline_active_exception,
-    materialize, private_atomic_write, redact_outbound, ship_pr_title, validate_run_id,
-    validate_ship_result_env,
+    materialize, parse_receipt, private_atomic_write, redact_outbound, ship_pr_title,
+    validate_run_id, validate_ship_result_env,
 };
 use serde_json::Value;
 
@@ -40,6 +40,7 @@ use crate::{
         delegate_larch_with_environment, delegate_larch_with_options, delegate_merge_wait,
         verify_merge_wait,
     },
+    implement_preflight_commands::{GovernanceGateOutcome, parse_governance_gate_output},
     implement_scope_disposition_commands::{ship_pr_disposition, validate_ship_disposition},
     ship_commands::validate_tmpdir,
 };
@@ -94,6 +95,12 @@ const MERGE_LOOP_LIMIT: u64 = 50;
 const PHASE14_FLAG: &str = "ship-pr-rrr-after-phase14.flag";
 const RESUME_PHASE: &str = "ship-pr-rrr-phase14";
 const RESUME_CALLER: &str = "ship_pr_pre_push";
+/// `needs_user_reason` for the one governance refusal the run can repair mid-run.
+pub const GOVERNANCE_STALE_SCOPE_REASON: &str = "migration-governance-stale-plan-base-scope";
+/// Ship-state keys carrying the last governance-gate evidence for route-exit.
+pub const GOVERNANCE_REASONS_KEY: &str = "GOVERNANCE_REASONS";
+pub const GOVERNANCE_RECEIPT_BASE_KEY: &str = "GOVERNANCE_RECEIPT_BASE_SHA";
+pub const GOVERNANCE_TARGET_BASE_KEY: &str = "GOVERNANCE_TARGET_BASE_SHA";
 
 #[allow(clippy::struct_excessive_bools)] // Mirrors independent switches in the frozen CLI wire.
 struct ShipPrContext {
@@ -1201,14 +1208,66 @@ fn governance_gate(context: &ShipPrContext, repo_root: &Path) -> Result<(), Driv
     );
     let output = delegate_larch_with_options(&arguments, &[], Duration::from_secs(180))
         .map_err(|error| DriverFailure::Result(stalled(error)))?;
-    let fields = output_fields(output.stdout())?;
-    if output.status().success() && fields.get("GOVERNANCE_OK").map(String::as_str) == Some("true")
-    {
-        Ok(())
-    } else {
-        Err(DriverFailure::Result(stalled(
-            "migration governance blocked or could not be evaluated",
-        )))
+    let receipt_base = parse_receipt(&issue.body)
+        .map(|receipt| receipt.base_sha)
+        .unwrap_or_default();
+    route_governance_outcome(
+        context,
+        &parse_governance_gate_output(output.stdout(), output.stderr()),
+        &receipt_base,
+        &base_sha,
+    )
+}
+
+/// Persist the gate evidence and route its verdict (#8993).
+///
+/// A sole `stale-plan-base-scope` is the one reason the orchestrator can repair
+/// mid-run: the branch already absorbed the base advance, so route-exit sends
+/// it to the bounded `governance-refresh` re-probe instead of a stall that a
+/// reship would replay byte-identically. Every other reason names its tokens
+/// in the stall detail; a missing verdict stalls as unevaluated.
+fn route_governance_outcome(
+    context: &ShipPrContext,
+    outcome: &GovernanceGateOutcome,
+    receipt_base: &str,
+    target_base: &str,
+) -> Result<(), DriverFailure> {
+    let (reasons, receipt, target) = match outcome {
+        GovernanceGateOutcome::Passed => (String::new(), String::new(), String::new()),
+        GovernanceGateOutcome::Blocked(reasons) => (
+            reasons.join(","),
+            receipt_base.to_owned(),
+            target_base.to_owned(),
+        ),
+        GovernanceGateOutcome::NoVerdict => ("no-verdict".to_owned(), String::new(), String::new()),
+    };
+    patch_state(
+        context,
+        &[
+            (GOVERNANCE_REASONS_KEY, reasons.clone()),
+            (GOVERNANCE_RECEIPT_BASE_KEY, receipt),
+            (GOVERNANCE_TARGET_BASE_KEY, target),
+        ],
+    )
+    .map_err(|error| DriverFailure::Result(internal(error)))?;
+    match outcome {
+        GovernanceGateOutcome::Passed => Ok(()),
+        GovernanceGateOutcome::Blocked(_)
+            if outcome.sole_stale_plan_base_scope() && valid_oid(receipt_base) =>
+        {
+            Err(DriverFailure::Result(Box::new(ShipResult {
+                outcome: ShipOutcome::NeedsUserInput,
+                needs_user_reason: GOVERNANCE_STALE_SCOPE_REASON.to_owned(),
+                detail: format!("migration governance blocked: {reasons}"),
+                ..ShipResult::default()
+            })))
+        }
+        GovernanceGateOutcome::Blocked(_) => Err(DriverFailure::Result(stalled(format!(
+            "migration governance blocked: {reasons}"
+        )))),
+        GovernanceGateOutcome::NoVerdict => Err(DriverFailure::Result(stalled(
+            "migration governance could not be evaluated: no verdict envelope",
+        ))),
     }
 }
 
@@ -2470,5 +2529,71 @@ mod tests {
         )
         .expect_err("iteration cap");
         assert_eq!(result(capped).outcome, ShipOutcome::Stalled);
+    }
+
+    #[test]
+    fn governance_gate_names_its_reasons_and_routes_a_sole_stale_scope_to_refresh() {
+        let (_root, context) = fixture();
+        let receipt = "a".repeat(40);
+        let target = "b".repeat(40);
+        let stale = GovernanceGateOutcome::Blocked(vec!["stale-plan-base-scope".to_owned()]);
+        let routed = result(
+            route_governance_outcome(&context, &stale, &receipt, &target).expect_err("refresh"),
+        );
+        assert_eq!(routed.outcome, ShipOutcome::NeedsUserInput);
+        assert_eq!(routed.needs_user_reason, GOVERNANCE_STALE_SCOPE_REASON);
+        assert_eq!(
+            routed.detail,
+            "migration governance blocked: stale-plan-base-scope"
+        );
+        assert_eq!(
+            state_value(&context, GOVERNANCE_REASONS_KEY),
+            "stale-plan-base-scope"
+        );
+        assert_eq!(state_value(&context, GOVERNANCE_RECEIPT_BASE_KEY), receipt);
+        assert_eq!(state_value(&context, GOVERNANCE_TARGET_BASE_KEY), target);
+
+        // Without a parseable receipt there is nothing to refresh: hard stop.
+        let stalled_scope =
+            result(route_governance_outcome(&context, &stale, "", &target).expect_err("stall"));
+        assert_eq!(stalled_scope.outcome, ShipOutcome::Stalled);
+        assert_eq!(
+            slug(&stalled_scope.detail),
+            "migration-governance-blocked-stale-plan-base-scope"
+        );
+
+        let mixed = GovernanceGateOutcome::Blocked(vec![
+            "stale-plan-base-scope".to_owned(),
+            "stale-blocker-snapshot".to_owned(),
+        ]);
+        let stalled = result(
+            route_governance_outcome(&context, &mixed, &receipt, &target).expect_err("stall"),
+        );
+        assert_eq!(stalled.outcome, ShipOutcome::Stalled);
+        assert_eq!(
+            stalled.detail,
+            "migration governance blocked: stale-plan-base-scope,stale-blocker-snapshot"
+        );
+        assert_eq!(
+            state_value(&context, GOVERNANCE_REASONS_KEY),
+            "stale-plan-base-scope,stale-blocker-snapshot"
+        );
+
+        let unread = result(
+            route_governance_outcome(&context, &GovernanceGateOutcome::NoVerdict, "", "")
+                .expect_err("stall"),
+        );
+        assert_eq!(unread.outcome, ShipOutcome::Stalled);
+        assert_eq!(
+            unread.detail,
+            "migration governance could not be evaluated: no verdict envelope"
+        );
+        assert_eq!(state_value(&context, GOVERNANCE_REASONS_KEY), "no-verdict");
+        assert_eq!(state_value(&context, GOVERNANCE_RECEIPT_BASE_KEY), "");
+
+        route_governance_outcome(&context, &GovernanceGateOutcome::Passed, &receipt, &target)
+            .expect("passed");
+        assert_eq!(state_value(&context, GOVERNANCE_REASONS_KEY), "");
+        assert_eq!(state_value(&context, GOVERNANCE_TARGET_BASE_KEY), "");
     }
 }

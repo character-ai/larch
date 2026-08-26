@@ -19,8 +19,9 @@ use std::{
 use larch_adapters::GixRepository;
 use larch_core::{
     DuplicatePolicy, KvDocument, MalformedLinePolicy, ParseOptions, ProcessOutput,
-    RepositoryRead as _, Revision, StatusOptions, emit_kv, private_atomic_write,
-    read_confined_regular_text, read_confined_result_env, read_universal_newlines,
+    REASON_STALE_PLAN_BASE_SCOPE, RepositoryRead as _, Revision, StatusOptions, emit_kv,
+    parse_receipt, private_atomic_write, read_confined_regular_text, read_confined_result_env,
+    read_universal_newlines, validate_run_id,
 };
 
 use crate::{
@@ -33,6 +34,10 @@ use crate::{
     implement_ship_commands::{patch_ship_state_keys, state_has_shell_kv},
     push_network::current_branch_from,
     push_rebase::sorted_lossy_unmerged_paths,
+    ship_pr_commands::{
+        GOVERNANCE_REASONS_KEY, GOVERNANCE_RECEIPT_BASE_KEY, GOVERNANCE_STALE_SCOPE_REASON,
+        GOVERNANCE_TARGET_BASE_KEY,
+    },
 };
 
 const ROUTE_PROGRAM: &str = "cli.py ship route-exit";
@@ -81,6 +86,17 @@ const PRE_FIX_HELP: &str = concat!(
     "  --cwd CWD",
 );
 
+const GOVERNANCE_PROGRAM: &str = "larch ship governance-refresh";
+const GOVERNANCE_USAGE: &str =
+    "usage: larch ship governance-refresh [-h] [--implement-tmpdir IMPLEMENT_TMPDIR]";
+const GOVERNANCE_HELP: &str = concat!(
+    "usage: larch ship governance-refresh [-h] [--implement-tmpdir IMPLEMENT_TMPDIR]\n",
+    "\n",
+    "options:\n",
+    "  -h, --help            show this help message and exit\n",
+    "  --implement-tmpdir IMPLEMENT_TMPDIR",
+);
+
 const RESULT_ENV: &str = "bgjob/implement-step8-ship.result.env";
 const HANDOFF_ENV: &str = ".ship-route-exit-handoff.env";
 const DETAIL_FILE: &str = ".ship-route-exit-detail.txt";
@@ -101,6 +117,18 @@ const CONFLICT_TERMINAL_CLEAR_KEYS: [&str; 5] = [
 const DETAIL_FILE_MAX: usize = 300;
 const TRANSIENT_STALL_RETRY: i64 = 4;
 const TRANSIENT_DELAY_SECONDS: u64 = 30;
+/// `NEXT_ACTION` for a sole `stale-plan-base-scope` ship-gate refusal (#8993).
+const GOVERNANCE_REFRESH_ACTION: &str = "governance-refresh";
+const GOVERNANCE_COUNT_FILE: &str = "ship-governance-refresh.count";
+/// Refresh attempts per run before the route degrades to `operator-bail`.
+const GOVERNANCE_REFRESH_LIMIT: i64 = 2;
+const GOVERNANCE_HANDOFF_KEYS: [&str; 3] = [
+    GOVERNANCE_REASONS_KEY,
+    GOVERNANCE_RECEIPT_BASE_KEY,
+    GOVERNANCE_TARGET_BASE_KEY,
+];
+const PREFLIGHT_POINTER: &str = "preflight-tmpdir.env";
+const SCOPE_DRIFT_RECORD: &str = "receipt-scope-drift.md";
 
 const LEDGER_KEYS: [&str; 8] = [
     "ledger_ready",
@@ -170,9 +198,26 @@ pub fn route_exit(arguments: &[OsString]) -> ExitCode {
         } else {
             BTreeMap::new()
         }
+    } else if action == GOVERNANCE_REFRESH_ACTION {
+        governance_handoff_fields(&tmpdir)
     } else {
         BTreeMap::new()
     };
+    if action == GOVERNANCE_REFRESH_ACTION {
+        // Bound the re-probe loop: a base that keeps advancing under plan
+        // scope is an operator decision, not an unbounded refresh cycle.
+        let count_file = tmpdir.join(GOVERNANCE_COUNT_FILE);
+        let attempt = read_retry_count(&count_file).saturating_add(1);
+        if let Err(error) = write_private(&count_file, &format!("{attempt}\n"), &tmpdir) {
+            return route_failure(
+                &handoff,
+                &format!("cannot persist governance refresh counter: {error}"),
+            );
+        }
+        if attempt > GOVERNANCE_REFRESH_LIMIT {
+            "operator-bail".clone_into(&mut action);
+        }
+    }
     let mut delay = 0;
     if action == "transient" {
         let count_file = tmpdir.join(RETRY_FILE);
@@ -200,6 +245,256 @@ pub fn route_exit(arguments: &[OsString]) -> ExitCode {
     }
     emit_kv("NEXT_ACTION", &action);
     ExitCode::SUCCESS
+}
+
+/// Refresh the plan receipt after a ship-gate `stale-plan-base-scope` (#8993).
+///
+/// The orchestrator calls this only after its bounded semantic-materiality
+/// re-probe found the plan current. The verb binds the handoff's receipt and
+/// target SHAs, re-resolves the base target, delegates the lease-bound
+/// `plan-receipt refresh`, appends the scope-drift record, and emits one
+/// `NEXT_ACTION`: `reship` after a refresh (or when the base moved again, so
+/// the driver re-evaluates), `operator-bail` when the refresh refused.
+pub fn governance_refresh(arguments: &[OsString]) -> ExitCode {
+    let parsed = match parse_required_with_help(
+        arguments,
+        GOVERNANCE_PROGRAM,
+        GOVERNANCE_USAGE,
+        GOVERNANCE_HELP,
+        &["--implement-tmpdir"],
+        &[],
+        &[],
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let tmpdir = selected_tmpdir(opt_string(parsed.value("--implement-tmpdir")));
+    if tmpdir.as_os_str().is_empty() {
+        eprintln!(
+            "ship governance-refresh: --implement-tmpdir is required or IMPLEMENT_TMPDIR must be set"
+        );
+        return ExitCode::from(2);
+    }
+    match run_governance_refresh(&tmpdir) {
+        Ok(report) => {
+            emit_kv("GOVERNANCE_REFRESH_STATUS", report.status);
+            if let Some(logged) = report.drift_logged {
+                emit_kv("PLAN_RECEIPT_BASE_SHA", &report.base_sha);
+                emit_kv(
+                    "GOVERNANCE_DRIFT_LOGGED",
+                    if logged { "true" } else { "false" },
+                );
+            }
+            if !report.detail.is_empty() {
+                emit_kv("DETAIL", &safe_line(&report.detail));
+            }
+            emit_kv("NEXT_ACTION", report.action);
+            ExitCode::SUCCESS
+        }
+        Err(message) => {
+            eprintln!("ship governance-refresh: {message}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+struct GovernanceRefreshReport {
+    status: &'static str,
+    action: &'static str,
+    detail: String,
+    base_sha: String,
+    drift_logged: Option<bool>,
+}
+
+struct GovernanceRefreshInputs {
+    receipt_base: String,
+    target_base: String,
+    issue: u64,
+    repo: String,
+    run_id: String,
+    base_ref: &'static str,
+    root: PathBuf,
+    preflight: PathBuf,
+}
+
+fn governance_refresh_inputs(tmpdir: &Path) -> Result<GovernanceRefreshInputs, String> {
+    let handoff = read_confined_regular(&tmpdir.join(HANDOFF_ENV), tmpdir)
+        .map_err(|_| "missing or unsafe .ship-route-exit-handoff.env".to_owned())?;
+    let handoff =
+        parse_fields(&handoff, false).map_err(|key| format!("duplicate handoff key: {key}"))?;
+    if handoff.get("NEXT_ACTION").map(String::as_str) != Some(GOVERNANCE_REFRESH_ACTION) {
+        return Err("handoff NEXT_ACTION is not governance-refresh".to_owned());
+    }
+    if handoff.get(GOVERNANCE_REASONS_KEY).map(String::as_str) != Some(REASON_STALE_PLAN_BASE_SCOPE)
+    {
+        return Err(format!(
+            "handoff {GOVERNANCE_REASONS_KEY} must be exactly {REASON_STALE_PLAN_BASE_SCOPE}"
+        ));
+    }
+    let sha = |key: &str| -> Result<String, String> {
+        handoff
+            .get(key)
+            .filter(|value| lower_sha1(value))
+            .cloned()
+            .ok_or_else(|| format!("handoff {key} must be a 40-character lowercase SHA"))
+    };
+    let receipt_base = sha(GOVERNANCE_RECEIPT_BASE_KEY)?;
+    let target_base = sha(GOVERNANCE_TARGET_BASE_KEY)?;
+    let state = read_kv(&tmpdir.join(SHIP_STATE));
+    let state_value = |key: &str| -> Result<String, String> {
+        state
+            .get(key)
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| format!("ship state {key} is missing"))
+    };
+    let issue = state_value("ISSUE_NUMBER")?
+        .parse::<u64>()
+        .ok()
+        .filter(|number| *number > 0)
+        .ok_or_else(|| "ship state ISSUE_NUMBER is invalid".to_owned())?;
+    let repo = state_value("REPO")?;
+    let run_id = state_value("RUN_ID")?;
+    validate_run_id(&run_id).map_err(|error| format!("ship state RUN_ID is invalid: {error}"))?;
+    let base_ref = if state.get("FORKED_TARGET").map(String::as_str) == Some("true") {
+        "upstream/main"
+    } else {
+        "origin/main"
+    };
+    let root =
+        resolve_repo_root(tmpdir).ok_or_else(|| "repository root is unavailable".to_owned())?;
+    let preflight = read_kv(&tmpdir.join(PREFLIGHT_POINTER))
+        .remove("PREFLIGHT_TMPDIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| format!("{PREFLIGHT_POINTER} has no PREFLIGHT_TMPDIR"))?;
+    if !fs::symlink_metadata(&preflight).is_ok_and(|metadata| metadata.is_dir()) {
+        return Err("PREFLIGHT_TMPDIR is not a directory".to_owned());
+    }
+    Ok(GovernanceRefreshInputs {
+        receipt_base,
+        target_base,
+        issue,
+        repo,
+        run_id,
+        base_ref,
+        root,
+        preflight,
+    })
+}
+
+fn run_governance_refresh(tmpdir: &Path) -> Result<GovernanceRefreshReport, String> {
+    let inputs = governance_refresh_inputs(tmpdir)?;
+    let repository = GixRepository::open(&inputs.root).map_err(|error| error.to_string())?;
+    let live = repository
+        .resolve_revision(&Revision::new(inputs.base_ref.as_bytes()))
+        .map_err(|_| format!("cannot resolve {}", inputs.base_ref))?
+        .to_hex();
+    if live != inputs.target_base {
+        return Ok(GovernanceRefreshReport {
+            status: "base-moved",
+            action: "reship",
+            detail: format!(
+                "{} moved to {live}; the ship driver re-evaluates the gate",
+                inputs.base_ref
+            ),
+            base_sha: String::new(),
+            drift_logged: None,
+        });
+    }
+    if preflight_receipt_base(&inputs.preflight).as_deref() == Some(inputs.target_base.as_str()) {
+        return Ok(GovernanceRefreshReport {
+            status: "already-refreshed",
+            action: "reship",
+            detail: String::new(),
+            base_sha: String::new(),
+            drift_logged: None,
+        });
+    }
+    #[rustfmt::skip]
+    let argv: Vec<OsString> = vec![
+        "plan-receipt".into(), "refresh".into(),
+        "--issue".into(), inputs.issue.to_string().into(),
+        "--repo".into(), inputs.repo.clone().into(),
+        "--repo-root".into(), inputs.root.as_os_str().into(),
+        "--preflight-tmpdir".into(), inputs.preflight.as_os_str().into(),
+        "--base-ref".into(), inputs.base_ref.into(),
+        "--previous-base-sha".into(), inputs.receipt_base.clone().into(),
+        "--base-sha".into(), inputs.target_base.clone().into(),
+        "--run-id".into(), inputs.run_id.clone().into(),
+    ];
+    let output = run_larch(&inputs.root, &argv)?;
+    let published = KvDocument::parse(
+        &String::from_utf8_lossy(output.stdout()),
+        ParseOptions::legacy(),
+    )
+    .map(|document| document.select(DuplicatePolicy::Last))
+    .unwrap_or_default();
+    let refreshed = output.status().success()
+        && published.get("PLAN_RECEIPT_REFRESHED").map(String::as_str) == Some("true")
+        && published.get("PLAN_RECEIPT_BASE_SHA").map(String::as_str)
+            == Some(inputs.target_base.as_str());
+    if !refreshed {
+        let stderr = String::from_utf8_lossy(output.stderr());
+        let detail = stderr
+            .lines()
+            .find(|line| !line.trim().is_empty())
+            .unwrap_or("plan-receipt refresh published no refreshed receipt")
+            .chars()
+            .take(DETAIL_FILE_MAX)
+            .collect::<String>();
+        return Ok(GovernanceRefreshReport {
+            status: "refresh-failed",
+            action: "operator-bail",
+            detail,
+            base_sha: String::new(),
+            drift_logged: None,
+        });
+    }
+    #[rustfmt::skip]
+    let append: Vec<OsString> = vec![
+        "run-log".into(), "append-entry".into(),
+        "--log".into(), tmpdir.join("execution-issues.md").into_os_string(),
+        "--category".into(), "Warnings".into(),
+        "--entry-file".into(), inputs.preflight.join(SCOPE_DRIFT_RECORD).into_os_string(),
+    ];
+    let drift_logged = run_larch(&inputs.root, &append).is_ok_and(|result| {
+        result.status().success()
+            && KvDocument::parse(
+                &String::from_utf8_lossy(result.stdout()),
+                ParseOptions::legacy(),
+            )
+            .map(|document| document.select(DuplicatePolicy::Last))
+            .is_ok_and(|fields| fields.get("APPENDED").map(String::as_str) == Some("true"))
+    });
+    if !drift_logged {
+        eprintln!("ship governance-refresh: scope-drift record was not appended to Warnings");
+    }
+    Ok(GovernanceRefreshReport {
+        status: "refreshed",
+        action: "reship",
+        detail: String::new(),
+        base_sha: inputs.target_base,
+        drift_logged: Some(drift_logged),
+    })
+}
+
+/// Read the receipt base the refreshed preflight snapshot already carries.
+fn preflight_receipt_base(preflight: &Path) -> Option<String> {
+    let path = preflight.join("issue.json");
+    if !safe_regular(&path) {
+        return None;
+    }
+    let text = fs::read_to_string(path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    parse_receipt(value.get("body")?.as_str()?).map(|receipt| receipt.base_sha)
+}
+
+fn lower_sha1(value: &str) -> bool {
+    value.len() == 40
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 /// Normalize legacy assessment aliases into the canonical combined handoff.
@@ -926,6 +1221,7 @@ fn classify_needs_user(reason: &str) -> &'static str {
             "invariants-assessment"
         }
         "architectural-guidelines-assessment" => "guidelines-assessment",
+        GOVERNANCE_STALE_SCOPE_REASON => GOVERNANCE_REFRESH_ACTION,
         "first-fixer-non-health"
         | "ship-pr-internal-lint-fix"
         | "local-unfixable"
@@ -950,6 +1246,20 @@ fn conflict_handoff_fields(tmpdir: &Path) -> BTreeMap<String, String> {
     } else {
         BTreeMap::new()
     }
+}
+
+/// Copy the driver's persisted governance evidence into the route handoff.
+fn governance_handoff_fields(tmpdir: &Path) -> BTreeMap<String, String> {
+    let state = read_kv(&tmpdir.join(SHIP_STATE));
+    GOVERNANCE_HANDOFF_KEYS
+        .into_iter()
+        .filter_map(|key| {
+            state
+                .get(key)
+                .filter(|value| !value.is_empty())
+                .map(|value| (key.to_owned(), value.clone()))
+        })
+        .collect()
 }
 
 fn write_route_handoff(
@@ -1032,7 +1342,10 @@ fn write_route_handoff(
             lines.push(format!("{key}={value}"));
         }
     }
-    for key in ["RESUME_PHASE", "CALLER_KIND", "CONFLICT_FILES"] {
+    for key in ["RESUME_PHASE", "CALLER_KIND", "CONFLICT_FILES"]
+        .into_iter()
+        .chain(GOVERNANCE_HANDOFF_KEYS)
+    {
         if let Some(value) = route_fields
             .get(key)
             .map(|value| safe_line(value))

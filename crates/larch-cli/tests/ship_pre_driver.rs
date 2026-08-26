@@ -84,6 +84,28 @@ if [ "$1 $2" = "push rebase" ]; then
     push-fail) echo 'PUSH_ERROR=push rebase failed'; exit 2 ;;
   esac
 fi
+if [ "$1 $2" = "plan-receipt refresh" ]; then
+  if [ "$mode" = "refresh-fail" ]; then
+    echo 'PLAN_RECEIPT_REFRESHED=false'
+    echo 'ERROR: plan-receipt refresh: missing-lease: a managed-prefix title needs the run lease' >&2
+    exit 2
+  fi
+  base=
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--base-sha" ]; then base=$2; fi
+    shift
+  done
+  echo 'PLAN_RECEIPT_REFRESHED=true'
+  echo "PLAN_RECEIPT_BASE_SHA=$base"
+  echo 'PLAN_RECEIPT_SNAPSHOT_UPDATED=true'
+  echo 'PLAN_RECEIPT_SCOPE_DRIFT_LOGGED=true'
+  exit 0
+fi
+if [ "$1 $2" = "run-log append-entry" ]; then
+  if [ "$mode" = "append-fail" ]; then echo 'APPENDED=false'; exit 1; fi
+  echo 'APPENDED=true'
+  exit 0
+fi
 exit 0
 "#,
             events.display(),
@@ -1030,4 +1052,250 @@ fn pre_driver_fails_closed_for_missing_repo_and_invalid_scope_state() {
         output_text(&output.stdout),
         "needs_user_reason=scope-disposition\nNEXT_ACTION=halt-scope-disposition\n"
     );
+}
+
+const STALE_SCOPE_REASON: &str = "migration-governance-stale-plan-base-scope";
+
+/// A ship run stalled at the governance gate on a sole `stale-plan-base-scope`.
+struct GovernanceFixture {
+    driver: DriverFixture,
+    receipt_base: String,
+    target_base: String,
+}
+
+fn governance_fixture() -> GovernanceFixture {
+    let driver = driver_fixture(None);
+    let head = ProcessCommand::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&driver.repo)
+        .output()
+        .expect("head");
+    let target_base = output_text(&head.stdout).trim().to_owned();
+    git(
+        &driver.repo,
+        &["update-ref", "refs/remotes/origin/main", &target_base],
+    );
+    let receipt_base = "a".repeat(40);
+    fs::write(
+        driver.tmpdir.join("ship-pr-state.sh"),
+        format!(
+            "ISSUE_NUMBER=8993\nREPO=owner/repo\nRUN_ID=run-a\nFORKED_TARGET=false\nGOVERNANCE_REASONS=stale-plan-base-scope\nGOVERNANCE_RECEIPT_BASE_SHA={receipt_base}\nGOVERNANCE_TARGET_BASE_SHA={target_base}\n"
+        ),
+    )
+    .expect("state");
+    let preflight = driver.root.path().join("preflight");
+    fs::create_dir_all(&preflight).expect("preflight");
+    fs::write(
+        preflight.join("issue.json"),
+        format!(
+            "{{\"number\":8993,\"body\":\"plan\\n<!-- larch:plan-receipt v1 plan_sha256={} base_sha={receipt_base} blockers_sha256={} owners_sha256={} -->\\n\"}}",
+            "1".repeat(64),
+            "2".repeat(64),
+            "3".repeat(64)
+        ),
+    )
+    .expect("issue snapshot");
+    fs::write(preflight.join("receipt-scope-drift.md"), "- drift\n").expect("drift");
+    fs::write(
+        driver.tmpdir.join("preflight-tmpdir.env"),
+        format!("PREFLIGHT_TMPDIR={}\n", preflight.display()),
+    )
+    .expect("pointer");
+    write_result(
+        &driver.tmpdir,
+        &format!(
+            "BGJOB_RC=3\noutcome=NEEDS_USER_INPUT\nNEEDS_USER_REASON={STALE_SCOPE_REASON}\nDETAIL=migration governance blocked: stale-plan-base-scope\n"
+        ),
+    );
+    GovernanceFixture {
+        driver,
+        receipt_base,
+        target_base,
+    }
+}
+
+fn route_exit(fixture: &GovernanceFixture) -> Output {
+    ship(&fixture.driver.tmpdir, &["ship", "route-exit"])
+}
+
+fn governance_refresh(fixture: &GovernanceFixture, mode: &str) -> Output {
+    set_stub_mode(&fixture.driver.plugin, mode);
+    larch(&fixture.driver.tmpdir)
+        .env("CLAUDE_PLUGIN_ROOT", &fixture.driver.plugin)
+        .current_dir(&fixture.driver.repo)
+        .args(["ship", "governance-refresh"])
+        .output()
+        .expect("governance-refresh")
+}
+
+fn handoff(fixture: &GovernanceFixture) -> String {
+    fs::read_to_string(fixture.driver.tmpdir.join(".ship-route-exit-handoff.env")).expect("handoff")
+}
+
+fn events(fixture: &GovernanceFixture) -> String {
+    fs::read_to_string(fixture.driver.root.path().join("events.log")).unwrap_or_default()
+}
+
+#[test]
+fn route_exit_routes_a_sole_stale_scope_to_a_bounded_governance_refresh() {
+    let fixture = governance_fixture();
+    let output = route_exit(&fixture);
+    assert!(output.status.success(), "{}", output_text(&output.stderr));
+    assert_eq!(
+        output_text(&output.stdout),
+        "NEXT_ACTION=governance-refresh\n"
+    );
+    assert_eq!(
+        handoff(&fixture),
+        format!(
+            "NEEDS_USER_REASON={STALE_SCOPE_REASON}\nDETAIL=migration governance blocked: stale-plan-base-scope\nGOVERNANCE_REASONS=stale-plan-base-scope\nGOVERNANCE_RECEIPT_BASE_SHA={}\nGOVERNANCE_TARGET_BASE_SHA={}\nNEXT_ACTION=governance-refresh\n",
+            fixture.receipt_base, fixture.target_base
+        )
+    );
+    let count = fixture.driver.tmpdir.join("ship-governance-refresh.count");
+    assert_eq!(fs::read_to_string(&count).expect("count"), "1\n");
+    // The second attempt still refreshes; the third is an operator decision.
+    let second = route_exit(&fixture);
+    assert_eq!(output_text(&second.stdout), "NEXT_ACTION=governance-refresh\n");
+    let third = route_exit(&fixture);
+    assert!(third.status.success(), "{}", output_text(&third.stderr));
+    assert_eq!(output_text(&third.stdout), "NEXT_ACTION=operator-bail\n");
+    assert_eq!(fs::read_to_string(&count).expect("count"), "3\n");
+    assert!(handoff(&fixture).contains(&format!("NEEDS_USER_REASON={STALE_SCOPE_REASON}\n")));
+    assert!(!handoff(&fixture).contains("PRE_FIX_REBASE_REQUIRED"));
+}
+
+#[test]
+fn route_exit_names_other_governance_reasons_in_the_stall_detail() {
+    let tmp = TempDir::new().expect("tmp");
+    write_result(
+        tmp.path(),
+        "BGJOB_RC=4\noutcome=STALLED\nDETAIL=migration governance blocked: stale-plan-body\n",
+    );
+    let output = ship(tmp.path(), &["ship", "route-exit"]);
+    assert!(output.status.success(), "{}", output_text(&output.stderr));
+    assert_eq!(output_text(&output.stdout), "NEXT_ACTION=stall\n");
+    assert_eq!(
+        fs::read_to_string(tmp.path().join(".ship-route-exit-handoff.env")).expect("handoff"),
+        "DETAIL=migration governance blocked: stale-plan-body\nNEXT_ACTION=stall\n"
+    );
+}
+
+#[test]
+fn governance_refresh_delegates_the_lease_bound_refresh_and_logs_the_drift() {
+    let fixture = governance_fixture();
+    assert!(route_exit(&fixture).status.success());
+    let output = governance_refresh(&fixture, "success");
+    assert!(output.status.success(), "{}", output_text(&output.stderr));
+    assert_eq!(
+        output_text(&output.stdout),
+        format!(
+            "GOVERNANCE_REFRESH_STATUS=refreshed\nPLAN_RECEIPT_BASE_SHA={}\nGOVERNANCE_DRIFT_LOGGED=true\nNEXT_ACTION=reship\n",
+            fixture.target_base
+        )
+    );
+    let log = events(&fixture);
+    let refresh = log
+        .lines()
+        .find(|line| line.starts_with("plan-receipt refresh "))
+        .expect("refresh delegated");
+    assert_eq!(
+        refresh,
+        format!(
+            "plan-receipt refresh --issue 8993 --repo owner/repo --repo-root {} --preflight-tmpdir {} --base-ref origin/main --previous-base-sha {} --base-sha {} --run-id run-a",
+            fs::canonicalize(&fixture.driver.repo).expect("canonical repo").display(),
+            fixture.driver.root.path().join("preflight").display(),
+            fixture.receipt_base,
+            fixture.target_base
+        )
+    );
+    assert!(
+        log.lines().any(|line| line
+            == format!(
+                "run-log append-entry --log {} --category Warnings --entry-file {}",
+                fixture.driver.tmpdir.join("execution-issues.md").display(),
+                fixture.driver.root.path().join("preflight/receipt-scope-drift.md").display()
+            )),
+        "{log}"
+    );
+}
+
+#[test]
+fn governance_refresh_bails_to_the_operator_when_the_refresh_refuses() {
+    let fixture = governance_fixture();
+    assert!(route_exit(&fixture).status.success());
+    let output = governance_refresh(&fixture, "refresh-fail");
+    assert!(output.status.success(), "{}", output_text(&output.stderr));
+    assert_eq!(
+        output_text(&output.stdout),
+        "GOVERNANCE_REFRESH_STATUS=refresh-failed\nDETAIL=ERROR: plan-receipt refresh: missing-lease: a managed-prefix title needs the run lease\nNEXT_ACTION=operator-bail\n"
+    );
+    assert!(!events(&fixture).contains("run-log append-entry"));
+}
+
+#[test]
+fn governance_refresh_reships_without_mutating_when_the_base_moved_or_is_current() {
+    let fixture = governance_fixture();
+    assert!(route_exit(&fixture).status.success());
+    git(&fixture.driver.repo, &["commit", "--allow-empty", "-qm", "advance"]);
+    git(
+        &fixture.driver.repo,
+        &["update-ref", "refs/remotes/origin/main", "HEAD"],
+    );
+    let moved = governance_refresh(&fixture, "success");
+    assert!(moved.status.success(), "{}", output_text(&moved.stderr));
+    let stdout = output_text(&moved.stdout);
+    assert!(stdout.starts_with("GOVERNANCE_REFRESH_STATUS=base-moved\nDETAIL=origin/main moved to "));
+    assert!(stdout.ends_with("NEXT_ACTION=reship\n"));
+    assert!(!events(&fixture).contains("plan-receipt refresh"));
+
+    // A completed refresh already carries the target base in the snapshot.
+    git(
+        &fixture.driver.repo,
+        &["update-ref", "refs/remotes/origin/main", &fixture.target_base],
+    );
+    let preflight = fixture.driver.root.path().join("preflight");
+    let snapshot = fs::read_to_string(preflight.join("issue.json")).expect("snapshot");
+    fs::write(
+        preflight.join("issue.json"),
+        snapshot.replace(&fixture.receipt_base, &fixture.target_base),
+    )
+    .expect("refreshed snapshot");
+    let current = governance_refresh(&fixture, "success");
+    assert!(current.status.success(), "{}", output_text(&current.stderr));
+    assert_eq!(
+        output_text(&current.stdout),
+        "GOVERNANCE_REFRESH_STATUS=already-refreshed\nNEXT_ACTION=reship\n"
+    );
+    assert!(!events(&fixture).contains("plan-receipt refresh"));
+}
+
+#[test]
+fn governance_refresh_fails_closed_on_a_foreign_or_incomplete_handoff() {
+    let fixture = governance_fixture();
+    fs::write(
+        fixture.driver.tmpdir.join(".ship-route-exit-handoff.env"),
+        "NEXT_ACTION=stall\n",
+    )
+    .expect("handoff");
+    let foreign = governance_refresh(&fixture, "success");
+    assert_eq!(foreign.status.code(), Some(2));
+    assert_eq!(output_text(&foreign.stdout), "");
+    assert!(output_text(&foreign.stderr).contains("NEXT_ACTION is not governance-refresh"));
+
+    fs::write(
+        fixture.driver.tmpdir.join(".ship-route-exit-handoff.env"),
+        "NEXT_ACTION=governance-refresh\nGOVERNANCE_REASONS=stale-plan-base-scope,stale-plan-body\n",
+    )
+    .expect("handoff");
+    let mixed = governance_refresh(&fixture, "success");
+    assert_eq!(mixed.status.code(), Some(2));
+    assert!(output_text(&mixed.stderr).contains("must be exactly stale-plan-base-scope"));
+
+    assert!(route_exit(&fixture).status.success());
+    fs::remove_file(fixture.driver.tmpdir.join("preflight-tmpdir.env")).expect("pointer");
+    let missing = governance_refresh(&fixture, "success");
+    assert_eq!(missing.status.code(), Some(2));
+    assert!(output_text(&missing.stderr).contains("no PREFLIGHT_TMPDIR"));
+    assert!(!events(&fixture).contains("plan-receipt refresh"));
 }

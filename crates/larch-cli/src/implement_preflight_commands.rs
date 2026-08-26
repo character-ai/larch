@@ -24,9 +24,10 @@ use std::{
 use larch_adapters::GixRepository;
 use larch_core::{
     ChildEnvironment, FORCE_PLAN_CONTRACT_ERROR, GitHubIssue, GitHubIssueState,
-    GitHubRepositoryRef, GitHubService as _, REASON_STALE_PLAN_BODY, RepositoryRead as _,
-    TRAILER_KEYS, TrailerKey, issue_plan_marker_defect, match_trailer_line, parse_final_trailers,
-    parse_named_block, parse_receipt, single_line, tier_valid, validate_plan_contract,
+    GitHubRepositoryRef, GitHubService as _, REASON_STALE_PLAN_BASE_SCOPE, REASON_STALE_PLAN_BODY,
+    RepositoryRead as _, TRAILER_KEYS, TrailerKey, issue_plan_marker_defect, match_trailer_line,
+    parse_final_trailers, parse_named_block, parse_receipt, single_line, tier_valid,
+    validate_plan_contract,
 };
 
 use crate::{
@@ -888,6 +889,54 @@ pub fn governance_gate_argv(
     ]
 }
 
+/// One published `issue governance-gate` verdict.
+///
+/// Step 2 dispatch and the ship driver route on the verdict envelope, never
+/// on the exit code: a nonzero exit is also how the gate reports a refusal,
+/// which is a different outcome from a failed read.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GovernanceGateOutcome {
+    /// `GOVERNANCE_OK=true`.
+    Passed,
+    /// `GOVERNANCE_OK=false` with the stderr reason tokens; `unknown` when
+    /// the gate published no reason.
+    Blocked(Vec<String>),
+    /// No `GOVERNANCE_OK` verdict on stdout: the gate could not be evaluated.
+    NoVerdict,
+}
+
+impl GovernanceGateOutcome {
+    /// Return whether the only blocking reason is `stale-plan-base-scope`.
+    #[must_use]
+    pub fn sole_stale_plan_base_scope(&self) -> bool {
+        matches!(self, Self::Blocked(reasons) if reasons.len() == 1 && reasons[0] == REASON_STALE_PLAN_BASE_SCOPE)
+    }
+}
+
+/// Parse the non-envelope `issue governance-gate` streams into one outcome.
+#[must_use]
+pub fn parse_governance_gate_output(stdout: &[u8], stderr: &[u8]) -> GovernanceGateOutcome {
+    let envelope = String::from_utf8_lossy(stdout);
+    match kv_value(&envelope, "GOVERNANCE_OK").as_str() {
+        "true" => GovernanceGateOutcome::Passed,
+        "false" => {
+            let reasons = kv_value(&String::from_utf8_lossy(stderr), "GOVERNANCE_REASONS");
+            let tokens = reasons
+                .split(',')
+                .map(str::trim)
+                .filter(|token| !token.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            GovernanceGateOutcome::Blocked(if tokens.is_empty() {
+                vec!["unknown".to_owned()]
+            } else {
+                tokens
+            })
+        }
+        _absent => GovernanceGateOutcome::NoVerdict,
+    }
+}
+
 /// Discover the consumer repository root, matching the retired owner's probe.
 fn repo_root() -> PathBuf {
     use std::os::unix::ffi::OsStringExt as _;
@@ -910,10 +959,11 @@ fn repo_root() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        MAIN_HEALTH_DETAIL_MAX_CHARS, Request, TEST_REPO_ROOT, admit, append_bypass, bypass_count,
-        bypass_count as bypass_records, capture, emit_success_envelope, envelope_error,
-        envelope_value, extract_plan, governance, governance_gate_argv, load_tracked_paths,
-        main_health_error, main_health_rows, malformed_terminal_metadata, materialize_issue,
+        GovernanceGateOutcome, MAIN_HEALTH_DETAIL_MAX_CHARS, Request, TEST_REPO_ROOT, admit,
+        append_bypass, bypass_count, bypass_count as bypass_records, capture,
+        emit_success_envelope, envelope_error, envelope_value, extract_plan, governance,
+        governance_gate_argv, load_tracked_paths, main_health_error, main_health_rows,
+        malformed_terminal_metadata, materialize_issue, parse_governance_gate_output,
         plan_metadata, preflight, read_main_health, read_plan_block, refuse, repo_root, run,
         sha1_hex, trailer_value,
     };
@@ -2037,5 +2087,42 @@ mod tests {
         assert!(sha1_hex(&"a".repeat(40)));
         assert!(!sha1_hex(&"A".repeat(40)));
         assert!(!sha1_hex("abc"));
+    }
+
+    #[test]
+    fn governance_gate_output_routes_on_the_verdict_not_the_exit_code() {
+        assert_eq!(
+            parse_governance_gate_output(b"GOVERNANCE_OK=true\n", b""),
+            GovernanceGateOutcome::Passed
+        );
+        let stale = parse_governance_gate_output(
+            b"GOVERNANCE_OK=false\n",
+            b"GOVERNANCE_REASONS=stale-plan-base-scope\n",
+        );
+        assert_eq!(
+            stale,
+            GovernanceGateOutcome::Blocked(vec!["stale-plan-base-scope".to_owned()])
+        );
+        assert!(stale.sole_stale_plan_base_scope());
+        let mixed = parse_governance_gate_output(
+            b"GOVERNANCE_OK=false\n",
+            b"GOVERNANCE_REASONS=stale-plan-base-scope, stale-blocker-snapshot\n",
+        );
+        assert_eq!(
+            mixed,
+            GovernanceGateOutcome::Blocked(vec![
+                "stale-plan-base-scope".to_owned(),
+                "stale-blocker-snapshot".to_owned(),
+            ])
+        );
+        assert!(!mixed.sole_stale_plan_base_scope());
+        assert_eq!(
+            parse_governance_gate_output(b"GOVERNANCE_OK=false\n", b"noise\n"),
+            GovernanceGateOutcome::Blocked(vec!["unknown".to_owned()])
+        );
+        assert_eq!(
+            parse_governance_gate_output(b"", b"GOVERNANCE_REASONS=stale-plan-body\n"),
+            GovernanceGateOutcome::NoVerdict
+        );
     }
 }

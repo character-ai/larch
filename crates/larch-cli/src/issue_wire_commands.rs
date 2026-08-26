@@ -776,6 +776,19 @@ pub fn named_block_mutation_request(
     marker: &str,
     body: String,
 ) -> IssueMutationRequest {
+    named_block_mutation_request_for_run(repository, issue, snapshot, marker, body, "")
+}
+
+/// Build the protected named-block mutation, binding `run_id` as the lease
+/// when no run-id environment key names the active run.
+pub fn named_block_mutation_request_for_run(
+    repository: &GitHubRepositoryRef,
+    issue: u64,
+    snapshot: &IssueMutationSnapshot,
+    marker: &str,
+    body: String,
+    run_id: &str,
+) -> IssueMutationRequest {
     IssueMutationRequest {
         repository: repository.clone(),
         issue,
@@ -786,13 +799,13 @@ pub fn named_block_mutation_request(
         body: Some(body),
         labels: None,
         marker: Some(marker.to_owned()),
-        lease: named_block_lease(marker),
+        lease: named_block_lease(marker, run_id),
     }
 }
 
 /// Bind a protected named-block write to the active run, when one is named.
-fn named_block_lease(marker: &str) -> Option<IssueMutationLease> {
-    resolve_named_block_run_id("").map(|run_id| IssueMutationLease {
+fn named_block_lease(marker: &str, fallback_run_id: &str) -> Option<IssueMutationLease> {
+    resolve_named_block_run_id(fallback_run_id).map(|run_id| IssueMutationLease {
         run_id,
         marker: marker.to_owned(),
     })
@@ -1014,7 +1027,11 @@ mod tests {
         // The environment is process wide, so this asserts only the shape the
         // absent case takes; the populated case is covered by the mutation
         // owner's own tests.
-        let lease = named_block_lease("plan");
+        let lease = named_block_lease("plan", "");
         assert!(lease.is_none_or(|lease| !lease.run_id.is_empty()));
+        // An explicit run id binds the lease when no env key names the run.
+        let bound = named_block_lease("plan", "run-8993").expect("explicit lease");
+        assert_eq!(bound.marker, "plan");
+        assert!(!bound.run_id.is_empty());
     }
 }

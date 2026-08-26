@@ -29,7 +29,7 @@ use larch_core::{
     evaluate_governance_gate, evaluate_owner_admission, format_gate_refusal, hash_blocker_rows,
     hash_owner_rows, hash_plan_block, parse_named_block, parse_native_blocker_refs,
     parse_owner_block, parse_receipt, python_json_dumps, redact_secrets_only, upsert_receipt,
-    validate_receipt_freshness,
+    validate_receipt_freshness, validate_run_id,
 };
 
 use crate::{
@@ -39,15 +39,17 @@ use crate::{
     github_repository_resolution::{repository_ref, repository_repo},
     github_service::{ServiceFailure, list_exhaustive_issues_for_state, with_github_service},
     issue_mutation_support::{authorization_request, flat_error},
-    issue_wire_commands::named_block_mutation_request,
+    issue_wire_commands::named_block_mutation_request_for_run,
 };
 
 const GATE_PROGRAM: &str = "larch issue governance-gate";
 const GATE_USAGE: &str = "usage: larch issue governance-gate [-h] --issue ISSUE --repo REPO --body-file\n                                   BODY_FILE --repo-root REPO_ROOT --head-sha\n                                   HEAD_SHA [--preflight-envelope]";
 const GATE_HELP: &str = "usage: larch issue governance-gate [-h] --issue ISSUE --repo REPO --body-file\n                                   BODY_FILE --repo-root REPO_ROOT --head-sha\n                                   HEAD_SHA [--preflight-envelope]\n\noptions:\n  -h, --help            show this help message and exit\n  --issue ISSUE\n  --repo REPO\n  --body-file BODY_FILE\n  --repo-root REPO_ROOT\n  --head-sha HEAD_SHA\n  --preflight-envelope";
 const REFRESH_PROGRAM: &str = "larch plan-receipt refresh";
-const REFRESH_USAGE: &str = "usage: larch plan-receipt refresh [-h] --issue ISSUE [--repo REPO] --repo-root\n                                  REPO_ROOT --preflight-tmpdir\n                                  PREFLIGHT_TMPDIR --base-ref BASE_REF\n                                  --previous-base-sha PREVIOUS_BASE_SHA\n                                  --base-sha BASE_SHA";
-const REFRESH_HELP: &str = "usage: larch plan-receipt refresh [-h] --issue ISSUE [--repo REPO] --repo-root\n                                  REPO_ROOT --preflight-tmpdir\n                                  PREFLIGHT_TMPDIR --base-ref BASE_REF\n                                  --previous-base-sha PREVIOUS_BASE_SHA\n                                  --base-sha BASE_SHA\n\noptions:\n  -h, --help            show this help message and exit\n  --issue ISSUE\n  --repo REPO\n  --repo-root REPO_ROOT\n  --preflight-tmpdir PREFLIGHT_TMPDIR\n  --base-ref BASE_REF\n  --previous-base-sha PREVIOUS_BASE_SHA\n  --base-sha BASE_SHA";
+const REFRESH_USAGE: &str = "usage: larch plan-receipt refresh [-h] --issue ISSUE [--repo REPO] --repo-root\n                                  REPO_ROOT --preflight-tmpdir\n                                  PREFLIGHT_TMPDIR --base-ref BASE_REF\n                                  --previous-base-sha PREVIOUS_BASE_SHA\n                                  --base-sha BASE_SHA [--run-id RUN_ID]";
+const REFRESH_HELP: &str = "usage: larch plan-receipt refresh [-h] --issue ISSUE [--repo REPO] --repo-root\n                                  REPO_ROOT --preflight-tmpdir\n                                  PREFLIGHT_TMPDIR --base-ref BASE_REF\n                                  --previous-base-sha PREVIOUS_BASE_SHA\n                                  --base-sha BASE_SHA [--run-id RUN_ID]\n\noptions:\n  -h, --help            show this help message and exit\n  --issue ISSUE\n  --repo REPO\n  --repo-root REPO_ROOT\n  --preflight-tmpdir PREFLIGHT_TMPDIR\n  --base-ref BASE_REF\n  --previous-base-sha PREVIOUS_BASE_SHA\n  --base-sha BASE_SHA\n  --run-id RUN_ID       implementation run lease; required after Step 0 when\n                        no RUN_ID/LARCH_RUN_ID/SESSION_ID env key names it";
+/// Operator guidance appended to the lease refusal a managed-prefix title raises.
+const MISSING_LEASE_GUIDANCE: &str = "missing-lease: a managed-prefix title ([IMPLEMENTING] after Step 0) accepts the receipt refresh only under the implementation run lease; pass --run-id <LARCH_RUN_ID from session-env.sh> or export LARCH_RUN_ID";
 const MAX_SCOPE_FILES: usize = 20_000;
 const MAX_SCOPE_DIFF_ROWS: usize = 128;
 
@@ -68,6 +70,7 @@ struct RefreshArguments {
     base_ref: String,
     previous_base_sha: String,
     base_sha: String,
+    run_id: String,
 }
 
 struct RemoteGateEvidence {
@@ -519,6 +522,7 @@ fn parse_refresh_arguments(arguments: &[OsString]) -> Result<RefreshArguments, E
             "--base-ref",
             "--previous-base-sha",
             "--base-sha",
+            "--run-id",
         ],
         &[],
         &[
@@ -535,6 +539,10 @@ fn parse_refresh_arguments(arguments: &[OsString]) -> Result<RefreshArguments, E
     let repository = text_value(parsed.value("--repo"));
     if !repository.is_empty() && repository_ref(&repository).is_err() {
         return Err(fail("--repo must be exactly owner/name"));
+    }
+    let run_id = text_value(parsed.value("--run-id"));
+    if !run_id.is_empty() {
+        validate_run_id(&run_id).map_err(|error| fail(&format!("--run-id {error}")))?;
     }
     let base_ref = text_value(parsed.value("--base-ref"));
     if !matches!(base_ref.as_str(), "origin/main" | "upstream/main") {
@@ -570,6 +578,7 @@ fn parse_refresh_arguments(arguments: &[OsString]) -> Result<RefreshArguments, E
         base_ref,
         previous_base_sha,
         base_sha,
+        run_id,
     })
 }
 
@@ -844,16 +853,17 @@ async fn persist_refreshed_receipt(
             .apply(
                 cancellation,
                 &authorization,
-                &named_block_mutation_request(
+                &named_block_mutation_request_for_run(
                     repository,
                     snapshot.issue,
                     &snapshot,
                     PLAN_MARKER,
                     updated,
+                    &request.run_id,
                 ),
             )
             .await
-            .map_err(|error| error.reason().to_owned())?
+            .map_err(|error| refresh_mutation_detail(error.reason()))?
             .after
     };
     if parse_receipt(&after.body).as_ref() != Some(&receipt) {
@@ -867,6 +877,15 @@ async fn persist_refreshed_receipt(
         return Err("plan-receipt-refresh-snapshot-mismatch".to_owned());
     }
     Ok((receipt, refreshed))
+}
+
+/// Expand the one mutation refusal that has a documented operator remedy.
+fn refresh_mutation_detail(reason: &str) -> String {
+    if reason == "missing-lease" {
+        MISSING_LEASE_GUIDANCE.to_owned()
+    } else {
+        reason.to_owned()
+    }
 }
 
 fn write_preflight_snapshot(
