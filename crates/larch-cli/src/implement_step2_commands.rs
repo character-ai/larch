@@ -246,6 +246,34 @@ mod commands_tests {
     use super::fixtures::*;
     use super::*;
 
+    fn render_arguments(arguments: &[OsString]) -> Vec<String> {
+        arguments
+            .iter()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    fn option_value(arguments: &[String], option: &str) -> String {
+        let index = arguments
+            .iter()
+            .position(|argument| argument == option)
+            .expect("adapter option");
+        arguments.get(index + 1).cloned().expect("adapter value")
+    }
+
+    fn assert_empty_answers_routing(arguments: &[String]) {
+        assert!(
+            arguments
+                .iter()
+                .any(|argument| argument == "--replace-completed-result")
+        );
+        let answers_index = arguments
+            .iter()
+            .position(|argument| argument == "--answers")
+            .expect("empty answers option");
+        assert_eq!(arguments[answers_index + 1], "");
+    }
+
     #[test]
     fn text_defaults_empty_and_passes_through() {
         assert_eq!(text(None), "");
@@ -519,17 +547,11 @@ mod commands_tests {
             format!("{:?}", ExitCode::SUCCESS)
         );
 
-        let calls = observed.lock().expect("adapter argv lock");
+        let calls = observed.lock().expect("adapter argv lock").clone();
         assert_eq!(calls.len(), 3);
-        let render = |arguments: &[OsString]| {
-            arguments
-                .iter()
-                .map(|argument| argument.to_string_lossy().into_owned())
-                .collect::<Vec<String>>()
-        };
-        let plain_arguments = render(&calls[0]);
-        let arguments = render(&calls[1]);
-        let empty_answers_arguments = render(&calls[2]);
+        let plain_arguments = render_arguments(&calls[0]);
+        let arguments = render_arguments(&calls[1]);
+        let empty_answers_arguments = render_arguments(&calls[2]);
         assert!(
             !plain_arguments
                 .iter()
@@ -540,27 +562,14 @@ mod commands_tests {
                 .iter()
                 .any(|argument| argument == "--answers")
         );
-        assert!(
-            empty_answers_arguments
-                .iter()
-                .any(|argument| argument == "--replace-completed-result")
-        );
-        let empty_answers_index = empty_answers_arguments
-            .iter()
-            .position(|argument| argument == "--answers")
-            .expect("empty answers option");
-        assert_eq!(empty_answers_arguments[empty_answers_index + 1], "");
-        let value_after = |option: &str| {
-            let index = arguments
-                .iter()
-                .position(|argument| argument == option)
-                .expect("adapter option");
-            arguments.get(index + 1).cloned().expect("adapter value")
-        };
+        assert_empty_answers_routing(&empty_answers_arguments);
         assert_eq!(&arguments[..2], ["bgjob", "adapt"]);
-        assert_eq!(value_after("--step"), "implement-step2-dispatch");
-        assert_eq!(value_after("--budget-s"), "7200");
-        assert!(!value_after("--owner-pid").is_empty());
+        assert_eq!(
+            option_value(&arguments, "--step"),
+            "implement-step2-dispatch"
+        );
+        assert_eq!(option_value(&arguments, "--budget-s"), "7200");
+        assert!(!option_value(&arguments, "--owner-pid").is_empty());
         assert!(
             arguments
                 .iter()
