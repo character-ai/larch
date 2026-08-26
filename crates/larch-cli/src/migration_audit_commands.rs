@@ -913,10 +913,11 @@ mod tests {
 
     use super::{
         TableOutput, collect_plan_evidence, collect_remote_snapshot, collect_with_deadline,
-        diagnostic_detail, executable_leaf, git_path_string, is_glob, launcher_escape_hatch_findings,
-        migration_issue, parse_arguments, path_inside, plan_path_defects, reuse_source_refs,
-        safe_finding, scope_snapshot, tracked_paths, unsafe_filesystem_path, unsafe_plan_path,
-        validate_plan, worktree_root, write_output, write_stderr, write_stdout,
+        diagnostic_detail, executable_leaf, git_path_string, is_glob,
+        launcher_escape_hatch_findings, migration_issue, parse_arguments, path_inside,
+        plan_path_defects, reuse_source_refs, safe_finding, scope_snapshot, tracked_paths,
+        unsafe_filesystem_path, unsafe_plan_path, validate_plan, worktree_root, write_output,
+        write_stderr, write_stdout,
     };
     use crate::github_service::{with_github_service, with_test_github_service};
     use larch_adapters::{GixRepository, github::OctocrabGitHubService, runtime::Cancellation};
