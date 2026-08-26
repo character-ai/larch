@@ -1443,7 +1443,7 @@ mod tests {
         assert_eq!(merge_tier4("ok", "no-patch"), "ok");
         assert_eq!(binary_arg("true", "does-not-matter"), "true");
         assert_eq!(binary_arg("false", "does-not-matter"), "false");
-        let mut command = Command::new("/tmp/plugin root/scripts/larch.sh");
+        let mut command = Command::new("/tmp/plugin root/scripts/larch.sh"); // lint-subprocess-via-runner: ok test-only value verifies argv rendering without spawning
         command.arg("design").arg("driver");
         assert_eq!(
             command_description(&command),
