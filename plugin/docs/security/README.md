@@ -27,19 +27,23 @@ high-level trust statement.
 
 ## Runtime Packaging Contract
 
-The runtime-only `plugin/` projection must contain the root `SECURITY.md`, this
-index, and every tracked Markdown file under `docs/security/`. Projection
-generation also scans shipped skill Markdown for `docs/security/*.md`
-references and fails if a target is absent. The same validation runs when CI
-generates the projection and checks it for byte-for-byte drift.
+`release stage` generates the runtime-only `plugin/` projection in the tagged
+projection commit. It is not committed to `main`. The generated tree must
+contain the root `SECURITY.md`, this index, and every tracked Markdown file
+under `docs/security/`. Projection generation also scans shipped skill
+Markdown for `docs/security/*.md` references and fails if a target is absent.
+CI generates the same projection in a temporary directory and validates it;
+there is no committed projection copy to compare for drift.
 
 The projection also includes `ARCHITECTURE.md`, its linked Rust references, the
 Git, GitHub, and Google service inventories, and the operator documents linked
 by the focused security references. Those links therefore resolve in both a
 source checkout and an installed plugin.
 
-`crates/larch-cli/src/release_plugin_runtime.rs` is the single implementation
-owner.
+`crates/larch-cli/src/release_plugin_runtime.rs` is the single projection
+content and generation owner. `crates/larch-cli/src/release_stage.rs` places
+that output in the tagged projection commit. The canonical release pin contract
+lives in [Release content pin](supply-chain-credentials-and-services.md#release-content-pin).
 
 ## Live Reference Audit
 
