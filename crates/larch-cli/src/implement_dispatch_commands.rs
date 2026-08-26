@@ -1511,9 +1511,7 @@ mod tests {
     #[test]
     fn dispatcher_request_keeps_vendor_credentials_and_model_overrides() {
         use super::apply_verified_larch_env_in_overrides;
-        use larch_core::{
-            ChildEnvironment, ExternalProgram, HostUtilityProgram, ProcessRequest,
-        };
+        use larch_core::{ChildEnvironment, ExternalProgram, HostUtilityProgram, ProcessRequest};
         use std::{num::NonZeroUsize, time::Duration};
 
         let cwd = TempDir::new().expect("cwd");
@@ -1537,10 +1535,7 @@ mod tests {
             root.path(),
             cwd.path(),
             OsString::from("/tmp/implement-session"),
-            &[(
-                ChildEnvironment::LarchCodexEffort,
-                OsString::from("high"),
-            )],
+            &[(ChildEnvironment::LarchCodexEffort, OsString::from("high"))],
         );
         let env = decorated.environment();
         let value = |key: ChildEnvironment| {
