@@ -49,6 +49,16 @@ fn session_environment() -> Vec<(ChildEnvironment, OsString)> {
 /// vendor credentials that the previously inherited first-party call used.
 const VERIFIED_LARCH_CONTEXT: &[ChildEnvironment] = &[
     ChildEnvironment::AnthropicApiKey,
+    ChildEnvironment::AwsProfile,
+    ChildEnvironment::AwsConfigFile,
+    ChildEnvironment::AwsSharedCredentialsFile,
+    ChildEnvironment::AwsAccessKeyId,
+    ChildEnvironment::AwsSecretAccessKey,
+    ChildEnvironment::AwsSessionToken,
+    ChildEnvironment::AwsRegion,
+    ChildEnvironment::AwsDefaultRegion,
+    ChildEnvironment::LarchR2AccountId,
+    ChildEnvironment::LarchR2Endpoint,
     ChildEnvironment::ClaudePluginData,
     ChildEnvironment::ClaudePluginOptionCodexEffort,
     ChildEnvironment::ClaudePluginOptionCodexModel,
@@ -305,4 +315,35 @@ pub fn plugin_root_directory() -> Option<PathBuf> {
         .parent()?
         .parent()
         .map(Path::to_path_buf)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::VERIFIED_LARCH_CONTEXT;
+    use larch_core::ChildEnvironment;
+
+    #[test]
+    fn nested_larch_context_forwards_storage_credential_selectors() {
+        // A nested `run-log lifecycle-start` (Step 0 bootstrap) resolves S3/R2
+        // credentials from its own process environment, so the operator's
+        // credential selection must be forwarded to nested larch children.
+        for key in [
+            ChildEnvironment::AwsProfile,
+            ChildEnvironment::AwsConfigFile,
+            ChildEnvironment::AwsSharedCredentialsFile,
+            ChildEnvironment::AwsAccessKeyId,
+            ChildEnvironment::AwsSecretAccessKey,
+            ChildEnvironment::AwsSessionToken,
+            ChildEnvironment::AwsRegion,
+            ChildEnvironment::AwsDefaultRegion,
+            ChildEnvironment::LarchR2AccountId,
+            ChildEnvironment::LarchR2Endpoint,
+        ] {
+            assert!(
+                VERIFIED_LARCH_CONTEXT.contains(&key),
+                "nested larch context must forward {}",
+                key.name()
+            );
+        }
+    }
 }
