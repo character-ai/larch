@@ -23,6 +23,7 @@ use larch_core::{
     ConfigKey, ObjectId, RepositoryRead, RepositoryStatus, Revision, StatusOptions, emit_kv,
 };
 
+use crate::git_command_runtime::is_git_ref_label;
 use crate::git_commands::is_transient_net;
 use crate::push_network::current_branch;
 
@@ -1015,13 +1016,6 @@ fn validate_base_remote_ref(base_remote: &str, base_ref: &str) -> Option<String>
         return Some("base_ref contains unsupported characters".to_owned());
     }
     None
-}
-
-fn is_git_ref_label(value: &str) -> bool {
-    !value.is_empty()
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'/' | b'-'))
 }
 
 /// `text.replace("\n", " ")` plus a `\r` fold so the value is safe for `emit_kv`.

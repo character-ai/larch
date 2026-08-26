@@ -12,7 +12,6 @@ Prompt-side orchestration steps delegate to these script contracts:
 - `skills/implement/references/step2-dispatch.md`
 - `refresh-execution-issues.md` (`skills/implement/scripts/refresh-execution-issues.sh`)
 - `write-final-report.md` (`skills/implement/scripts/write-final-report.sh`)
-- `skills/implement/scripts/cleanup.md` (`skills/implement/scripts/cleanup.sh`)
 - `step-0-bootstrap.md`
 - `step-0-degraded-gate.md` (`skills/implement/scripts/step-0-degraded-gate.sh`, legacy offline-harness surface not called on the active Step 0 path)
 - `step-2-post-dispatch.md` (`skills/implement/scripts/step-2-post-dispatch.sh`)
@@ -26,6 +25,8 @@ Prompt-side orchestration steps delegate to these script contracts:
 - `crates/larch-cli/src/implement_closeout_commands.rs` (`"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" implement step-16-17`, `step-16`, and `step-17`)
 - `step-18.md` (`skills/implement/scripts/step-18.sh`)
 - `crates/larch-cli/src/review_and_fix_commands.rs` (Rust Step 5 / apply-findings / check-changes / commit-fixes / write-rejected driver)
+- `crates/larch-cli/src/architectural_preparation_commands.rs` (`architectural-guidelines write-staged-assessment`, including the retired wrapper's positional materialize handoff)
+- `crates/larch-cli/src/implement_finalize_commands.rs` (`implement cleanup` and its `CLEANED` / `ERROR` envelope)
 
 **PR-body recovery helper:** use `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" pr closes-issue` for `Closes #N` extraction.
 

@@ -23,12 +23,12 @@ use larch_adapters::{
 };
 use larch_core::{
     ArchitecturalKind, ArchitecturalKnowledge, ArchitecturalStatus, AssessmentGit, AssessmentKind,
-    AssessmentWriteError, ComposePreparation, RepositoryRead, append_deviation_note,
-    cleanup_cache_sessions_root, diff_fingerprint, guideline_active_exception,
-    guideline_exception_present, invalidate_implement_note, materialize_preparation_diff,
-    persist_design_assessment, persist_preparation_diff, pin_note_from_staged, prepare_compose,
-    read_architectural_knowledge, untrusted_content_block, write_compose_assessment,
-    write_staged_assessment,
+    AssessmentWriteError, ComposePreparation, DuplicatePolicy, KvDocument, ParseOptions,
+    RepositoryRead, append_deviation_note, cleanup_cache_sessions_root, diff_fingerprint,
+    guideline_active_exception, guideline_exception_present, invalidate_implement_note,
+    materialize_preparation_diff, persist_design_assessment, persist_preparation_diff,
+    pin_note_from_staged, prepare_compose, read_architectural_knowledge, untrusted_content_block,
+    write_compose_assessment, write_staged_assessment,
 };
 
 use crate::{
@@ -36,6 +36,7 @@ use crate::{
     argparse_compat::{
         ParsedCommandLine, finish_parse, parse_with_flags, usage_error, write_stdout,
     },
+    git_command_runtime::is_git_ref_label,
 };
 
 const EXIT_OK: u8 = 0;
@@ -168,16 +169,23 @@ fn assessment_usage(kind: AssessmentKind, verb: &str) -> String {
              {indent}[--repo-root REPO_ROOT]\n\
              {indent}(--assessment-file ASSESSMENT_FILE | --assessment-text ASSESSMENT_TEXT)"
         ),
-        "write-staged-assessment" => format!(
-            "usage: {command} [-h]\n\
-             {indent}[--outcome OUTCOME]\n\
-             {indent}[--implement-tmpdir IMPLEMENT_TMPDIR]\n\
-             {indent}(--assessment-file ASSESSMENT_FILE | --assessment-text ASSESSMENT_TEXT)\n\
-             {indent}[--assessed-head-sha ASSESSED_HEAD_SHA]\n\
-             {indent}[--diff-fingerprint DIFF_FINGERPRINT]\n\
-             {indent}[--base-ref BASE_REF]\n\
-             {indent}[--diff-file DIFF_FILE]"
-        ),
+        "write-staged-assessment" => {
+            let assessment_source = if kind == AssessmentKind::Guidelines {
+                "((--assessment-file ASSESSMENT_FILE | --assessment-text ASSESSMENT_TEXT) | ASSESSMENT_PATH [POSITIONAL_OUTCOME])"
+            } else {
+                "(--assessment-file ASSESSMENT_FILE | --assessment-text ASSESSMENT_TEXT)"
+            };
+            format!(
+                "usage: {command} [-h]\n\
+                 {indent}[--outcome OUTCOME]\n\
+                 {indent}[--implement-tmpdir IMPLEMENT_TMPDIR]\n\
+                 {indent}{assessment_source}\n\
+                 {indent}[--assessed-head-sha ASSESSED_HEAD_SHA]\n\
+                 {indent}[--diff-fingerprint DIFF_FINGERPRINT]\n\
+                 {indent}[--base-ref BASE_REF]\n\
+                 {indent}[--diff-file DIFF_FILE]"
+            )
+        }
         "append-deviation-note" => format!(
             "usage: {command} [-h]\n\
              {indent}[--implement-tmpdir IMPLEMENT_TMPDIR]\n\
@@ -216,8 +224,13 @@ fn assessment_help(kind: AssessmentKind, verb: &str) -> String {
         "invalidate" => "  --implement-tmpdir IMPLEMENT_TMPDIR\n",
         _ => unreachable!("known architectural assessment verb"),
     };
+    let positionals = if kind == AssessmentKind::Guidelines && verb == "write-staged-assessment" {
+        "positional arguments:\n  ASSESSMENT_PATH\n  POSITIONAL_OUTCOME\n\n"
+    } else {
+        ""
+    };
     format!(
-        "{usage}\n\noptions:\n  -h, --help            show this help message and exit\n{options}"
+        "{usage}\n\n{positionals}options:\n  -h, --help            show this help message and exit\n{options}"
     )
 }
 
@@ -259,7 +272,18 @@ fn parse_assessment(
 ) -> Result<ParsedCommandLine, ExitCode> {
     let usage = assessment_usage(kind, verb);
     let program = program(kind, verb);
-    let parsed = parse_with_flags(arguments, assessment_options(verb), &["-h", "--help"], 0);
+    let max_positionals = if kind == AssessmentKind::Guidelines && verb == "write-staged-assessment"
+    {
+        2
+    } else {
+        0
+    };
+    let parsed = parse_with_flags(
+        arguments,
+        assessment_options(verb),
+        &["-h", "--help"],
+        max_positionals,
+    );
     if parsed.flag("-h") || parsed.flag("--help") {
         return Err(write_stdout(&assessment_help(kind, verb)));
     }
@@ -269,6 +293,7 @@ fn parse_assessment(
     if matches!(verb, "write-compose-assessment" | "write-staged-assessment") {
         let file = parsed.value("--assessment-file").is_some();
         let text = parsed.value("--assessment-text").is_some();
+        let positional_file = parsed.positional(0).is_some();
         if file && text {
             let first = parsed
                 .entries()
@@ -287,7 +312,28 @@ fn parse_assessment(
                 EXIT_USAGE,
             ));
         }
-        if !file && !text {
+        if positional_file && (file || text) {
+            let option = if file {
+                "--assessment-file"
+            } else {
+                "--assessment-text"
+            };
+            return Err(usage_error(
+                &usage,
+                &program,
+                &format!("argument ASSESSMENT_PATH: not allowed with argument {option}"),
+                EXIT_USAGE,
+            ));
+        }
+        if parsed.positional(1).is_some() && parsed.value("--outcome").is_some() {
+            return Err(usage_error(
+                &usage,
+                &program,
+                "argument POSITIONAL_OUTCOME: not allowed with argument --outcome",
+                EXIT_USAGE,
+            ));
+        }
+        if !file && !text && !positional_file {
             return Err(usage_error(
                 &usage,
                 &program,
@@ -345,6 +391,67 @@ fn read_regular_no_follow(path: &Path) -> Result<String, String> {
     file.read_to_string(&mut text)
         .map_err(|error| error.to_string())?;
     Ok(text)
+}
+
+#[derive(Default)]
+struct StagedMaterializeValues {
+    base_ref: String,
+    diff_fingerprint: String,
+    assessed_head_sha: String,
+    diff_file: String,
+}
+
+fn resolve_staged_assessment_path(tmpdir: &Path, raw: &Path) -> PathBuf {
+    // This positional compatibility form deliberately names files inside the
+    // implement sandbox: an absolute path outside `tmpdir` denotes the same
+    // root-stripped path below `tmpdir`, matching the retired wrapper.
+    if !raw.is_absolute() {
+        return tmpdir.join(raw);
+    }
+    if raw.starts_with(tmpdir) {
+        return raw.to_path_buf();
+    }
+    let rebased: PathBuf = raw
+        .components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(part) => Some(part),
+            _ => None,
+        })
+        .collect();
+    tmpdir.join(rebased)
+}
+
+fn valid_hex(value: &str, lengths: &[usize]) -> bool {
+    lengths.contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn staged_materialize_values(tmpdir: &Path) -> StagedMaterializeValues {
+    let env_file = tmpdir.join("architectural-guideline-materialize.env");
+    let fields = fs::read_to_string(&env_file)
+        .ok()
+        .and_then(|text| KvDocument::parse(&text, ParseOptions::legacy()).ok())
+        .map(|document| document.select(DuplicatePolicy::Last))
+        .unwrap_or_default();
+    let mut values = StagedMaterializeValues {
+        base_ref: fields.get("BASE_REF").cloned().unwrap_or_default(),
+        diff_fingerprint: fields.get("DIFF_FINGERPRINT").cloned().unwrap_or_default(),
+        assessed_head_sha: fields.get("HEAD_SHA").cloned().unwrap_or_default(),
+        diff_file: String::new(),
+    };
+    if !is_git_ref_label(&values.base_ref) {
+        values.base_ref.clear();
+    }
+    if !valid_hex(&values.diff_fingerprint, &[64]) {
+        values.diff_fingerprint.clear();
+    }
+    if !valid_hex(&values.assessed_head_sha, &[40, 64]) {
+        values.assessed_head_sha.clear();
+    }
+    let diff_file = tmpdir.join("architectural-guideline-materialized-diff.txt");
+    if diff_file.is_file() {
+        values.diff_file = diff_file.to_string_lossy().into_owned();
+    }
+    values
 }
 
 fn emit_action_status(
@@ -1094,10 +1201,19 @@ pub fn write_staged_assessment_command(kind: AssessmentKind, arguments: &[OsStri
     if tmpdir.is_empty() {
         return missing_tmpdir(kind, "WRITE");
     }
-    let assessment_file = option_text(&parsed, "--assessment-file");
-    let assessment_text = if assessment_file.is_empty() {
-        option_text(&parsed, "--assessment-text")
-    } else {
+    let tmpdir_path = PathBuf::from(&tmpdir);
+    let positional_assessment = parsed.positional(0).map(PathBuf::from);
+    let materialized = positional_assessment
+        .as_ref()
+        .map_or_else(StagedMaterializeValues::default, |_| {
+            staged_materialize_values(&tmpdir_path)
+        });
+    let assessment_file = positional_assessment.map_or_else(
+        || PathBuf::from(option_text(&parsed, "--assessment-file")),
+        |path| resolve_staged_assessment_path(&tmpdir_path, &path),
+    );
+    let assessment_file_present = !assessment_file.as_os_str().is_empty();
+    let assessment_text = if assessment_file_present {
         match fs::read_to_string(&assessment_file) {
             Ok(text) => text,
             Err(error) => {
@@ -1110,8 +1226,17 @@ pub fn write_staged_assessment_command(kind: AssessmentKind, arguments: &[OsStri
                 );
             }
         }
+    } else {
+        option_text(&parsed, "--assessment-text")
     };
-    let diff_file = option_text(&parsed, "--diff-file");
+    let diff_file = {
+        let supplied = option_text(&parsed, "--diff-file");
+        if supplied.is_empty() {
+            materialized.diff_file
+        } else {
+            supplied
+        }
+    };
     let diff_text = if diff_file.is_empty() {
         String::new()
     } else {
@@ -1137,6 +1262,11 @@ pub fn write_staged_assessment_command(kind: AssessmentKind, arguments: &[OsStri
     };
     let fingerprint = {
         let supplied = option_text(&parsed, "--diff-fingerprint");
+        let supplied = if supplied.is_empty() {
+            materialized.diff_fingerprint
+        } else {
+            supplied
+        };
         if supplied.is_empty() {
             diff_fingerprint(&diff_text)
         } else {
@@ -1145,19 +1275,36 @@ pub fn write_staged_assessment_command(kind: AssessmentKind, arguments: &[OsStri
     };
     let head = {
         let supplied = option_text(&parsed, "--assessed-head-sha");
+        let supplied = if supplied.is_empty() {
+            materialized.assessed_head_sha
+        } else {
+            supplied
+        };
         if supplied.is_empty() {
             current_head()
         } else {
             supplied
         }
     };
+    let base_ref = {
+        let supplied = option_text(&parsed, "--base-ref");
+        if supplied.is_empty() {
+            materialized.base_ref
+        } else {
+            supplied
+        }
+    };
+    let outcome = parsed.positional(1).map_or_else(
+        || option_text(&parsed, "--outcome"),
+        |value| value.to_string_lossy().into_owned(),
+    );
     match write_staged_assessment(
         Path::new(&tmpdir),
         &assessment_text,
         &head,
         &fingerprint,
-        &option_text(&parsed, "--base-ref"),
-        &option_text(&parsed, "--outcome"),
+        &base_ref,
+        &outcome,
         kind,
         &diff_text,
     ) {

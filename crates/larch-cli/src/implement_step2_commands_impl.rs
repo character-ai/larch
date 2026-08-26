@@ -57,8 +57,11 @@ struct RunDispatchRequest {
     repo_root: PathBuf,
     coder: String,
     answers: String,
+    answers_present: bool,
     codex_binary_found: String,
     cursor_binary_found: String,
+    difficulty: String,
+    bgjob_child: bool,
     /// The bgjob envelope path, empty when this is not a bgjob leg.
     merge_result_env: String,
     child: Vec<OsString>,
@@ -93,6 +96,7 @@ fn parse_run_dispatch(arguments: &[OsString]) -> Result<RunDispatchRequest, Exit
         &["--coder"],
     )?;
     let coder = text(parsed.value("--coder"));
+    let answers_present = parsed.value("--answers").is_some();
     let answers = text(parsed.value("--answers"));
     let merge_result_env = text(parsed.value("--merge-result-env"));
     if parsed.flag("--bgjob-child") == merge_result_env.is_empty() {
@@ -195,8 +199,11 @@ fn parse_run_dispatch(arguments: &[OsString]) -> Result<RunDispatchRequest, Exit
         repo_root,
         coder,
         answers,
+        answers_present,
         codex_binary_found,
         cursor_binary_found,
+        difficulty,
+        bgjob_child: parsed.flag("--bgjob-child"),
         merge_result_env,
         child,
     })

@@ -6,11 +6,11 @@
 
 **When to load**: MANDATORY before parsing `step2-dispatch` stdout. Read before extending stdout grammar, changing envelope invariants, or modifying manifest schema. `skills/implement/SKILL.md` §2.1 is the orchestrator-side consumer.
 
-This is the surviving `/implement` Step 2 dispatch contract after the atomic Rust cutover. It absorbs the normative contract formerly split across the Step 2 dispatcher, its run-dispatch wrapper, recovery-path helper, Step 4 commit wrapper, and external implement launcher docs.
+This is the surviving `/implement` Step 2 dispatch contract after the atomic Rust cutover. It absorbs the normative contract formerly split across the Step 2 dispatcher, its run-dispatch adapter, recovery-path helper, Step 4 commit wrapper, and external implement launcher docs.
 
 ## Step 2 dispatcher
 
-**Orchestrator wait contract**: `skills/implement/scripts/step-2-dispatch.sh` starts or reattaches the durable `implement-step2-dispatch` bgjob. The orchestrator waits only through `scripts/larch.sh bgjob wait`; on `BGJOB_STATUS=WAIT`, it repeats the identical wait fence with no intervening tool or prose, and it reads the result env only after `DONE`. It MUST NOT call `ScheduleWakeup`. See `skills/implement/SKILL.md` NEVER #8.
+**Orchestrator wait contract**: `scripts/larch.sh implement run-dispatch` starts or reattaches the durable `implement-step2-dispatch` bgjob. The orchestrator waits only through `scripts/larch.sh bgjob wait`; on `BGJOB_STATUS=WAIT`, it repeats the identical wait fence with no intervening tool or prose, and it reads the result env only after `DONE`. It MUST NOT call `ScheduleWakeup`. See `skills/implement/SKILL.md` NEVER #8.
 
 **Invariants**:
 - Implementer-coder set: `{claude} ∪ external_tools`. `claude` is the implementer-only fallback path, never an external tool. The `TOOL=` envelope-line contract on external implementer paths continues to mean external implementer only.
@@ -98,7 +98,7 @@ RECOVERY_PATHS_FILE=<path-to-step2-recovery-paths.nul>
 | `--codex-binary-found VALUE` | optional | `true`, `false`, or empty. A false value reaches the dispatcher fallback branch and returns `STATUS=claude_fallback`; empty falls back to session env or a fresh executable check. |
 | `--answers PATH` | optional | Operator answers to a prior `needs_qa` cycle; presence increments the resume counter |
 
-External implementer launches use a fixed 7200-second wall-clock timeout. `skills/implement/scripts/step-2-dispatch.sh` starts or reattaches the `implement-step2-dispatch` bgjob, and its child calls `scripts/larch.sh implement run-dispatch`. The child atomically publishes the full dispatcher envelope to the adapter merge env; after bgjob completion, the daemon publishes that envelope with `BGJOB_RC` and `STEP` at `$IMPLEMENT_TMPDIR/bgjob/implement-step2-dispatch.result.env`. `scripts/larch.sh implement step2-dispatch` owns the fixed 7200-second timeout value.
+External implementer launches use a fixed 7200-second wall-clock timeout. The parent form of `scripts/larch.sh implement run-dispatch` starts or reattaches the `implement-step2-dispatch` bgjob, and the adapter re-executes the same Rust verb in child mode. The child atomically publishes the full dispatcher envelope to the adapter merge env; after bgjob completion, the daemon publishes that envelope with `BGJOB_RC` and `STEP` at `$IMPLEMENT_TMPDIR/bgjob/implement-step2-dispatch.result.env`. `crates/larch-cli/src/implement_dispatch_commands.rs` defines the shared 7200-second budget used by the adapter and external launcher.
 
 **Outcomes** (`STATUS` values):
 - `complete`: all post-Codex mechanical checks passed; the dispatcher committed Codex's working-tree edits using `manifest.commit_message` (redacted immediately before `git commit -F` by the Rust owner exposed as `scripts/larch.sh redact secrets`); on **`CODER=codex`**, the sanitized manifest is emitted at `$TMPDIR/codex-step2-out/manifest.json` (i.e. `$MANIFEST_PATH` after the codex subdir retarget); on **`CODER=cursor`**, it remains at `$TMPDIR/manifest.json` under the tmpdir root.
@@ -129,19 +129,19 @@ External implementer launches use a fixed 7200-second wall-clock timeout. `skill
 
 **Makefile wiring**: `make test-run-step2-dispatch` and `make test-step2-dispatch`.
 
-## Run-dispatch wrapper
+## Run-dispatch adapter
 
-`scripts/larch.sh implement run-dispatch` is the child launcher for
-`scripts/larch.sh implement step2-dispatch`. `skills/implement/scripts/step-2-dispatch.sh`
-owns the durable bgjob launch and reattachment contract; it reduces the child call
-to the implement tmpdir and selected coder while deriving the rest of the context
+`scripts/larch.sh implement run-dispatch` owns both sides of the durable adapter.
+The parent launches or reattaches the bgjob, and the child serializes the call to
+`scripts/larch.sh implement step2-dispatch`. Both forms reduce the worker input to
+the implement tmpdir and selected coder while deriving the rest of the context
 from session artifacts.
 
 Caller: `skills/implement/SKILL.md` Step 2.1 and Q/A redispatch in Step 2.3.
 
 Arguments:
 
-- `--implement-tmpdir PATH` is required.
+- `--implement-tmpdir PATH` is required directly or through `IMPLEMENT_TMPDIR`.
 - `--coder CODER` is required.
 - `--answers PATH` is optional and is only for Step 2.3 Q/A redispatch.
 - `--bgjob-child --merge-result-env PATH` are adapter-only paired flags. They publish the exact successful dispatcher envelope to the daemon merge env; callers do not parse child stdout.

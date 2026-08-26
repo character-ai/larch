@@ -50,9 +50,9 @@ use crate::{
     implement_child_seam::resolve_plugin_root,
     implement_commands::{kv_value, read_kv_first, write_atomic},
     implement_dispatch_commands::{
-        capture_postlaunch_porcelain, capture_prelaunch_porcelain, delegate_verified_larch,
-        rehydrate_session, resolve_session_repo_root, run_verified_larch_env_in,
-        run_verified_larch_env_in_timeout,
+        STEP2_DISPATCH_BUDGET_SECONDS, capture_postlaunch_porcelain, capture_prelaunch_porcelain,
+        delegate_verified_larch, rehydrate_session, resolve_session_repo_root,
+        run_step2_dispatch_adapter, run_verified_larch_env_in, run_verified_larch_env_in_timeout,
     },
     implement_launcher_commands::{CODEX_IMPLEMENT_MODEL, cursor_implement_model},
     implement_preflight_commands::{
@@ -70,7 +70,7 @@ const STEP2_USAGE: &str = "usage: cli.py implement step2-dispatch [-h] --tmpdir 
 const STEP2_HELP: &str = "usage: cli.py implement step2-dispatch [-h] --tmpdir TMPDIR --plan-file\n                                       PLAN_FILE --feature-file FEATURE_FILE\n                                       [--coder CODER]\n                                       [--codex-available CODEX_AVAILABLE]\n                                       [--cursor-present CURSOR_PRESENT]\n                                       [--codex-present CODEX_PRESENT]\n                                       [--cursor-available CURSOR_AVAILABLE]\n                                       [--codex-binary-found CODEX_BINARY_FOUND]\n                                       [--cursor-binary-found CURSOR_BINARY_FOUND]\n                                       [--answers ANSWERS]\n                                       [--completion-retry]\n                                       [--difficulty {,TRIVIAL,MODERATE,HARD}]\n\noptions:\n  -h, --help            show this help message and exit\n  --tmpdir TMPDIR\n  --plan-file PLAN_FILE\n  --feature-file FEATURE_FILE\n  --coder CODER\n  --codex-available CODEX_AVAILABLE\n  --cursor-present CURSOR_PRESENT\n  --codex-present CODEX_PRESENT\n  --cursor-available CURSOR_AVAILABLE\n  --codex-binary-found CODEX_BINARY_FOUND\n  --cursor-binary-found CURSOR_BINARY_FOUND\n  --answers ANSWERS\n  --completion-retry\n  --difficulty {,TRIVIAL,MODERATE,HARD}\n";
 
 const IMPLEMENT_STEP2_LABEL: &str = "implement-step2";
-const LAUNCHER_TIMEOUT_SECONDS: u64 = 7_200;
+const LAUNCHER_TIMEOUT_SECONDS: u64 = STEP2_DISPATCH_BUDGET_SECONDS as u64;
 /// Headroom for the verified-larch parents around the external implementer.
 const DISPATCH_TIMEOUT_MARGIN_SECONDS: u64 = 120;
 const DISPATCH_TIMEOUT: Duration =
@@ -126,6 +126,9 @@ pub fn run_dispatch(arguments: &[OsString]) -> ExitCode {
         Ok(request) => request,
         Err(code) => return code,
     };
+    if !request.bgjob_child {
+        return run_dispatch_parent(&request);
+    }
     let RunDispatchRequest {
         tmpdir,
         plugin_root,
@@ -136,6 +139,9 @@ pub fn run_dispatch(arguments: &[OsString]) -> ExitCode {
         cursor_binary_found,
         merge_result_env,
         child,
+        answers_present: _,
+        difficulty: _,
+        bgjob_child: _,
     } = request;
 
     let Some(lock) = DispatchLock::acquire(&tmpdir.join("dispatch.lock")) else {
@@ -200,6 +206,23 @@ pub fn run_dispatch(arguments: &[OsString]) -> ExitCode {
     ExitCode::from(u8::try_from(code).unwrap_or(1))
 }
 
+fn run_dispatch_parent(request: &RunDispatchRequest) -> ExitCode {
+    match run_step2_dispatch_adapter(
+        &request.tmpdir,
+        &request.repo_root,
+        &request.coder,
+        &request.answers,
+        request.answers_present,
+        &request.difficulty,
+    ) {
+        Ok(code) => code,
+        Err(error) => {
+            eprintln!("implement run-dispatch: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // implement step2-dispatch
 // ---------------------------------------------------------------------------
@@ -222,6 +245,34 @@ fn text(value: Option<&OsStr>) -> String {
 mod commands_tests {
     use super::fixtures::*;
     use super::*;
+
+    fn render_arguments(arguments: &[OsString]) -> Vec<String> {
+        arguments
+            .iter()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    fn option_value(arguments: &[String], option: &str) -> String {
+        let index = arguments
+            .iter()
+            .position(|argument| argument == option)
+            .expect("adapter option");
+        arguments.get(index + 1).cloned().expect("adapter value")
+    }
+
+    fn assert_empty_answers_routing(arguments: &[String]) {
+        assert!(
+            arguments
+                .iter()
+                .any(|argument| argument == "--replace-completed-result")
+        );
+        let answers_index = arguments
+            .iter()
+            .position(|argument| argument == "--answers")
+            .expect("empty answers option");
+        assert_eq!(arguments[answers_index + 1], "");
+    }
 
     #[test]
     fn text_defaults_empty_and_passes_through() {
@@ -364,11 +415,15 @@ mod commands_tests {
                 *timeout_sink.lock().expect("timeout sink lock") = Some(request.timeout());
             }
         });
+        let merge_result_env = dir.path().join("deadline-result.env");
         let code = run_dispatch(&test_arguments(&[
             "--implement-tmpdir",
             dir.path().to_str().expect("utf8"),
             "--coder",
             "codex",
+            "--bgjob-child",
+            "--merge-result-env",
+            merge_result_env.to_str().expect("utf8"),
         ]));
         crate::implement_dispatch_commands::clear_test_hooks();
         assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
@@ -395,11 +450,15 @@ mod commands_tests {
         let dir = run_dispatch_stub_fixture(
             "STATUS=bailed\nREASON=stub-bail-for-coverage\nTOOL=codex\nORCHESTRATOR_EDIT_AUTHORITY=forbidden",
         );
+        let merge_result_env = dir.path().join("bailed-result.env");
         let code = run_dispatch(&test_arguments(&[
             "--implement-tmpdir",
             dir.path().to_str().expect("utf8"),
             "--coder",
             "codex",
+            "--bgjob-child",
+            "--merge-result-env",
+            merge_result_env.to_str().expect("utf8"),
         ]));
         assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
         assert!(
@@ -427,5 +486,105 @@ mod commands_tests {
         assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
         let published = fs::read_to_string(&merge_result_env).expect("published envelope");
         assert!(published.contains("STATUS=complete"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn run_dispatch_parent_routes_answers_through_the_step2_bgjob_adapter() {
+        use larch_core::ProcessStatus;
+
+        let dir = run_dispatch_stub_fixture("");
+        let answers = dir.path().join("answers.json");
+        test_write_fixture(&answers, "{}\n");
+        let observed = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Vec<OsString>>::new()));
+        let sink = std::sync::Arc::clone(&observed);
+        crate::implement_child_seam::declare_plugin_root(&dir.path().join("plugin-root"));
+        crate::implement_dispatch_commands::install_test_larch(move |_cwd, _root, arguments| {
+            sink.lock()
+                .expect("adapter argv lock")
+                .push(arguments.to_vec());
+            Ok(ProcessOutput::new(
+                ProcessStatus::new(true, Some(0)),
+                b"BGJOB_STATUS=STARTED\n".to_vec(),
+                Vec::new(),
+                false,
+                false,
+            ))
+        });
+        let plain_code = run_dispatch(&test_arguments(&[
+            "--implement-tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--coder",
+            "codex",
+        ]));
+        let answers_code = run_dispatch(&test_arguments(&[
+            "--implement-tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--coder",
+            "codex",
+            "--answers",
+            answers.to_str().expect("utf8"),
+        ]));
+        let empty_answers_code = run_dispatch(&test_arguments(&[
+            "--implement-tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--coder",
+            "codex",
+            "--answers",
+            "",
+        ]));
+        crate::implement_dispatch_commands::clear_test_hooks();
+        assert_eq!(
+            format!("{plain_code:?}"),
+            format!("{:?}", ExitCode::SUCCESS)
+        );
+        assert_eq!(
+            format!("{answers_code:?}"),
+            format!("{:?}", ExitCode::SUCCESS)
+        );
+        assert_eq!(
+            format!("{empty_answers_code:?}"),
+            format!("{:?}", ExitCode::SUCCESS)
+        );
+
+        let calls = observed.lock().expect("adapter argv lock").clone();
+        assert_eq!(calls.len(), 3);
+        let plain_arguments = render_arguments(&calls[0]);
+        let arguments = render_arguments(&calls[1]);
+        let empty_answers_arguments = render_arguments(&calls[2]);
+        assert!(
+            !plain_arguments
+                .iter()
+                .any(|argument| argument == "--replace-completed-result")
+        );
+        assert!(
+            !plain_arguments
+                .iter()
+                .any(|argument| argument == "--answers")
+        );
+        assert_empty_answers_routing(&empty_answers_arguments);
+        assert_eq!(&arguments[..2], ["bgjob", "adapt"]);
+        assert_eq!(
+            option_value(&arguments, "--step"),
+            "implement-step2-dispatch"
+        );
+        assert_eq!(option_value(&arguments, "--budget-s"), "7200");
+        assert!(!option_value(&arguments, "--owner-pid").is_empty());
+        assert!(
+            arguments
+                .iter()
+                .any(|argument| argument == "--replace-completed-result")
+        );
+        let separator = arguments
+            .iter()
+            .position(|argument| argument == "--")
+            .expect("adapter separator");
+        assert_eq!(arguments[separator + 2], "implement");
+        assert_eq!(arguments[separator + 3], "run-dispatch");
+        assert!(
+            arguments[separator + 4..]
+                .windows(2)
+                .any(|pair| { pair == ["--answers", answers.to_str().expect("utf8")] })
+        );
     }
 }

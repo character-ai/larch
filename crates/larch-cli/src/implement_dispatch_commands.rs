@@ -47,6 +47,7 @@ const STEP_HELP: &str = "usage: cli.py implement run-step-checks [-h] --site SIT
 const ADAPT_TIMEOUT: Duration = Duration::from_secs(600);
 const ADAPT_GRACE: Duration = Duration::from_secs(5);
 const ADAPT_OUTPUT_LIMIT: usize = 256 * 1024;
+pub const STEP2_DISPATCH_BUDGET_SECONDS: u32 = 7_200;
 const CHECKS_HEAD: &str = "CHECKS_INPUT_HEAD_SHA";
 const CHECKS_FP: &str = "CHECKS_INPUT_TREE_FP";
 const CHECKS_SCHEMA: &str = "CHECKS_INPUT_FP_SCHEMA";
@@ -335,12 +336,86 @@ pub fn run_bgjob_adapt(
     repo_root: Option<&Path>,
     replace_completed_result: bool,
 ) -> Result<ExitCode, String> {
+    run_bgjob_adapt_with_owner(
+        tmpdir,
+        step,
+        budget_s,
+        verb,
+        merge_env,
+        initial_merge_rows,
+        public_args,
+        repo_root,
+        replace_completed_result,
+        None,
+    )
+}
+
+/// Launch or reattach the Rust-owned Step 2 dispatcher adapter.
+pub fn run_step2_dispatch_adapter(
+    tmpdir: &Path,
+    repo_root: &Path,
+    coder: &str,
+    answers: &str,
+    answers_present: bool,
+    difficulty: &str,
+) -> Result<ExitCode, String> {
+    let merge_env = safe_merge_env(
+        tmpdir,
+        &tmpdir
+            .join("bgjob")
+            .join("implement-step2-dispatch.merge.env"),
+    )?;
+    let mut public_args = vec![
+        OsString::from("--implement-tmpdir"),
+        tmpdir.as_os_str().to_owned(),
+        OsString::from("--coder"),
+        OsString::from(coder),
+    ];
+    if !difficulty.is_empty() {
+        public_args.extend([OsString::from("--difficulty"), OsString::from(difficulty)]);
+    }
+    if answers_present {
+        public_args.extend([OsString::from("--answers"), OsString::from(answers)]);
+    }
+    let owner_pid = step2_owner_pid_string();
+    run_bgjob_adapt_with_owner(
+        tmpdir,
+        "implement-step2-dispatch",
+        STEP2_DISPATCH_BUDGET_SECONDS,
+        "run-dispatch",
+        &merge_env,
+        &[],
+        &public_args,
+        Some(repo_root),
+        answers_present,
+        Some(&owner_pid),
+    )
+}
+
+/// Launch the shared adapter with a caller-selected owner PID.
+///
+/// Most call sites use [`run_bgjob_adapt`]'s shared owner resolution. Step 2
+/// preserves its narrower public contract: `LARCH_CLAUDE_PID`, then the direct
+/// parent PID.
+#[allow(clippy::too_many_arguments)]
+pub fn run_bgjob_adapt_with_owner(
+    tmpdir: &Path,
+    step: &str,
+    budget_s: u32,
+    verb: &str,
+    merge_env: &Path,
+    initial_merge_rows: &[(String, String)],
+    public_args: &[OsString],
+    repo_root: Option<&Path>,
+    replace_completed_result: bool,
+    explicit_owner_pid: Option<&str>,
+) -> Result<ExitCode, String> {
     let root = resolve_plugin_root()?;
     let entry = root.join("scripts").join("larch.sh");
     let clone = env::current_dir().map_err(|e| e.to_string())?;
     let run_id = resolve_run_id("", tmpdir, &clone);
     let (log_dir, _, _) = log_paths(tmpdir, None, step).map_err(|e| e.to_string())?;
-    let owner_pid = owner_pid_string();
+    let owner_pid = explicit_owner_pid.map_or_else(owner_pid_string, str::to_owned);
     let mut argv: Vec<OsString> = vec![
         "bgjob".into(),
         "adapt".into(),
@@ -977,6 +1052,23 @@ pub fn owner_pid_string() -> String {
         })
 }
 
+/// Resolve the Step 2 adapter owner exactly as its retired wrapper did.
+pub fn step2_owner_pid_string() -> String {
+    let configured = env::var("LARCH_CLAUDE_PID").ok();
+    #[cfg(unix)]
+    let parent = nix::unistd::getppid().as_raw().to_string();
+    #[cfg(not(unix))]
+    let parent = String::new();
+    select_step2_owner_pid(configured.as_deref(), &parent)
+}
+
+fn select_step2_owner_pid(configured: Option<&str>, parent: &str) -> String {
+    configured
+        .filter(|value| !value.is_empty())
+        .unwrap_or(parent)
+        .to_owned()
+}
+
 fn run_verified_larch_in(
     cwd: &Path,
     root: &Path,
@@ -1108,8 +1200,8 @@ mod tests {
         CHECKS_FP, CHECKS_HEAD, CHECKS_SCHEMA, IDENTITY_FAILED, LaunchIdentity, TEST_LARCH,
         format_rows, integrity_rows, kv_value, opt_string, prepare_checks_rejoin,
         publish_identity_child, publish_rows, run_child, run_parent, run_step_checks,
-        safe_merge_env, session_key, status_byte, stdout_is_merge_rows, terminal_action_in_output,
-        unlink_safe,
+        safe_merge_env, select_step2_owner_pid, session_key, status_byte, stdout_is_merge_rows,
+        terminal_action_in_output, unlink_safe,
     };
     use larch_core::{ChangeKind, ProcessOutput, ProcessStatus};
     use larch_test_support::{GitFixture, GitRepository};
@@ -1129,6 +1221,13 @@ mod tests {
             false,
             false,
         )
+    }
+
+    #[test]
+    fn step2_owner_prefers_larch_pid_and_falls_back_to_parent() {
+        assert_eq!(select_step2_owner_pid(Some("4242"), "3131"), "4242");
+        assert_eq!(select_step2_owner_pid(Some(""), "3131"), "3131");
+        assert_eq!(select_step2_owner_pid(None, "3131"), "3131");
     }
 
     fn install_larch(
