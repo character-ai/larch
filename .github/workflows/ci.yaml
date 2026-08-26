@@ -221,8 +221,7 @@ jobs:
   # Regression harness shards (the `test-*` bash scripts in Makefile). Runs
   # as a parallel matrix in parallel with the `lint` and `shellcheck` jobs so
   # a harness failure can be diagnosed and re-run without waiting on
-  # pre-commit, and vice versa. Keeps setup-python so harness scripts that
-  # still call python3 inline have an interpreter; no pip packages are required.
+  # pre-commit, and vice versa. No Python interpreter is required.
   test-harnesses:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -239,9 +238,6 @@ jobs:
           sparse-checkout-cone-mode: false
       - id: main-cache-keys
         uses: ./.github/actions/main-cache-keys
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
       # Shard 1 is the only harness leg that builds larch. Restore the exact
       # trusted dependency caches, but leave the current checkout's executable
       # to Cargo so a cached workspace product can never run candidate code.

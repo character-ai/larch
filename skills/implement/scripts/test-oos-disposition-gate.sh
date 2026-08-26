@@ -26,6 +26,7 @@ assert_case() {
     local label=$1 helper=$2 root=$3 plugin_root=$4 verb=$5
     shift 5
     local capture="$TMP_ROOT/$label.txt" out="$TMP_ROOT/$label.out" err="$TMP_ROOT/$label.err" rc
+    local expected_bin got_bin line idx
     set +e
     CLAUDE_PLUGIN_ROOT="$plugin_root" OOS_CAPTURE="$capture" "$helper" "$@" >"$out" 2>"$err"
     rc=$?
@@ -33,17 +34,32 @@ assert_case() {
     [ "$rc" -eq 23 ] || { echo "FAIL: $label exit (want 23 got $rc)" >&2; exit 1; }
     [ "$(cat "$out")" = 'wrapper stdout' ] || { echo "FAIL: $label stdout" >&2; exit 1; }
     [ "$(cat "$err")" = 'wrapper stderr' ] || { echo "FAIL: $label stderr" >&2; exit 1; }
-    python3 - "$capture" "$root" "$verb" "$@" <<'PY'
-import sys
-from pathlib import Path
-
-rows = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
-expected = ["oos", sys.argv[3], *sys.argv[4:]]
-if Path(rows[0]).resolve() != (Path(sys.argv[2]) / "scripts" / "larch.sh").resolve():
-    raise SystemExit(f"unexpected entrypoint: {rows[0]!r}")
-if rows[1:] != expected:
-    raise SystemExit(f"unexpected delegation: {rows[1:]!r} != {expected!r}")
-PY
+    expected_bin="$(cd "$root/scripts" && pwd -P)/larch.sh"
+    got_bin="$(cd "$(dirname "$(sed -n '1p' "$capture")")" && pwd -P)/$(basename "$(sed -n '1p' "$capture")")"
+    [ "$got_bin" = "$expected_bin" ] || {
+        printf 'FAIL: %s unexpected entrypoint: %s\n' "$label" "$(sed -n '1p' "$capture")" >&2
+        exit 1
+    }
+    [ "$(sed -n '2p' "$capture")" = "oos" ] || {
+        printf 'FAIL: %s unexpected domain\n' "$label" >&2
+        exit 1
+    }
+    [ "$(sed -n '3p' "$capture")" = "$verb" ] || {
+        printf 'FAIL: %s unexpected verb\n' "$label" >&2
+        exit 1
+    }
+    idx=3
+    for line in "$@"; do
+        idx=$((idx + 1))
+        [ "$(sed -n "${idx}p" "$capture")" = "$line" ] || {
+            printf 'FAIL: %s unexpected arg at line %s\n' "$label" "$idx" >&2
+            exit 1
+        }
+    done
+    [ "$(wc -l < "$capture" | tr -d ' ')" = "$idx" ] || {
+        printf 'FAIL: %s unexpected arity\n' "$label" >&2
+        exit 1
+    }
     printf 'PASS: %s\n' "$label"
 }
 

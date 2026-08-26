@@ -14,18 +14,27 @@ write_cli() {
     mkdir -p "$root/scripts"
     cat >"$root/scripts/larch.sh" <<'SH'
 #!/usr/bin/env bash
-python3 - "$0" "$@" <<'PY'
-import json, os, sys
-from pathlib import Path
-Path(os.environ["WFR_CAPTURE"]).write_text(json.dumps({"program": sys.argv[1], "argv": sys.argv[2:]}), encoding="utf-8")
-sys.stdout.write("wrapper stdout\n"); sys.stderr.write("wrapper stderr\n"); raise SystemExit(23)
-PY
+{
+  printf '{"program":'
+  printf '%s' "$0" | jq -Rs .
+  printf ',"argv":['
+  first=1
+  for arg in "$@"; do
+    if [ "$first" -eq 1 ]; then first=0; else printf ','; fi
+    printf '%s' "$arg" | jq -Rs .
+  done
+  printf ']}\n'
+} >"$WFR_CAPTURE"
+printf 'wrapper stdout\n'
+printf 'wrapper stderr\n' >&2
+exit 23
 SH
     chmod +x "$root/scripts/larch.sh"
 }
 
 assert_case() {
     local helper=$1 root=$2 capture=$3 stdout=$4 stderr=$5 plugin_root=$2 rc
+    local expected_bin got_prog
     if [ "$helper" = "$fallback/skills/implement/scripts/write-final-report.sh" ]; then plugin_root=""; fi
     set +e
     CLAUDE_PLUGIN_ROOT="$plugin_root" WFR_CAPTURE="$capture" \
@@ -33,13 +42,19 @@ assert_case() {
     rc=$?
     set -e
     [ "$rc" -eq 23 ] && [ "$(cat "$stdout")" = 'wrapper stdout' ] && [ "$(cat "$stderr")" = 'wrapper stderr' ]
-    python3 - "$capture" "$root" "$TMP_ROOT/impl" <<'PY'
-import json, sys
-from pathlib import Path
-record = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-if Path(record["program"]).resolve() != (Path(sys.argv[2]) / "scripts" / "larch.sh").resolve() or record["argv"] != ["final-report", "write", "--implement-tmpdir", sys.argv[3], "--comment-only"]:
-    raise SystemExit(f"unexpected delegation: {record!r}")
-PY
+    expected_bin="$(cd "$root/scripts" && pwd -P)/larch.sh"
+    got_prog="$(jq -r '.program' "$capture")"
+    got_prog="$(cd "$(dirname "$got_prog")" && pwd -P)/$(basename "$got_prog")"
+    [ "$got_prog" = "$expected_bin" ] || {
+        printf 'unexpected program: %s\n' "$got_prog" >&2
+        exit 1
+    }
+    jq -e --arg impl "$TMP_ROOT/impl" '
+      .argv == ["final-report","write","--implement-tmpdir",$impl,"--comment-only"]
+    ' "$capture" >/dev/null || {
+        printf 'unexpected argv: %s\n' "$(jq -c . "$capture")" >&2
+        exit 1
+    }
 }
 
 fallback="$TMP_ROOT/fallback"; mkdir -p "$fallback/skills/implement/scripts"

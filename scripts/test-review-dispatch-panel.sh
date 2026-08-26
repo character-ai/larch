@@ -44,21 +44,16 @@ run_panel() {
 }
 
 assert_slots() {
-    python3 - "$1" "$2" <<'PY'
-import json
-import sys
-
-rows = [json.loads(line) for line in open(sys.argv[1], encoding="utf-8") if line.strip()]
-expected = [
-    ("correctness", "cursor"), ("correctness", "codex"),
-    ("edge-cases", "cursor"), ("edge-cases", "codex"),
-    ("testing", "cursor"), ("testing", "codex"),
-]
-if sys.argv[2] == "full":
-    assert [(row["slot"], row["tool"]) for row in rows] == expected
-else:
-    assert len(rows) == 3 and all(row["tool"] == "cursor" for row in rows)
-PY
+    local manifest="$1" mode="$2" pairs
+    if [[ "$mode" == "full" ]]; then
+        pairs="$(jq -R 'select(length>0) | fromjson | [(.slot // empty), .tool]' "$manifest" | jq -s -c .)"
+        [[ "$pairs" == '[["correctness","cursor"],["correctness","codex"],["edge-cases","cursor"],["edge-cases","codex"],["testing","cursor"],["testing","codex"]]' ]]
+    else
+        jq -e -R -s '
+          [split("\n")[] | select(length>0) | fromjson]
+          | length == 3 and all(.[]; .tool == "cursor")
+        ' "$manifest" >/dev/null
+    fi
 }
 
 for round in round-1 round-2 round-3 round-4; do
@@ -92,17 +87,11 @@ grep -qx 'DYNAMIC_SLOTS=1' <<<"$output"
 grep -qx 'SLOT_COUNT=4' <<<"$output"
 grep -q '"slot":"dyn-architecture"' "$tmpdir/round-4/panel-manifest.ndjson"
 grep -q '# Dynamic Reviewer: architecture' "$tmpdir/round-4/dynamic-archetypes/dyn-architecture-prompt.md"
-python3 - "$tmpdir/round-4/panel-manifest.ndjson" "$tmpdir/round-4/dynamic-archetypes/dyn-architecture-prompt.payload-bytes" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-rows = [json.loads(line) for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()]
-row = next(row for row in rows if row["slot"] == "dyn-architecture")
-rendered_payload = int(Path(sys.argv[2]).read_text(encoding="utf-8").strip())
-scout_payload = "Architecture changes merit focused review: café.Check boundaries and data flow for naïve callers. Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.".encode("utf-8")
-assert row["payload_bytes"] - rendered_payload == len(scout_payload)
-PY
+rendered_payload="$(tr -d '[:space:]' <"$tmpdir/round-4/dynamic-archetypes/dyn-architecture-prompt.payload-bytes")"
+scout_payload='Architecture changes merit focused review: café.Check boundaries and data flow for naïve callers. Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.'
+scout_payload_len="$(printf '%s' "$scout_payload" | wc -c | tr -d ' ')"
+row_payload="$(jq -R 'select(length>0) | fromjson | select(.slot == "dyn-architecture") | .payload_bytes' "$tmpdir/round-4/panel-manifest.ndjson")"
+[[ "$((row_payload - rendered_payload))" -eq "$scout_payload_len" ]]
 
 mkdir -p "$tmpdir/reuse"
 printf '# plan\n' > "$tmpdir/reuse.md"

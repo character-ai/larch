@@ -35,12 +35,6 @@ if [[ "$REPORT" == *"| post | nit | 0 |"* || "$REPORT" != *"| post | nit |"* ]];
     echo "SKIP: no v>=49 post nit corpus slice" >&2
     exit 0
 fi
-python3 - "$REPORT_FILE" <<'PY'
-import re, sys
-text = open(sys.argv[1], encoding="utf-8").read()
-row = re.search(r"\| post \| nit \| \d+ \| ([0-9.]+)", text)
-if not row:
-    raise SystemExit("post nit row missing")
-if abs(float(row.group(1)) - 0.0) > 0.1:
-    raise SystemExit("post nit acc is not 0.0%")
-PY
+acc="$(sed -nE 's/.*\| post \| nit \| [0-9]+ \| ([0-9.]+).*/\1/p' "$REPORT_FILE" | head -n 1)"
+[[ -n "$acc" ]] || { echo "post nit row missing" >&2; exit 1; }
+awk -v acc="$acc" 'BEGIN { if ((acc + 0) > 0.1 || (acc + 0) < -0.1) exit 1 }'

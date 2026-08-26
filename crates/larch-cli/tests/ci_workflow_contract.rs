@@ -114,6 +114,21 @@ fn retired_python_ci_assets_stay_absent() {
             .exists(),
         "retains requirements-test-harnesses.txt"
     );
+
+    let ci = fs::read_to_string(root.join(".github/workflows/ci.yaml")).expect("read ci.yaml");
+    let harness_job = ci
+        .split("\n  test-harnesses:\n")
+        .nth(1)
+        .and_then(|rest| rest.split("\n  ").next())
+        .expect("test-harnesses job present");
+    assert!(
+        !harness_job.contains("actions/setup-python"),
+        "test-harnesses job still installs Python"
+    );
+    assert!(
+        !harness_job.contains("setup-python"),
+        "test-harnesses job still references setup-python"
+    );
 }
 
 #[test]

@@ -98,21 +98,14 @@ grep -qx 'PANEL_PRUNED_EMPTY=false' <<<"$panel_output"
 grep -qx 'DISPATCH_OK=true' <<<"$panel_output"
 panel_paths="$(sed -n 's/^PANEL_PATHS_FILE=//p' <<<"$panel_output")"
 [[ -s "$panel_paths" ]]
-python3 - "$design/plan-review-slots.ndjson" <<'PY'
-import json
-import sys
-
-rows = [json.loads(line) for line in open(sys.argv[1], encoding="utf-8") if line.strip()]
-expected = [
-    (f"{tool}-plan-{archetype}", tool)
-    for archetype in ("arch", "innovation", "pragmatic", "requirements")
-    for tool in ("cursor", "codex")
-]
-assert [(row["slot"], row["tool"]) for row in rows] == expected
-assert all(row["archetype"] != "generic" for row in rows if "archetype" in row)
-assert all(row["resolved_model"] == "gpt-5.6-terra" for row in rows if row["tool"] == "codex")
-assert all(row["payload_bytes"] > 0 for row in rows)
-PY
+pairs="$(jq -R 'select(length>0) | fromjson | [.slot, .tool]' "$design/plan-review-slots.ndjson" | jq -s -c .)"
+[[ "$pairs" == '[["cursor-plan-arch","cursor"],["codex-plan-arch","codex"],["cursor-plan-innovation","cursor"],["codex-plan-innovation","codex"],["cursor-plan-pragmatic","cursor"],["codex-plan-pragmatic","codex"],["cursor-plan-requirements","cursor"],["codex-plan-requirements","codex"]]' ]]
+jq -e -R -s '
+  [split("\n")[] | select(length>0) | fromjson]
+  | all(.[]; (.archetype // "") != "generic")
+    and all(.[]; .tool != "codex" or .resolved_model == "gpt-5.6-terra")
+    and all(.[]; .payload_bytes > 0)
+' "$design/plan-review-slots.ndjson" >/dev/null
 env CLAUDE_PLUGIN_ROOT="$tmpdir/plugin" LARCH_VOTER_CALIBRATION_FEEDBACK=0 \
     "$binary" render plan-review \
     --archetype arch --vendor codex \
@@ -179,26 +172,22 @@ grep -qx 'VOTER_3_STATUS=launched' <<<"$voter_output"
 grep -qx 'VOTER_1_PARSE_RATE_STATUS=OK' <<<"$voter_output"
 grep -qx 'DISPATCH_OK=true' <<<"$voter_output"
 grep -qx 'VOTER_1_RETRIED=false' <<<"$voter_output"
-python3 - "$design/plan-voter-slots.ndjson" "$voter_output" <<'PY'
-import json
-import sys
-
-rows = [json.loads(line) for line in open(sys.argv[1], encoding="utf-8") if line.strip()]
-assert len(rows) == 3
-assert all(set(row["prompt_files"]) == {"claude", "codex", "cursor"} for row in rows)
-for row in rows:
-    for tool, prompt in row["prompt_files"].items():
-        sidecar = prompt + ".payload-bytes"
-        with open(sidecar, encoding="utf-8") as handle:
-            assert row["payload_files"][tool] == int(handle.read().strip() or "0")
-keys = [line.partition("=")[0] for line in sys.argv[2].splitlines()]
-assert keys[:13] == [
-    "VOTER_1_PATH", "VOTER_1_TOOL", "VOTER_1_STATUS", "VOTER_1_PARSE_RATE_STATUS",
-    "VOTER_2_PATH", "VOTER_3_PATH", "VOTER_PATHS_FILE",
-    "VOTER_2_TOOL", "VOTER_3_TOOL", "VOTER_2_STATUS", "VOTER_3_STATUS",
-    "VOTER_2_PARSE_RATE_STATUS", "VOTER_3_PARSE_RATE_STATUS",
-]
-PY
+row_count="$(jq -R 'select(length>0) | fromjson' "$design/plan-voter-slots.ndjson" | jq -s 'length')"
+[[ "$row_count" -eq 3 ]]
+while IFS= read -r row; do
+  [ -n "$row" ] || continue
+  keys="$(printf '%s' "$row" | jq -c '.prompt_files | keys | sort')"
+  [[ "$keys" == '["claude","codex","cursor"]' ]]
+  for tool in claude codex cursor; do
+    prompt="$(printf '%s' "$row" | jq -r --arg t "$tool" '.prompt_files[$t]')"
+    want="$(printf '%s' "$row" | jq -r --arg t "$tool" '.payload_files[$t]')"
+    got="$(tr -d '[:space:]' <"${prompt}.payload-bytes")"
+    got="${got:-0}"
+    [[ "$got" -eq "$want" ]]
+  done
+done < <(jq -c -R 'select(length>0) | fromjson' "$design/plan-voter-slots.ndjson")
+keys="$(printf '%s\n' "$voter_output" | awk -F= '{print $1}' | head -n 13 | paste -sd, -)"
+[[ "$keys" == 'VOTER_1_PATH,VOTER_1_TOOL,VOTER_1_STATUS,VOTER_1_PARSE_RATE_STATUS,VOTER_2_PATH,VOTER_3_PATH,VOTER_PATHS_FILE,VOTER_2_TOOL,VOTER_3_TOOL,VOTER_2_STATUS,VOTER_3_STATUS,VOTER_2_PARSE_RATE_STATUS,VOTER_3_PARSE_RATE_STATUS' ]]
 for voter_tool in codex cursor claude; do
     expected="$tmpdir/expected-plan-voter-$voter_tool.prompt"
     env CLAUDE_PLUGIN_ROOT="$tmpdir/plugin" LARCH_VOTER_CALIBRATION_FEEDBACK=0 \
