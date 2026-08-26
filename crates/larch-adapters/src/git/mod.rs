@@ -597,8 +597,17 @@ mod tests {
             &MergeRequest::Commit {
                 theirs: GitRef::new("topic").unwrap(),
                 no_edit: true,
+                strategy_ours: false,
             },
             &["merge", "--no-edit", "topic"],
+        );
+        check(
+            &MergeRequest::Commit {
+                theirs: GitRef::new("stable").unwrap(),
+                no_edit: true,
+                strategy_ours: true,
+            },
+            &["merge", "-s", "ours", "--no-edit", "stable"],
         );
         check(
             &MergeRequest::FastForward {
@@ -1764,11 +1773,64 @@ mod tests {
                     MergeRequest::Commit {
                         theirs: GitRef::new("missing-branch").unwrap(),
                         no_edit: true,
+                        strategy_ours: false,
                     },
                     &NeverCancelled,
                 ))
             },
         );
+        assert_status_differential_case(
+            "merge -s ours succeeds where a content merge would conflict",
+            runtime,
+            runner,
+            GitFixture::Refs,
+            setup_ours_merge_conflict,
+            ["merge", "-s", "ours", "--no-edit", "topic"],
+            |repository, runner, runtime| {
+                runtime.block_on(GitCli::new(runner, policy(repository.root())).merge(
+                    MergeRequest::Commit {
+                        theirs: GitRef::new("topic").unwrap(),
+                        no_edit: true,
+                        strategy_ours: true,
+                    },
+                    &NeverCancelled,
+                ))
+            },
+        );
+    }
+
+    /// Diverge `main` and `topic` on the same file so a content merge conflicts
+    /// but `-s ours` succeeds, keeping `main`'s tree and recording `topic` as a
+    /// second parent.
+    fn setup_ours_merge_conflict(repository: &GitRepository) {
+        repository
+            .git(["config", "user.name", "Larch Fixture"])
+            .expect("configure fixture author name");
+        repository
+            .git(["config", "user.email", "fixture@example.invalid"])
+            .expect("configure fixture author email");
+        let topic = repository
+            .git(["checkout", "--quiet", "topic"])
+            .expect("checkout topic fixture branch");
+        assert!(topic.success());
+        repository
+            .write("tracked.txt", b"topic\n")
+            .expect("write topic change");
+        let topic_commit = repository
+            .git(["commit", "--quiet", "-am", "topic change"])
+            .expect("commit topic change");
+        assert!(topic_commit.success());
+        let main_checkout = repository
+            .git(["checkout", "--quiet", "main"])
+            .expect("checkout main fixture branch");
+        assert!(main_checkout.success());
+        repository
+            .write("tracked.txt", b"main\n")
+            .expect("write main change");
+        let main_commit = repository
+            .git(["commit", "--quiet", "-am", "main change"])
+            .expect("commit main change");
+        assert!(main_commit.success());
     }
 
     fn setup_rebase_conflict(repository: &GitRepository) {

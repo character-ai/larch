@@ -62,8 +62,8 @@ pub use git::{
     GitRefspec, GitRemote, GitToken, GitUrl, GixRepository, InitRequest, InterpretTrailersRequest,
     LsRemoteRequest, MergeRequest, PullRequest, PushRequest, RebaseRequest, RemoteMutationRequest,
     ResetMode, ResetRequest, RestoreRequest, RmRequest, SparseCheckoutRequest, StashRequest,
-    SubmoduleCheckout, SubmoduleRequest, TagMutationRequest, VersionRequest, WorktreeRequest,
-    classify_process_error, unified_blob_diff,
+    SubmoduleCheckout, SubmoduleRequest, TagMutationRequest, VersionRequest, WorktreePath,
+    WorktreeRequest, classify_process_error, unified_blob_diff,
 };
 pub use process::{
     NoopProcessObserver, OpenFileHolderStatus, ProcessFileRouting, ProcessOutputRouting,

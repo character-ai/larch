@@ -830,15 +830,32 @@ git_op!(RebaseRequest, Rebase);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MergeRequest {
-    Commit { theirs: GitRef, no_edit: bool },
-    FastForward { target: GitRef },
+    Commit {
+        theirs: GitRef,
+        no_edit: bool,
+        /// Force the `ours` strategy so the first parent's tree survives the
+        /// two-parent commit. The only way to build a projection commit whose
+        /// tree is the merged tree while recording `stable` as a second parent.
+        strategy_ours: bool,
+    },
+    FastForward {
+        target: GitRef,
+    },
     Abort,
 }
 impl MergeRequest {
     fn argv(&self) -> Result<Vec<OsString>, GitCliInputError> {
         Ok(match self {
-            Self::Commit { theirs, no_edit } => {
+            Self::Commit {
+                theirs,
+                no_edit,
+                strategy_ours,
+            } => {
                 let mut a = Vec::new();
+                if *strategy_ours {
+                    a.push("-s".into());
+                    a.push("ours".into());
+                }
                 if *no_edit {
                     a.push("--no-edit".into());
                 }
