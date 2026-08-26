@@ -9,6 +9,10 @@ use std::{
 use larch_adapters::{GixRepository, PathIntent, RepositoryRoot, read_utf8};
 use larch_core::{GitPath, StatusOptions};
 
+const UNSAFE_REPLACE: &str = "refusing to replace an unsafe plugin projection path";
+const UNSAFE_WRITE: &str = "refusing to write an unsafe plugin projection path";
+const UNSAFE_DESTINATION: &str = "refusing to generate into an unsafe plugin projection path";
+
 const DIRECT_FILES: &[&str] = &[
     ".claude-plugin/plugin.json",
     "ARCHITECTURE.md",
@@ -62,25 +66,43 @@ const DIRECT_FILES: &[&str] = &[
 const INDEX_ERROR: &str = "plugin runtime projection requires a readable git index";
 const ROOT_ERROR: &str = "plugin runtime projection requires the larch repository root";
 
-pub fn run(check: bool, check_worktree: bool) -> Result<(), String> {
+pub fn run(check: bool, check_worktree: bool, output: Option<&Path>) -> Result<(), String> {
     let current = std::env::current_dir().map_err(|_| ROOT_ERROR.to_owned())?;
     let root = RepositoryRoot::resolve(Some(&current)).map_err(|_| ROOT_ERROR.to_owned())?;
+    if let Some(destination) = output {
+        return generate_projection(&root, destination);
+    }
     let paths = runtime_paths(&root)?;
 
     if check {
-        let errors = projection_errors(&root, &paths)?;
+        let errors = projection_errors(&root, &root.path().join("plugin"), &paths)?;
         if !errors.is_empty() {
             return Err(errors.join("\n"));
         }
     }
     if !check {
         validate_root(&root)?;
-        sync(&root, &paths)?;
+        sync(&root, &root.path().join("plugin"), &paths)?;
     }
     if check_worktree {
         verify_projection_worktree(&root)?;
     }
     Ok(())
+}
+
+/// Generate the validated runtime-only projection from `root` into `destination`.
+///
+/// The single owner of projection generation for both the CLI `--output` mode
+/// and the in-process `release stage` worktree call (G-Dup-1). It runs the same
+/// [`validate_root`] and [`runtime_paths`] validation as the in-place mode, then
+/// writes the projection into `destination` under the write and cleanup guards.
+///
+/// # Errors
+/// Returns a message when validation fails or a destination path is unsafe.
+pub fn generate_projection(root: &RepositoryRoot, destination: &Path) -> Result<(), String> {
+    validate_root(root)?;
+    let paths = runtime_paths(root)?;
+    sync(root, destination, &paths)
 }
 
 fn verify_projection_worktree(root: &RepositoryRoot) -> Result<(), String> {
@@ -239,10 +261,10 @@ fn validate_root(root: &RepositoryRoot) -> Result<(), String> {
 
 fn projection_errors(
     root: &RepositoryRoot,
+    projection: &Path,
     expected: &BTreeSet<String>,
 ) -> Result<Vec<String>, String> {
-    let projection = root.path().join("plugin");
-    match fs::symlink_metadata(&projection) {
+    match fs::symlink_metadata(projection) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
             return Ok(vec![
                 "runtime projection root must be a real directory".to_owned(),
@@ -254,7 +276,7 @@ fn projection_errors(
     }
 
     let actual = if projection.is_dir() {
-        projection_paths(&projection)?
+        projection_paths(projection)?
     } else {
         BTreeSet::new()
     };
@@ -320,27 +342,68 @@ fn collect_projection_paths(
     Ok(())
 }
 
-fn sync(root: &RepositoryRoot, paths: &BTreeSet<String>) -> Result<(), String> {
-    let projection = root.path().join("plugin");
-    if let Ok(metadata) = fs::symlink_metadata(&projection) {
+/// Write the projection `paths` into `destination`.
+///
+/// When `destination` is the `plugin/` directory directly below `root`, the
+/// existing `root.confine(...)` write and cleanup guards apply. Any other
+/// destination is an external tree (the CLI `--output DIR` mode), replaced and
+/// written under destination-anchored symlink guards instead.
+fn sync(root: &RepositoryRoot, destination: &Path, paths: &BTreeSet<String>) -> Result<(), String> {
+    if destination == root.path().join("plugin") {
+        sync_confined(root, destination, paths)
+    } else {
+        sync_external(root, destination, paths)
+    }
+}
+
+fn sync_confined(
+    root: &RepositoryRoot,
+    destination: &Path,
+    paths: &BTreeSet<String>,
+) -> Result<(), String> {
+    if let Ok(metadata) = fs::symlink_metadata(destination) {
         if metadata.file_type().is_symlink()
             || !metadata.is_dir()
-            || projection.parent() != Some(root.path())
+            || destination.parent() != Some(root.path())
         {
-            return Err("refusing to replace an unsafe plugin projection path".to_owned());
+            return Err(UNSAFE_REPLACE.to_owned());
         }
         let confined = root
-            .confine(&projection, PathIntent::Cleanup)
-            .map_err(|_| "refusing to replace an unsafe plugin projection path".to_owned())?;
-        ensure_real_tree(&projection)?;
+            .confine(destination, PathIntent::Cleanup)
+            .map_err(|_| UNSAFE_REPLACE.to_owned())?;
+        ensure_real_tree(destination)?;
         confined
             .revalidate()
-            .map_err(|_| "refusing to replace an unsafe plugin projection path".to_owned())?;
-        fs::remove_dir_all(confined.path())
-            .map_err(|_| "refusing to replace an unsafe plugin projection path".to_owned())?;
+            .map_err(|_| UNSAFE_REPLACE.to_owned())?;
+        fs::remove_dir_all(confined.path()).map_err(|_| UNSAFE_REPLACE.to_owned())?;
     }
     for path in paths {
-        copy_runtime_path(root, path)?;
+        copy_runtime_path_confined(root, destination, path)?;
+    }
+    Ok(())
+}
+
+fn sync_external(
+    root: &RepositoryRoot,
+    destination: &Path,
+    paths: &BTreeSet<String>,
+) -> Result<(), String> {
+    if !destination.is_absolute() {
+        return Err(UNSAFE_DESTINATION.to_owned());
+    }
+    match fs::symlink_metadata(destination) {
+        // `symlink_metadata` never follows the link, so a symlink reports
+        // `is_dir() == false` and falls through to the unsafe catch-all.
+        Ok(metadata) if metadata.is_dir() => {
+            ensure_real_tree(destination)?;
+            fs::remove_dir_all(destination).map_err(|_| UNSAFE_REPLACE.to_owned())?;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Ok(_) | Err(_) => return Err(UNSAFE_REPLACE.to_owned()),
+    }
+    fs::create_dir(destination).map_err(|_| UNSAFE_DESTINATION.to_owned())?;
+    for path in paths {
+        copy_runtime_path_external(root, destination, path)?;
     }
     Ok(())
 }
@@ -366,23 +429,51 @@ fn ensure_real_tree(directory: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn copy_runtime_path(root: &RepositoryRoot, path: &str) -> Result<(), String> {
+fn copy_runtime_path_confined(
+    root: &RepositoryRoot,
+    destination_base: &Path,
+    path: &str,
+) -> Result<(), String> {
     let source = root
         .confine(path, PathIntent::Read)
         .map_err(|_| format!("plugin runtime projection inputs are unsafe: {path}"))?;
-    let destination = root.path().join("plugin").join(path);
+    let destination = destination_base.join(path);
     let parent = destination
         .parent()
-        .ok_or_else(|| "refusing to write an unsafe plugin projection path".to_owned())?;
+        .ok_or_else(|| UNSAFE_WRITE.to_owned())?;
     create_real_directories(root.path(), parent)?;
     let destination = root
         .confine(&destination, PathIntent::Write)
-        .map_err(|_| "refusing to write an unsafe plugin projection path".to_owned())?;
-    fs::copy(source.path(), destination.path())
-        .map_err(|_| "refusing to write an unsafe plugin projection path".to_owned())?;
+        .map_err(|_| UNSAFE_WRITE.to_owned())?;
+    fs::copy(source.path(), destination.path()).map_err(|_| UNSAFE_WRITE.to_owned())?;
     destination
         .revalidate()
-        .map_err(|_| "refusing to write an unsafe plugin projection path".to_owned())?;
+        .map_err(|_| UNSAFE_WRITE.to_owned())?;
+    Ok(())
+}
+
+fn copy_runtime_path_external(
+    root: &RepositoryRoot,
+    destination_base: &Path,
+    path: &str,
+) -> Result<(), String> {
+    let source = root
+        .confine(path, PathIntent::Read)
+        .map_err(|_| format!("plugin runtime projection inputs are unsafe: {path}"))?;
+    let destination = destination_base.join(path);
+    let parent = destination
+        .parent()
+        .ok_or_else(|| UNSAFE_WRITE.to_owned())?;
+    create_real_directories(destination_base, parent)?;
+    match fs::symlink_metadata(&destination) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        _ => return Err(UNSAFE_WRITE.to_owned()),
+    }
+    fs::copy(source.path(), &destination).map_err(|_| UNSAFE_WRITE.to_owned())?;
+    let written = fs::symlink_metadata(&destination).map_err(|_| UNSAFE_WRITE.to_owned())?;
+    if written.file_type().is_symlink() || !written.is_file() {
+        return Err(UNSAFE_WRITE.to_owned());
+    }
     Ok(())
 }
 
@@ -405,11 +496,40 @@ fn create_real_directories(root: &Path, destination: &Path) -> Result<(), String
     Ok(())
 }
 
+/// Write a complete, valid set of runtime projection inputs under `root`.
+///
+/// Shared by this module's fixtures and the `release stage` projection-commit
+/// test so both exercise the same `generate_projection` input contract.
+#[cfg(test)]
+pub fn write_runtime_inputs(root: &Path) {
+    let write = |relative: &str, contents: &str| {
+        let path = root.join(relative);
+        fs::create_dir_all(path.parent().expect("input parent")).expect("create input parent");
+        fs::write(path, contents).expect("write runtime input");
+    };
+    for path in DIRECT_FILES {
+        let contents = if *path == ".claude-plugin/plugin.json" {
+            "{\"name\":\"larch\",\"version\":\"1.2.3\"}\n"
+        } else {
+            "runtime\n"
+        };
+        write(path, contents);
+    }
+    for (path, contents) in [
+        ("agents/reviewer.md", "agent\n"),
+        ("hooks/hooks.json", "{}\n"),
+        ("skills/implement/SKILL.md", "skill\n"),
+        ("docs/security/workflow.md", "focused security\n"),
+    ] {
+        write(path, contents);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        DIRECT_FILES, ROOT_ERROR, focused_security_references, is_python_path, projection_errors,
-        runtime_paths, sync, validate_root, verify_projection_worktree,
+        DIRECT_FILES, ROOT_ERROR, focused_security_references, generate_projection, is_python_path,
+        projection_errors, runtime_paths, sync, validate_root, verify_projection_worktree,
     };
     use larch_adapters::RepositoryRoot;
     use std::{collections::BTreeSet, fs, path::Path, process::Command};
@@ -421,10 +541,10 @@ mod tests {
         let root = repository_root(fixture.path());
         let paths = runtime_paths(&root).expect("runtime path selection");
 
-        sync(&root, &paths).expect("projection generation");
+        sync(&root, &root.path().join("plugin"), &paths).expect("projection generation");
 
         assert!(
-            projection_errors(&root, &paths)
+            projection_errors(&root, &root.path().join("plugin"), &paths)
                 .expect("projection validation")
                 .is_empty()
         );
@@ -480,11 +600,56 @@ mod tests {
     }
 
     #[test]
+    fn generates_the_projection_into_an_external_destination() {
+        let fixture = fixture();
+        let root = repository_root(fixture.path());
+        let paths = runtime_paths(&root).expect("runtime path selection");
+        let external = tempfile::tempdir().expect("external destination root");
+        let destination = external.path().join("plugin");
+
+        generate_projection(&root, &destination).expect("external projection generation");
+
+        assert!(
+            projection_errors(&root, &destination, &paths)
+                .expect("projection validation")
+                .is_empty()
+        );
+
+        // A re-run replaces the existing external tree in place and validates.
+        generate_projection(&root, &destination)
+            .expect("idempotent external projection generation");
+        assert!(
+            projection_errors(&root, &destination, &paths)
+                .expect("projection validation")
+                .is_empty()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_a_symlinked_external_destination() {
+        use std::os::unix::fs::symlink;
+
+        let fixture = fixture();
+        let root = repository_root(fixture.path());
+        let external = tempfile::tempdir().expect("external destination root");
+        let target = external.path().join("target");
+        fs::create_dir(&target).expect("symlink target directory");
+        let destination = external.path().join("plugin");
+        symlink(&target, &destination).expect("symlink external destination");
+
+        assert_eq!(
+            generate_projection(&root, &destination),
+            Err("refusing to replace an unsafe plugin projection path".to_owned())
+        );
+    }
+
+    #[test]
     fn detects_missing_unexpected_and_changed_projection_files() {
         let fixture = fixture();
         let root = repository_root(fixture.path());
         let paths = runtime_paths(&root).expect("runtime path selection");
-        sync(&root, &paths).expect("projection generation");
+        sync(&root, &root.path().join("plugin"), &paths).expect("projection generation");
         fs::remove_file(fixture.path().join("plugin/LICENSE")).expect("remove projection file");
         fs::write(
             fixture.path().join("plugin/agents/reviewer.md"),
@@ -494,7 +659,8 @@ mod tests {
         fs::write(fixture.path().join("plugin/unexpected.txt"), "unexpected\n")
             .expect("write unexpected projection file");
 
-        let errors = projection_errors(&root, &paths).expect("projection validation");
+        let errors = projection_errors(&root, &root.path().join("plugin"), &paths)
+            .expect("projection validation");
 
         assert!(errors.contains(&"missing runtime projection: LICENSE".to_owned()));
         assert!(errors.contains(&"unexpected runtime projection: unexpected.txt".to_owned()));
@@ -563,13 +729,13 @@ mod tests {
         fs::remove_dir_all(fixture.path().join("plugin")).expect("remove fixture plugin directory");
         symlink(&outside, fixture.path().join("plugin")).expect("symlink projection");
         assert_eq!(
-            projection_errors(&root, &paths),
+            projection_errors(&root, &root.path().join("plugin"), &paths),
             Ok(vec![
                 "runtime projection root must be a real directory".to_owned()
             ])
         );
         assert_eq!(
-            sync(&root, &paths),
+            sync(&root, &root.path().join("plugin"), &paths),
             Err("refusing to replace an unsafe plugin projection path".to_owned())
         );
     }

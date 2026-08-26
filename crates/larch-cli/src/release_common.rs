@@ -1,4 +1,4 @@
-use std::{env, process::ExitCode};
+use std::{env, path::Path, process::ExitCode};
 
 use larch_adapters::{
     FetchRequest, GitCli, GitCliPolicy, GitRef, GitRefspec, GitRemote, GixRepository,
@@ -107,6 +107,16 @@ impl ProductionReleaseServices {
 
     pub fn git_cli(&self) -> GitCli<'_, TokioProcessRunner> {
         GitCli::new(&self.runner, self.git_policy.clone())
+    }
+
+    /// The shared process runner backing every typed Git operation.
+    pub const fn runner(&self) -> &TokioProcessRunner {
+        &self.runner
+    }
+
+    /// The absolute repository root this service operates on.
+    pub fn repository_root(&self) -> &Path {
+        self.git_policy.working_directory()
     }
 
     pub fn object_id(&self, oid: &str) -> Result<ObjectId, String> {
