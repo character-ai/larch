@@ -34,7 +34,7 @@ fn launcher_args(state: &DispatchState) -> Vec<OsString> {
         "--agent-prompt".into(),
         external_implementer_prompt_path(&state.plugin_root, &state.tool_tag).into_os_string(),
         "--timeout".into(),
-        LAUNCHER_TIMEOUT_SECONDS.into(),
+        LAUNCHER_TIMEOUT_SECONDS.to_string().into(),
     ];
     if let Some(cap) =
         env::var_os("LARCH_TOKEN_BUDGET_CAP_IMPLEMENT").filter(|value| !value.is_empty())
@@ -60,7 +60,7 @@ fn launcher_args(state: &DispatchState) -> Vec<OsString> {
 fn run_launcher(state: &DispatchState) -> LauncherRun {
     let args = launcher_args(state);
     let (wrapper_rc, stdout, stderr) =
-        crate::implement_child_seam::child_streams(&state_larch(state, &args));
+        crate::implement_child_seam::child_streams(&state_larch_launch(state, &args));
     let scanned: String = stdout.chars().take(LAUNCHER_KV_LIMIT).collect();
     LauncherRun {
         wrapper_rc,
@@ -1073,7 +1073,7 @@ mod route_tests {
         assert!(args.contains(&"--transcript-path".to_owned()));
         assert!(args.contains(&"--manifest-path".to_owned()));
         assert!(args.contains(&"--timeout".to_owned()));
-        assert!(args.contains(&LAUNCHER_TIMEOUT_SECONDS.to_owned()));
+        assert!(args.contains(&LAUNCHER_TIMEOUT_SECONDS.to_string()));
     }
 
     #[test]
@@ -1787,7 +1787,7 @@ esac
 
     #[test]
     #[cfg(unix)]
-    fn run_launcher_reports_the_external_stubs_kv_envelope() {
+    fn run_launcher_reports_the_envelope_with_parent_deadline_headroom() {
         let repo = test_init_repo();
         test_write_fixture(&repo.path().join("a.txt"), "one\n");
         test_commit_everything(repo.path(), "base");
@@ -1797,13 +1797,31 @@ esac
             &control_dir(&state).join("launch-stub-manifest.json"),
             COMPLETE_MANIFEST,
         );
+        let observed_timeout = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let timeout_sink = std::sync::Arc::clone(&observed_timeout);
+        crate::implement_dispatch_commands::install_test_request_observer(move |request| {
+            let args = request.arguments();
+            if args.first().and_then(|arg| arg.to_str()) == Some("agent")
+                && args.get(1).and_then(|arg| arg.to_str())
+                    == Some("launch-codex-implement")
+            {
+                *timeout_sink.lock().expect("timeout sink lock") = Some(request.timeout());
+            }
+        });
 
         let run = run_launcher(&state);
+        crate::implement_dispatch_commands::clear_test_hooks();
 
         assert_eq!(run.wrapper_rc, 0);
         assert_eq!(run.launcher_exit, "0");
         assert_eq!(run.manifest_written, "true");
         assert_eq!(run.status, "ok");
         assert!(state.manifest_path.is_file());
+        let timeout = observed_timeout
+            .lock()
+            .expect("observed timeout lock")
+            .expect("launcher request timeout");
+        assert_eq!(timeout, DISPATCH_TIMEOUT);
+        assert!(timeout > Duration::from_secs(LAUNCHER_TIMEOUT_SECONDS));
     }
 }

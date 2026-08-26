@@ -740,11 +740,30 @@ fn publish_step2_child_environment(tmpdir: &Path) {
 
 /// Run one already-owned `larch` verb with this dispatch's session identity.
 fn state_larch(state: &DispatchState, argv: &[OsString]) -> Result<ProcessOutput, String> {
-    let rows = STEP2_CHILD_ENVIRONMENT
+    run_verified_larch_env_in(
+        &state.repo_root,
+        &state.plugin_root,
+        argv,
+        &step2_child_environment(),
+    )
+}
+
+/// Run the long external-implementer leg with headroom over its own deadline.
+fn state_larch_launch(state: &DispatchState, argv: &[OsString]) -> Result<ProcessOutput, String> {
+    run_verified_larch_env_in_timeout(
+        &state.repo_root,
+        &state.plugin_root,
+        argv,
+        &step2_child_environment(),
+        DISPATCH_TIMEOUT,
+    )
+}
+
+fn step2_child_environment() -> Vec<(ChildEnvironment, OsString)> {
+    STEP2_CHILD_ENVIRONMENT
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .clone();
-    run_verified_larch_env_in(&state.repo_root, &state.plugin_root, argv, &rows)
+        .clone()
 }
 
 // ---------------------------------------------------------------------------

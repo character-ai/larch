@@ -22,6 +22,7 @@ use std::{
     path::{Path, PathBuf},
     process::ExitCode,
     sync::{Mutex, PoisonError},
+    time::Duration,
 };
 
 use larch_adapters::{AddRequest, CommitMessage, CommitRequest, GitFilePath, GixRepository};
@@ -51,6 +52,7 @@ use crate::{
     implement_dispatch_commands::{
         capture_postlaunch_porcelain, capture_prelaunch_porcelain, delegate_verified_larch,
         rehydrate_session, resolve_session_repo_root, run_verified_larch_env_in,
+        run_verified_larch_env_in_timeout,
     },
     implement_launcher_commands::{CODEX_IMPLEMENT_MODEL, cursor_implement_model},
     implement_preflight_commands::{
@@ -68,7 +70,11 @@ const STEP2_USAGE: &str = "usage: cli.py implement step2-dispatch [-h] --tmpdir 
 const STEP2_HELP: &str = "usage: cli.py implement step2-dispatch [-h] --tmpdir TMPDIR --plan-file\n                                       PLAN_FILE --feature-file FEATURE_FILE\n                                       [--coder CODER]\n                                       [--codex-available CODEX_AVAILABLE]\n                                       [--cursor-present CURSOR_PRESENT]\n                                       [--codex-present CODEX_PRESENT]\n                                       [--cursor-available CURSOR_AVAILABLE]\n                                       [--codex-binary-found CODEX_BINARY_FOUND]\n                                       [--cursor-binary-found CURSOR_BINARY_FOUND]\n                                       [--answers ANSWERS]\n                                       [--completion-retry]\n                                       [--difficulty {,TRIVIAL,MODERATE,HARD}]\n\noptions:\n  -h, --help            show this help message and exit\n  --tmpdir TMPDIR\n  --plan-file PLAN_FILE\n  --feature-file FEATURE_FILE\n  --coder CODER\n  --codex-available CODEX_AVAILABLE\n  --cursor-present CURSOR_PRESENT\n  --codex-present CODEX_PRESENT\n  --cursor-available CURSOR_AVAILABLE\n  --codex-binary-found CODEX_BINARY_FOUND\n  --cursor-binary-found CURSOR_BINARY_FOUND\n  --answers ANSWERS\n  --completion-retry\n  --difficulty {,TRIVIAL,MODERATE,HARD}\n";
 
 const IMPLEMENT_STEP2_LABEL: &str = "implement-step2";
-const LAUNCHER_TIMEOUT_SECONDS: &str = "7200";
+const LAUNCHER_TIMEOUT_SECONDS: u64 = 7_200;
+/// Headroom for the verified-larch parents around the external implementer.
+const DISPATCH_TIMEOUT_MARGIN_SECONDS: u64 = 120;
+const DISPATCH_TIMEOUT: Duration =
+    Duration::from_secs(LAUNCHER_TIMEOUT_SECONDS + DISPATCH_TIMEOUT_MARGIN_SECONDS);
 const ARCH_KNOWLEDGE_SNAPSHOT: &str = "step2-architectural-knowledge.env";
 const PRIOR_ATTEMPT_REASON: &str = "prior-attempt-unfinalized";
 const COMPLETION_RETRY_STATE_INVALID: &str = "completion-retry-state-invalid";
@@ -147,7 +153,8 @@ pub fn run_dispatch(arguments: &[OsString]) -> ExitCode {
             &codex_binary_found,
             &cursor_binary_found,
         );
-    let outcome = run_verified_larch_env_in(&repo_root, &plugin_root, &child, &[]);
+    let outcome =
+        run_verified_larch_env_in_timeout(&repo_root, &plugin_root, &child, &[], DISPATCH_TIMEOUT);
     let result = match outcome {
         Ok(output) => output,
         Err(detail) => {
@@ -304,9 +311,9 @@ mod commands_tests {
     // (#8623 coverage) ---------------------------------------------------
     //
     // `run_dispatch` runs its `implement step2-dispatch` child, and
-    // `mark_step2_telemetry`'s timing mark, through `run_verified_larch_env_in`,
-    // which has no Rust-side test seam. Both go through one real
-    // `scripts/larch.sh` stub under a fixture plugin root instead.
+    // `mark_step2_telemetry`'s timing mark, through the verified-larch process
+    // owner. Both go through one real `scripts/larch.sh` stub under a fixture
+    // plugin root. A request observer records the actual parent deadline.
 
     /// A `run-dispatch` fixture whose `scripts/larch.sh` answers `timing mark`
     /// and forwards `child_stdout` as the `implement step2-dispatch` child's
@@ -343,26 +350,43 @@ mod commands_tests {
 
     #[test]
     #[cfg(unix)]
-    fn run_dispatch_starts_the_step2_child_from_the_persisted_repository_root() {
+    fn run_dispatch_uses_the_repository_root_and_launcher_deadline_headroom() {
         let dir = run_dispatch_stub_fixture(
             "STATUS=bailed\nREASON=stub-bail-for-coverage\nTOOL=codex\nORCHESTRATOR_EDIT_AUTHORITY=forbidden",
         );
+        let observed_timeout = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let timeout_sink = std::sync::Arc::clone(&observed_timeout);
+        crate::implement_dispatch_commands::install_test_request_observer(move |request| {
+            let args = request.arguments();
+            if args.first().and_then(|arg| arg.to_str()) == Some("implement")
+                && args.get(1).and_then(|arg| arg.to_str()) == Some("step2-dispatch")
+            {
+                *timeout_sink.lock().expect("timeout sink lock") = Some(request.timeout());
+            }
+        });
         let code = run_dispatch(&test_arguments(&[
             "--implement-tmpdir",
             dir.path().to_str().expect("utf8"),
             "--coder",
             "codex",
         ]));
+        crate::implement_dispatch_commands::clear_test_hooks();
         assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
-        let observed =
+        let child_cwd =
             fs::read_to_string(dir.path().join("step2-child-cwd.txt")).expect("observed child cwd");
         assert_eq!(
-            observed.trim(),
+            child_cwd.trim(),
             fs::canonicalize(dir.path().join("repo-root"))
                 .expect("canonical repo root")
                 .display()
                 .to_string()
         );
+        let timeout = observed_timeout
+            .lock()
+            .expect("observed timeout lock")
+            .expect("step2-dispatch request timeout");
+        assert_eq!(timeout, DISPATCH_TIMEOUT);
+        assert!(timeout > Duration::from_secs(LAUNCHER_TIMEOUT_SECONDS));
     }
 
     #[test]
