@@ -58,8 +58,12 @@ type LarchHook = std::sync::Arc<
 >;
 
 #[cfg(test)]
+type LarchRequestObserver = std::sync::Arc<dyn Fn(&ProcessRequest) + Send + Sync>;
+
+#[cfg(test)]
 std::thread_local! {
     static TEST_LARCH: std::cell::RefCell<Option<LarchHook>> = const { std::cell::RefCell::new(None) };
+    static TEST_REQUEST_OBSERVER: std::cell::RefCell<Option<LarchRequestObserver>> = const { std::cell::RefCell::new(None) };
 }
 
 pub fn delegate_verified_larch(
@@ -94,10 +98,17 @@ pub fn install_test_larch(
     TEST_LARCH.with(|slot| *slot.borrow_mut() = Some(std::sync::Arc::new(hook)));
 }
 
-/// Restore the dispatch seam and the child seam for this thread (test only).
+/// Observe every verified-larch process request composed on this thread (test only).
+#[cfg(test)]
+pub fn install_test_request_observer(observer: impl Fn(&ProcessRequest) + Send + Sync + 'static) {
+    TEST_REQUEST_OBSERVER.with(|slot| *slot.borrow_mut() = Some(std::sync::Arc::new(observer)));
+}
+
+/// Restore every dispatch test seam and the child seam for this thread (test only).
 #[cfg(test)]
 pub fn clear_test_hooks() {
     TEST_LARCH.with(|slot| *slot.borrow_mut() = None);
+    TEST_REQUEST_OBSERVER.with(|slot| *slot.borrow_mut() = None);
     crate::implement_child_seam::clear_hooks();
 }
 
@@ -985,8 +996,8 @@ pub fn run_verified_larch_env_in(
 }
 
 /// Run a verified larch verb like [`run_verified_larch_env_in`] under a caller
-/// deadline. The commit-route legs bound `checks run-relevant`, `commit-route`,
-/// and the Step 4 `commit` child with site-specific deadlines above 600s.
+/// deadline. Step 2 and the commit-route legs use site-specific deadlines for
+/// children whose own budgets exceed the generic 600-second bound.
 pub fn run_verified_larch_env_in_timeout(
     cwd: &Path,
     root: &Path,
@@ -1005,6 +1016,10 @@ pub fn run_verified_larch_env_in_timeout(
         ADAPT_OUTPUT_LIMIT,
     )?;
     let request = decorate_verified_larch_env_in(request, root, cwd, extra);
+    #[cfg(test)]
+    if let Some(observer) = TEST_REQUEST_OBSERVER.with(|slot| slot.borrow().clone()) {
+        observer(&request);
+    }
     run_bounded(request).map_err(|error| format!("could not start verified larch: {error}"))
 }
 
