@@ -7,7 +7,6 @@ use std::{
 };
 
 use larch_adapters::{GixRepository, PathIntent, RepositoryRoot, read_utf8};
-use larch_core::{GitPath, StatusOptions};
 
 const UNSAFE_REPLACE: &str = "refusing to replace an unsafe plugin projection path";
 const UNSAFE_WRITE: &str = "refusing to write an unsafe plugin projection path";
@@ -67,58 +66,31 @@ const DIRECT_FILES: &[&str] = &[
 const INDEX_ERROR: &str = "plugin runtime projection requires a readable git index";
 const ROOT_ERROR: &str = "plugin runtime projection requires the larch repository root";
 
-pub fn run(check: bool, check_worktree: bool, output: Option<&Path>) -> Result<(), String> {
+pub fn run(output: &Path) -> Result<(), String> {
     let current = std::env::current_dir().map_err(|_| ROOT_ERROR.to_owned())?;
     let root = RepositoryRoot::resolve(Some(&current)).map_err(|_| ROOT_ERROR.to_owned())?;
-    if let Some(destination) = output {
-        return generate_projection(&root, destination);
-    }
-    let paths = runtime_paths(&root)?;
-
-    if check {
-        let errors = projection_errors(&root, &root.path().join("plugin"), &paths)?;
-        if !errors.is_empty() {
-            return Err(errors.join("\n"));
-        }
-    }
-    if !check {
-        validate_root(&root)?;
-        sync(&root, &root.path().join("plugin"), &paths)?;
-    }
-    if check_worktree {
-        verify_projection_worktree(&root)?;
-    }
-    Ok(())
+    generate_projection(&root, output)
 }
 
 /// Generate the validated runtime-only projection from `root` into `destination`.
 ///
 /// The single owner of projection generation for both the CLI `--output` mode
 /// and the in-process `release stage` worktree call (G-Dup-1). It runs the same
-/// [`validate_root`] and [`runtime_paths`] validation as the in-place mode, then
-/// writes the projection into `destination` under the write and cleanup guards.
+/// [`validate_root`] and [`runtime_paths`] validation before writing the
+/// projection into `destination` under the write and cleanup guards.
 ///
 /// # Errors
 /// Returns a message when validation fails or a destination path is unsafe.
 pub fn generate_projection(root: &RepositoryRoot, destination: &Path) -> Result<(), String> {
     validate_root(root)?;
     let paths = runtime_paths(root)?;
-    sync(root, destination, &paths)
-}
-
-fn verify_projection_worktree(root: &RepositoryRoot) -> Result<(), String> {
-    let repository = GixRepository::open(root.path()).map_err(|_| INDEX_ERROR.to_owned())?;
-    let status = repository
-        .local_status(&StatusOptions {
-            pathspecs: vec![GitPath::new(b"plugin".to_vec())],
-            include_untracked: true,
-            include_ignored: false,
-        })
-        .map_err(|_| "unable to inspect runtime projection worktree".to_owned())?;
-    if status.is_dirty() {
-        return Err("runtime projection changed tracked or untracked files".to_owned());
+    sync(root, destination, &paths)?;
+    let errors = projection_errors(root, destination, &paths)?;
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("\n"))
     }
-    Ok(())
 }
 
 fn runtime_paths(root: &RepositoryRoot) -> Result<BTreeSet<String>, String> {
@@ -353,8 +325,43 @@ fn sync(root: &RepositoryRoot, destination: &Path, paths: &BTreeSet<String>) -> 
     if destination == root.path().join("plugin") {
         sync_confined(root, destination, paths)
     } else {
+        validate_external_destination(root, destination)?;
         sync_external(root, destination, paths)
     }
+}
+
+fn validate_external_destination(root: &RepositoryRoot, destination: &Path) -> Result<(), String> {
+    if !destination.is_absolute() {
+        return Err(UNSAFE_DESTINATION.to_owned());
+    }
+    let resolved = match destination.canonicalize() {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let parent = destination
+                .parent()
+                .ok_or_else(|| UNSAFE_DESTINATION.to_owned())?
+                .canonicalize()
+                .map_err(|_| UNSAFE_DESTINATION.to_owned())?;
+            let name = destination
+                .file_name()
+                .ok_or_else(|| UNSAFE_DESTINATION.to_owned())?;
+            parent.join(name)
+        }
+        Err(_) => return Err(UNSAFE_DESTINATION.to_owned()),
+    };
+    let repository = root
+        .path()
+        .canonicalize()
+        .map_err(|_| UNSAFE_DESTINATION.to_owned())?;
+    let target = repository.join("target");
+    let is_target_child = resolved
+        .strip_prefix(&target)
+        .is_ok_and(|relative| relative.components().next().is_some());
+    if repository.starts_with(&resolved) || (resolved.starts_with(&repository) && !is_target_child)
+    {
+        return Err(UNSAFE_DESTINATION.to_owned());
+    }
+    Ok(())
 }
 
 fn sync_confined(
@@ -389,9 +396,6 @@ fn sync_external(
     destination: &Path,
     paths: &BTreeSet<String>,
 ) -> Result<(), String> {
-    if !destination.is_absolute() {
-        return Err(UNSAFE_DESTINATION.to_owned());
-    }
     match fs::symlink_metadata(destination) {
         // `symlink_metadata` never follows the link, so a symlink reports
         // `is_dir() == false` and falls through to the unsafe catch-all.
@@ -530,7 +534,7 @@ pub fn write_runtime_inputs(root: &Path) {
 mod tests {
     use super::{
         DIRECT_FILES, ROOT_ERROR, focused_security_references, generate_projection, is_python_path,
-        projection_errors, runtime_paths, sync, validate_root, verify_projection_worktree,
+        projection_errors, runtime_paths, sync, validate_root,
     };
     use larch_adapters::RepositoryRoot;
     use std::{collections::BTreeSet, fs, path::Path, process::Command};
@@ -647,6 +651,30 @@ mod tests {
     }
 
     #[test]
+    fn confines_repository_local_output_to_a_child_of_target() {
+        let fixture = fixture();
+        let root = repository_root(fixture.path());
+        let ancestor = fixture.path().parent().expect("fixture parent");
+        let target = fixture.path().join("target");
+        fs::create_dir(&target).expect("target directory");
+
+        for destination in [
+            fixture.path().to_path_buf(),
+            fixture.path().join("docs"),
+            ancestor.to_path_buf(),
+            target.clone(),
+        ] {
+            assert_eq!(
+                generate_projection(&root, &destination),
+                Err("refusing to generate into an unsafe plugin projection path".to_owned())
+            );
+        }
+
+        generate_projection(&root, &target.join("plugin-runtime-check"))
+            .expect("target child projection generation");
+    }
+
+    #[test]
     fn detects_missing_unexpected_and_changed_projection_files() {
         let fixture = fixture();
         let root = repository_root(fixture.path());
@@ -669,30 +697,6 @@ mod tests {
         assert!(errors.contains(
             &"runtime projection differs from its source: agents/reviewer.md".to_owned()
         ));
-    }
-
-    #[test]
-    fn rejects_tracked_or_untracked_projection_worktree_changes() {
-        let fixture = fixture();
-        let root = repository_root(fixture.path());
-
-        assert_eq!(verify_projection_worktree(&root), Ok(()));
-        fs::write(fixture.path().join("plugin/ignored.txt"), "changed\n")
-            .expect("tracked projection file");
-
-        assert_eq!(
-            verify_projection_worktree(&root),
-            Err("runtime projection changed tracked or untracked files".to_owned())
-        );
-        fs::write(fixture.path().join("plugin/ignored.txt"), "ignored\n")
-            .expect("restore tracked projection file");
-        fs::write(fixture.path().join("plugin/untracked.txt"), "unexpected\n")
-            .expect("untracked projection file");
-
-        assert_eq!(
-            verify_projection_worktree(&root),
-            Err("runtime projection changed tracked or untracked files".to_owned())
-        );
     }
 
     #[test]

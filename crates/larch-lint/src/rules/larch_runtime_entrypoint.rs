@@ -135,7 +135,6 @@ mod tests {
         assert!(is_production_surface("scripts/example.sh"));
         assert!(!is_production_surface("python/tests/test_example.py"));
         assert!(!is_production_surface("docs/example.md"));
-        assert!(!is_production_surface("plugin/agents/example.md"));
         assert!(!is_production_surface("scripts/test-example.sh"));
     }
 }

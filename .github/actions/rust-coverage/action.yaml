@@ -616,9 +616,7 @@ runs:
         }
         if test -x "$coverage_larch" \
           && plugin_larch --version \
-          && plugin_larch release plugin-runtime \
-          && plugin_larch release plugin-runtime --check \
-          && plugin_larch release plugin-runtime --check --check-worktree; then
+          && plugin_larch release plugin-runtime --output "$RUNNER_TEMP/plugin"; then
           result=0
           outcome=success
         else

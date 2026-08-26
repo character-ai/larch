@@ -93,7 +93,6 @@ const SKIP_PREFIX_PATH_OWNERS: &[(&str, &str)] = &[
         "docs/",
         "lint plus trusted-main repository policy and plugin validation",
     ),
-    ("plugin/", "trusted-main plugin projection validation"),
     (
         "python/",
         "trusted-main repository policy and plugin validation",

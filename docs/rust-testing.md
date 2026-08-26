@@ -524,10 +524,10 @@ The workflow enforces these modes after both live observation windows completed:
   coverage threshold. Dependency policy is skipped only because manifests,
   lockfile, Cargo configuration, and deny inputs are all global `full` inputs.
 - `skip` accepts only supplementary paths with explicit owners: root
-  documentation/configuration files, `.claude/`, `agents/`, `docs/`, `plugin/`,
-  and `skills/`. The selector records every applicable owner. The normal lint,
-  agent, and plugin checks still validate their owned content. Rust repository
-  policy and plugin validation run through a verified
+  documentation/configuration files, `.claude/`, `agents/`, `docs/`, and
+  `skills/`. The selector records every applicable owner. The normal lint,
+  agent, and generated-plugin checks still validate their owned content. Rust
+  repository policy and plugin generation run through a verified
   trusted-main executable; bootstrap integration receives that same verified
   executable. No pull-request Rust binary runs in this path. The `rust-skip`
   job's elapsed duration is the selected execution-path measurement;

@@ -213,7 +213,7 @@ CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh"
 git checkout -b "release/v${NEW_VERSION}" "$RELEASE_SHA"
 CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release set-version "${NEW_VERSION}"
 cargo build --quiet --locked --release --package larch-cli
-git add .claude-plugin/plugin.json plugin/.claude-plugin/plugin.json Cargo.toml Cargo.lock
+git add .claude-plugin/plugin.json Cargo.toml Cargo.lock
 git commit -m "Release v${NEW_VERSION}"
 CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" pr create --title "Release v${NEW_VERSION}" --body-file "$REDACTED_NOTES_FILE" --repo "$REPO"
 ```

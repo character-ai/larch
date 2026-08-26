@@ -29,7 +29,6 @@ fn residual_bash_shim_allows_inventory_shims_fixtures_and_harnesses() {
     repository.write("scripts/maximum-shim.sh", maximum.as_bytes());
     repository.write("scripts/test-harness.sh", b"#!/usr/bin/env bash\nprintf 'test\\n'\n");
     repository.write("fixtures/example/body.sh", b"#!/usr/bin/env bash\nprintf 'fixture\\n'\n");
-    repository.write("plugin/scripts/generated.sh", b"#!/usr/bin/env bash\nprintf 'generated\\n'\n");
     repository.commit_all();
 
     TempRepo::command_from(repository.path())

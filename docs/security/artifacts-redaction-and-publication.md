@@ -709,6 +709,7 @@ defines its implementation checks and the complete egress contract.
 
 Verification includes recorded black-box contracts for all four redaction
 commands, focused in-process redaction and run-log tests, clean-install
-dispatch, Rust Gitleaks command tests, Markdown and reference checks, the runtime-projection drift check, the
-local pattern scan when installed, and the required CI scanner jobs. Scanner
-success does not supersede the confidentiality classes in this document.
+dispatch, Rust Gitleaks command tests, Markdown and reference checks, runtime
+projection generation and validation, the local pattern scan when installed,
+and the required CI scanner jobs. Scanner success does not supersede the
+confidentiality classes in this document.

@@ -490,6 +490,29 @@ fn compiled_version_matches_the_plugin_release_version() {
 }
 
 #[test]
+fn plugin_runtime_requires_output_and_rejects_retired_check_modes() {
+    larch()
+        .args(["release", "plugin-runtime"])
+        .assert()
+        .code(2)
+        .stderr("error: one or more required arguments were not provided\n");
+
+    for retired in ["--check", "--check-worktree"] {
+        larch()
+            .args([
+                "release",
+                "plugin-runtime",
+                "--output",
+                "/tmp/larch-unused-plugin-projection",
+                retired,
+            ])
+            .assert()
+            .code(2)
+            .stderr("error: unexpected argument found\n");
+    }
+}
+
+#[test]
 fn example_echo_dispatches_through_the_core_library() {
     larch()
         .args(["example", "echo", "library wiring"])

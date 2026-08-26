@@ -78,13 +78,11 @@ const EXPECTED_COMMANDS: &[ExpectedCommand] = &[
 const RETIRED_ROOTS: &[&str] = &[
     "python/larch/agents/",
     "python/tests/agents/",
-    "plugin/python/larch/agents/",
 ];
 const RETIRED_FILES: &[&str] = &[
     "python/larch/core/external_defaults.py",
     "python/tests/core/test_external_role_defaults.py",
     "python/tests/test_conftest_session_isolation.py",
-    "plugin/python/larch/core/external_defaults.py",
 ];
 const RETIRED_REFERENCES: &[&str] = &[
     "larch.agents",
@@ -271,11 +269,6 @@ fn is_live_runtime_or_tooling_path(path: &str) -> bool {
             "skills/",
             ".claude/skills/",
             ".claude-plugin/",
-            "plugin/agents/",
-            "plugin/hooks/",
-            "plugin/python/larch/",
-            "plugin/scripts/",
-            "plugin/skills/",
         ]
         .iter()
         .any(|prefix| path.starts_with(prefix))

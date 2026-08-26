@@ -35,6 +35,10 @@ Markdown for `docs/security/*.md` references and fails if a target is absent.
 CI generates the same projection in a temporary directory and validates it;
 there is no committed projection copy to compare for drift.
 
+Projection generation refuses symlinked output, the repository root or its
+ancestors, and repository-local output outside a child of `target/`. The
+repo-local `plugin/` target uses the repository confinement guard.
+
 The projection also includes `ARCHITECTURE.md`, its linked Rust references, the
 Git, GitHub, and Google service inventories, and the operator documents linked
 by the focused security references. Those links therefore resolve in both a
