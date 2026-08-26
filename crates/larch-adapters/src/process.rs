@@ -1,7 +1,11 @@
 //! Tokio-backed execution for the closed external-process port.
 
+#[cfg(unix)]
+use crate::process_identity::OwnedProcessTree;
 use crate::runtime::{Cancellation, ChildProcess, ChildWait, shutdown_child};
 use crate::{filesystem::ConfinedPath, logging::JsonlJournal, open_confined_read};
+#[cfg(unix)]
+use larch_core::TerminateSignal;
 use larch_core::{
     BusinessClock, ChildEnvironment, ExternalProcessRunner, ExternalProgram, HostUtilityProgram,
     JournalRecord, ProcessCancellation, ProcessError, ProcessErrorKind, ProcessEvent,
@@ -27,13 +31,6 @@ use tokio::{
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
     task::JoinHandle,
     time,
-};
-
-#[cfg(unix)]
-use nix::{
-    errno::Errno,
-    sys::signal::{Signal, killpg},
-    unistd::Pid,
 };
 
 #[cfg(unix)]
@@ -647,21 +644,20 @@ fn copy_allowed_environment(command: &mut Command, request: &ProcessRequest) {
 struct OwnedChild {
     child: Child,
     #[cfg(unix)]
-    process_group: Pid,
+    process_tree: OwnedProcessTree,
 }
 
 impl OwnedChild {
     fn new(child: Child) -> io::Result<Self> {
         #[cfg(unix)]
-        let process_group = child
+        let process_id = child
             .id()
             .and_then(|id| i32::try_from(id).ok())
-            .map(Pid::from_raw)
             .ok_or_else(|| io::Error::other("spawned child has no process group identity"))?;
         Ok(Self {
             child,
             #[cfg(unix)]
-            process_group,
+            process_tree: OwnedProcessTree::new(process_id),
         })
     }
 
@@ -676,14 +672,6 @@ impl OwnedChild {
     const fn stderr(&mut self) -> Option<ChildStderr> {
         self.child.stderr.take()
     }
-
-    #[cfg(unix)]
-    fn signal_group(&self, signal: Signal) -> io::Result<()> {
-        match killpg(self.process_group, signal) {
-            Ok(()) | Err(Errno::ESRCH) => Ok(()),
-            Err(error) => Err(io::Error::from_raw_os_error(error as i32)),
-        }
-    }
 }
 
 impl ChildProcess for OwnedChild {
@@ -691,7 +679,7 @@ impl ChildProcess for OwnedChild {
 
     fn request_shutdown(&mut self) -> io::Result<()> {
         #[cfg(unix)]
-        let result = self.signal_group(Signal::SIGTERM);
+        let result = self.process_tree.signal(TerminateSignal::Term);
         #[cfg(not(unix))]
         let result = self.child.start_kill();
         result
@@ -699,7 +687,7 @@ impl ChildProcess for OwnedChild {
 
     fn force_kill(&mut self) -> io::Result<()> {
         #[cfg(unix)]
-        let result = self.signal_group(Signal::SIGKILL);
+        let result = self.process_tree.signal(TerminateSignal::Kill);
         #[cfg(not(unix))]
         let result = self.child.start_kill();
         result

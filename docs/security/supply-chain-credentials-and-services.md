@@ -467,13 +467,20 @@ credential-free. Stdin, stdout, and stderr are bounded, and operator-facing
 failure diagnostics pass through the shared redaction and truncation carriers
 before rendering or publication.
 
-Each Unix child starts in its own process group. Cancellation and timeout send
-SIGTERM to the group, wait the configured grace period, escalate to SIGKILL,
-and reap the direct child. A final group kill also covers descendants that
-outlive an exited leader. Other platforms use Tokio's safest direct-child kill
-and reap path; the released runtime is Apple Silicon macOS. This lifecycle is
-shared by reviewer, implementer, drafter, probe, debate, and CI launches rather
-than reimplemented per command.
+Each Unix child starts in its own process group. Before cancellation or timeout
+signals it, the adapter snapshots the descendant tree, groups those processes
+by PGID, and captures kernel birth identities for live members. A separate
+group is owned only when its leader was also captured in that tree. The adapter
+sends SIGTERM from the deepest descendant group through the direct child's
+group, waits the configured grace period, then refreshes the tree and
+revalidates a saved member before each SIGKILL. A live group with no valid
+ownership anchor fails cleanup instead of receiving a signal through a bare
+PGID. The adapter
+then reaps the direct child. This reaches nested groups after their parents are
+reparented without signaling an unverified PID. Other platforms use Tokio's
+safest direct-child kill and reap path; the released runtime is Apple Silicon
+macOS. This lifecycle is shared by reviewer, implementer, drafter, probe,
+debate, and CI launches rather than reimplemented per command.
 
 ### Vendor credential preflight and the reviewer-probe cache
 

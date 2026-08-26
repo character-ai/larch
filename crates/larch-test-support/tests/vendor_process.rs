@@ -158,8 +158,12 @@ fn every_vendor_replays_timeout_and_cancellation_with_partial_output() {
 
 #[cfg(unix)]
 #[test]
-fn timed_out_vendor_leaves_no_live_descendant() {
-    use nix::{errno::Errno, sys::signal::kill, unistd::Pid};
+fn timed_out_vendor_leaves_no_live_separate_group_descendant() {
+    use nix::{
+        errno::Errno,
+        sys::signal::{Signal, kill, killpg},
+        unistd::{Pid, getpgid},
+    };
 
     let harness = VendorProcessHarness::new(&binaries()).expect("vendor harness");
     let script = VendorScript::new(VendorProgram::Codex)
@@ -176,7 +180,11 @@ fn timed_out_vendor_leaves_no_live_descendant() {
     let error = runtime()
         .block_on(TokioProcessRunner::default().run(request, &NeverCancelled))
         .expect_err("hung process tree must time out");
-    assert_eq!(error.kind(), ProcessErrorKind::TimedOut);
+    assert_eq!(
+        error.kind(),
+        ProcessErrorKind::TimedOut,
+        "unexpected timeout result: {error:?}"
+    );
 
     let pids: Vec<i32> = std::fs::read_to_string(harness.pid_file(0))
         .expect("PID ledger")
@@ -194,9 +202,15 @@ fn timed_out_vendor_leaves_no_live_descendant() {
         std::thread::sleep(Duration::from_millis(10));
     }
     let live: Vec<_> = pids
-        .into_iter()
+        .iter()
+        .copied()
         .filter(|pid| !matches!(kill(Pid::from_raw(*pid), None), Err(Errno::ESRCH)))
         .collect();
+    for pid in &live {
+        if let Ok(group) = getpgid(Some(Pid::from_raw(*pid))) {
+            let _ = killpg(group, Signal::SIGKILL);
+        }
+    }
     assert!(live.is_empty(), "live vendor descendants: {live:?}");
 }
 
