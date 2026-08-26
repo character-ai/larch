@@ -4325,7 +4325,7 @@ exec "$real_larch" "$@"
 
 /// Copy the contract that the installed Rust-owned lint command reads.
 fn seed_clean_install_stall_recovery_contract(root: &Path) {
-    let projection = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugin");
+    let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     for relative in [
         "docs/stall-recovery-report.md",
         "docs/stall-recovery-report-allowlists.tsv",
@@ -4337,7 +4337,7 @@ fn seed_clean_install_stall_recovery_contract(root: &Path) {
                 .expect("stall-recovery contract parent"),
         )
         .expect("create stall-recovery contract parent");
-        fs::copy(projection.join(relative), destination).expect("copy stall-recovery contract");
+        fs::copy(source_root.join(relative), destination).expect("copy stall-recovery contract");
     }
 }
 

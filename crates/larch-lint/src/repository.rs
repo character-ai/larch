@@ -295,11 +295,6 @@ impl Repository {
         let mut bash_syntax = BTreeMap::new();
         let mut python_syntax = BTreeMap::new();
         for path in discovered {
-            // `plugin/` is a generated, byte-for-byte runtime projection. Lint
-            // its canonical source paths once instead of reporting duplicates.
-            if path.as_str().starts_with("plugin/") {
-                continue;
-            }
             let candidate = root.join(path.as_str());
             match regular_file_status(&candidate) {
                 Ok(RegularFileStatus::Missing) => {}

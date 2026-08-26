@@ -79,7 +79,6 @@ jobs:
           sparse-checkout: |
             /*
             !/larch-logs/
-            !/plugin/
           sparse-checkout-cone-mode: false
       - id: main-cache-keys
         uses: ./.github/actions/main-cache-keys
@@ -1166,11 +1165,7 @@ jobs:
           "$policy_larch" --version
           "$policy_larch" lint all --timing-file "$RUNNER_TEMP/rust-partial-policy-rules.tsv"
           CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
-            "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime
-          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
-            "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --check
-          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
-            "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --check --check-worktree
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --output "$RUNNER_TEMP/plugin"
       - name: Run bootstrap integration with the partial executable
         env:
           LARCH_TEST_RUST_BINARY: ${{ github.workspace }}/target/debug/larch
@@ -1241,11 +1236,7 @@ jobs:
           policy_larch="$RUNNER_TEMP/trusted-main-rust-policy/larch"
           "$policy_larch" lint all --timing-file "$RUNNER_TEMP/rust-skip-policy-rules.tsv"
           CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
-            "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime
-          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
-            "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --check
-          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$policy_larch" \
-            "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --check --check-worktree
+            "$GITHUB_WORKSPACE/scripts/larch.sh" release plugin-runtime --output "$RUNNER_TEMP/plugin"
       - name: Run bootstrap integration with the trusted main executable
         env:
           LARCH_TEST_RUST_BINARY: ${{ runner.temp }}/trusted-main-rust-policy/larch

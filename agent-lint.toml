@@ -154,9 +154,8 @@ suppress = [
 # Makefile-only pattern as the other test-* harnesses above.
 #
 exclude = [
-  # plugin/ is a generated, byte-for-byte runtime projection of the canonical
-  # plugin sources. Scan the canonical paths once; release plugin-runtime
-  # --check rejects projection drift.
+  # plugin/ is ignored runtime projection output. Scan the canonical paths
+  # once; release plugin-runtime --output generates the projection.
   "plugin/**",
   # Temporary reachability stopgap for inventories removed from
   # skills/design/SKILL.md and skills/implement/SKILL.md. These excludes

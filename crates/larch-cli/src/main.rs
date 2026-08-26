@@ -2477,7 +2477,7 @@ enum ReleaseCommand {
     Promote(PromoteReleaseArguments),
     /// Promote the newest immutable non-draft release to Latest.
     PromoteLatest(PromoteLatestArguments),
-    /// Generate or validate the runtime-only plugin projection.
+    /// Generate the runtime-only plugin projection.
     PluginRuntime(PluginRuntimeArguments),
     /// Update every synchronized release version surface.
     SetVersion(SetVersionArguments),
@@ -2695,15 +2695,9 @@ struct ReleaseStep7Arguments {
 
 #[derive(Args)]
 struct PluginRuntimeArguments {
-    /// Validate projection drift without changing the worktree.
+    /// Generate the projection into DIR.
     #[arg(long)]
-    check: bool,
-    /// Verify that generation left no tracked or untracked plugin/ changes.
-    #[arg(long)]
-    check_worktree: bool,
-    /// Generate the projection into DIR instead of the in-place plugin/ tree.
-    #[arg(long, conflicts_with_all = ["check", "check_worktree"])]
-    output: Option<PathBuf>,
+    output: PathBuf,
 }
 
 #[derive(Subcommand)]
@@ -4223,13 +4217,9 @@ fn run_release_reconcile_notes(arguments: ReconcileNotesArguments) -> ExitCode {
 fn run_release_plugin_runtime(
     arguments: &PluginRuntimeArguments,
 ) -> Result<ExitCode, larch_adapters::upgrade_larch::Failure> {
-    release_plugin_runtime::run(
-        arguments.check,
-        arguments.check_worktree,
-        arguments.output.as_deref(),
-    )
-    .map(|()| ExitCode::SUCCESS)
-    .map_err(command_failure)
+    release_plugin_runtime::run(&arguments.output)
+        .map(|()| ExitCode::SUCCESS)
+        .map_err(command_failure)
 }
 
 const fn command_failure(message: String) -> larch_adapters::upgrade_larch::Failure {

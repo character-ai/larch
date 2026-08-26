@@ -16,7 +16,7 @@
 # The manual gitleaks hook and the dedicated CI gitleaks job scan larch-logs
 # independently of this file-passing exclusion. See
 # docs/security/artifacts-redaction-and-publication.md.
-exclude: ^(\.venv/|node_modules/|larch-logs/|plugin/)
+exclude: ^(\.venv/|node_modules/|larch-logs/)
 
 repos:
   - repo: local

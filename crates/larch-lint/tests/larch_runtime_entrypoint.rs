@@ -60,10 +60,6 @@ fn larch_runtime_entrypoint_allows_bootstrap_and_nonproduction_surfaces() {
         "scripts/test-entrypoint.sh",
         b"#!/usr/bin/env bash\n\"$CLAUDE_PLUGIN_ROOT/bin/larch\" example echo fixture\n",
     );
-    repository.write(
-        "plugin/agents/generated.md",
-        b"Run `$CLAUDE_PLUGIN_ROOT/bin/larch`.\n",
-    );
     repository.write("docs/example.md", b"`bin/larch` is installed output.\n");
     repository.commit_all();
 
