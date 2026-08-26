@@ -13,3 +13,8 @@ options:
   --cursor-binary-found {,true,false}
   --timeout TIMEOUT
   --patch-format {unified-diff,file-replacement}
+
+diagnostics:
+  Failed emit-plan gates write bounded command, status, stdout, and stderr rows
+  to plan-review/round-N/revise/emit-plan-gate.log. revise.env records a
+  REVISE_TIER_N_REASON row for each tier outcome.
