@@ -532,7 +532,11 @@ wait chunk remains 270 seconds; the hard maximum is 7200 seconds for
 documented long leaf waits. While a registry row is live for the clone,
 `scripts/hook-deny-run-in-background.sh` denies Bash `run_in_background`
 launches, except a combinator-free documented `scripts/larch.sh bgjob wait`
-command that must own its own `--max-wait-s` deadline.
+command that must own its own `--max-wait-s` deadline. The policy lives in Rust
+as `larch hook deny-run-in-background` (`crates/larch-cli/src/hook_commands.rs`);
+`scripts/hook-deny-run-in-background.sh` is a fail-CLOSED shim that invokes it
+without bootstrapping an install (`LARCH_BOOTSTRAP_NO_INSTALL=1`) and statically
+denies when the larch binary is unavailable.
 
 The daemon owns elapsed-time decisions with a suspend-pausing monotonic clock.
 It refreshes the registry row's wall-clock `HEARTBEAT_EPOCH` on every monitor
@@ -823,7 +827,11 @@ an unsafe pre-existing tree.
 matched `Edit`, `Write`, and `NotebookEdit` calls to canonical `/tmp` and the
 larch cache sessions root (`~/.cache/larch/sessions`, the larch-owned session
 scratch tree, so a nested `/issue` can write its session-setup tmpdir body
-files) while a fresh activation sentinel exists. It does not cover `Bash`, child `Skill`
+files) while a fresh activation sentinel exists. The policy lives in Rust as
+`larch hook deny-edit-write <token>` (`crates/larch-cli/src/hook_commands.rs`);
+`scripts/deny-edit-write.sh` is a fail-CLOSED shim that invokes it without
+bootstrapping an install (`LARCH_BOOTSTRAP_NO_INSTALL=1`) and statically denies
+when the larch binary is unavailable. It does not cover `Bash`, child `Skill`
 invocations, or external subprocesses. `allowed-tools` does not add confinement.
 
 Research Cursor and Codex lanes run against the working tree with write-capable

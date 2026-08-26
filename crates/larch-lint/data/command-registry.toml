@@ -2536,6 +2536,33 @@ migration_issue = 8389
 clean_install_test = "clean-install-hook-anti-read-poll"
 
 [[commands]]
+domain = "hook"
+verb = "block-submodule-edit"
+machine_stdout = true
+owner = "rust"
+planning_issue = 8934
+migration_issue = 8934
+clean_install_test = "clean-install-hook-block-submodule-edit"
+
+[[commands]]
+domain = "hook"
+verb = "deny-edit-write"
+machine_stdout = true
+owner = "rust"
+planning_issue = 8934
+migration_issue = 8934
+clean_install_test = "clean-install-hook-deny-edit-write"
+
+[[commands]]
+domain = "hook"
+verb = "deny-run-in-background"
+machine_stdout = true
+owner = "rust"
+planning_issue = 8934
+migration_issue = 8934
+clean_install_test = "clean-install-hook-deny-run-in-background"
+
+[[commands]]
 domain = "implement"
 verb = "checks-commit-route"
 machine_stdout = true
@@ -6193,9 +6220,19 @@ kind = "hook"
 rust = ["hook anti-read-poll"]
 
 [[callers]]
+path = "scripts/block-submodule-edit.sh"
+kind = "hook"
+rust = ["hook block-submodule-edit"]
+
+[[callers]]
+path = "scripts/deny-edit-write.sh"
+kind = "hook"
+rust = ["hook deny-edit-write"]
+
+[[callers]]
 path = "scripts/hook-deny-run-in-background.sh"
 kind = "hook"
-rust = ["kv get"]
+rust = ["hook deny-run-in-background"]
 
 [[callers]]
 path = "scripts/pre-commit-bash-syntax.sh"

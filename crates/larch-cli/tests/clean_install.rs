@@ -2465,6 +2465,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "anti-read-poll",
     ),
     CleanInstallCase::new(
+        "clean-install-hook-block-submodule-edit",
+        "hook",
+        "block-submodule-edit",
+    ),
+    CleanInstallCase::new(
+        "clean-install-hook-deny-edit-write",
+        "hook",
+        "deny-edit-write",
+    ),
+    CleanInstallCase::new(
+        "clean-install-hook-deny-run-in-background",
+        "hook",
+        "deny-run-in-background",
+    ),
+    CleanInstallCase::new(
         "clean-install-plugin-read-version",
         "plugin",
         "read-version",

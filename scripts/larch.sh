@@ -12,6 +12,12 @@ readonly RELEASE_WORKFLOW="character-ai/larch/.github/workflows/rust-release-ass
 # candidate branches /release Step 5 creates.
 readonly RELEASE_PIN_REF="stable"
 readonly LOCK_WAIT_SECONDS=120
+# Distinct exit code for LARCH_BOOTSTRAP_NO_INSTALL=1: a present-and-valid
+# binary still execs, but any path that would download/install a release binary
+# exits with this code instead. PreToolUse hook shims run under a 5-10s timeout
+# and must never bootstrap a fresh install inline; they treat this code (and any
+# other non-zero rc) as "binary unavailable" and emit their static deny JSON.
+readonly LARCH_NO_INSTALL_EXIT=97
 
 plugin_root=""
 plugin_data=""
@@ -663,6 +669,14 @@ main() {
         if binary_matches_version "$binary_path" "$version" && binary_passes_self_check "$binary_path" "$version" "$target"; then
             run_binary "$binary_path" "$@"
         fi
+    fi
+
+    # No-install mode: a present-and-valid binary already exec'd above. Reaching
+    # here means an install/download would be required, which hook shims must
+    # never trigger inside their timeout. Exit with the distinct no-install code
+    # before the dev-die branch, command checks, lock, and release install.
+    if [ "${LARCH_BOOTSTRAP_NO_INSTALL:-}" = "1" ]; then
+        exit "$LARCH_NO_INSTALL_EXIT"
     fi
 
     if [ -e "$plugin_root/.git" ] || [ -L "$plugin_root/.git" ]; then

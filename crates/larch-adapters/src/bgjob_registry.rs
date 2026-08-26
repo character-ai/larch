@@ -6,7 +6,7 @@
 //! keep a long-running step visible without a staleness marker. The bgjob
 //! command leaves extend this module rather than adding a second reader.
 
-use crate::read_kv_raw;
+use crate::{FileIoError, read_kv_raw};
 use larch_core::{
     BGJOB_HEARTBEAT_STALE_AFTER_S, ProcessBirthIdentity, ProcessIdentityHost,
     ProcessIdentityValidationPolicy, RecordedProcessIdentity,
@@ -105,6 +105,25 @@ pub fn has_live_entry(
                     .is_live(&entry.daemon, ProcessIdentityValidationPolicy::ExactCommand))
         })
     })
+}
+
+/// Read the recorded `CLONE_PATH` for one registry entry file.
+///
+/// The run-in-background deny hook compares this clone path against the Bash
+/// launch cwd. Unlike [`has_live_entry`], it does not gate on heartbeat
+/// freshness or process liveness: any registered clone still blocks a
+/// background Bash launch that would race the daemon. `Err` means the entry
+/// could not be read (the hook denies on that ambiguity); `Ok(None)` means the
+/// row carried no non-empty `CLONE_PATH` (the hook skips it).
+///
+/// # Errors
+///
+/// Returns [`FileIoError`] when the entry file cannot be read or parsed.
+pub fn entry_clone_path(path: &Path) -> Result<Option<PathBuf>, FileIoError> {
+    let rows = read_kv_raw(path)?;
+    Ok(field(&rows, "CLONE_PATH")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from))
 }
 
 fn read_entry(path: &Path) -> Option<RegistryEntry> {

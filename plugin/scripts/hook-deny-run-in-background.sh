@@ -1,132 +1,30 @@
 #!/usr/bin/env bash
-# PreToolUse hook: deny Bash run_in_background launches while a larch bgjob is active in this clone.
-# Hooks are a trust boundary: malformed JSON is denied when background intent cannot be ruled out.
+# PreToolUse hook shim: deny Bash run_in_background launches while a larch bgjob
+# is active in this clone. The policy lives in Rust
+# (`larch hook deny-run-in-background`, crates/larch-cli/src/hook_commands.rs);
+# this shim is only the fail-CLOSED fallback for when the larch binary is
+# unavailable. It never bootstraps an install (LARCH_BOOTSTRAP_NO_INSTALL=1) so
+# it always returns inside the hook timeout.
+#
+# Stdin: the Bash PreToolUse JSON. Always exits 0. To deny, emits the PreToolUse
+# deny envelope on stdout; to allow, emits nothing. set -e intentionally
+# omitted: a hook must always emit a decision, never abort.
+set -uo pipefail
 
-set -u
+STATIC_DENY='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"run_in_background denied: larch binary unavailable"}}'
 
-[ "${LARCH_HOOK_DENY_RUN_IN_BACKGROUND_DISABLE:-}" = "1" ] && exit 0
-[ "${LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT:-}" = "1" ] && exit 0
-
-INPUT=$(cat 2>/dev/null) || INPUT=""
-
-emit_deny() {
-  local reason="$1"
-  jq -cn --arg reason "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'
-}
-
-emit_deny_no_jq() {
-  local reason="$1"
-  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$reason"
-}
-
-canonical_dir() {
-  [ -n "$1" ] || return 1
-  [ -d "$1" ] || return 1
-  (cd "$1" 2>/dev/null && pwd -P)
-}
-
-clone_paths_same() {
-  local marker_canon="$1" current_canon="$2"
-  [ "$marker_canon" = "$current_canon" ] && return 0
-  case "$current_canon" in "$marker_canon"/*) return 0 ;; esac
-  case "$marker_canon" in "$current_canon"/*) return 0 ;; esac
-  return 1
-}
-
-if ! command -v jq >/dev/null 2>&1; then
-  case "$INPUT" in
-    *run_in_background*) emit_deny_no_jq 'run_in_background denied: jq unavailable to validate Bash payload'; exit 0 ;;
-    *) exit 0 ;;
-  esac
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)" || { printf '%s\n' "$STATIC_DENY"; exit 0; }
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd -P)" || PLUGIN_ROOT=""
+if [ ! -x "$PLUGIN_ROOT/scripts/larch.sh" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT"
 fi
-
-if ! printf '%s' "$INPUT" | jq -e . >/dev/null 2>&1; then
-  emit_deny 'run_in_background denied: malformed hook JSON cannot rule out Bash background launch'
-  exit 0
-fi
-
-tool_name=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null) || tool_name=""
-[ "$tool_name" = "Bash" ] || exit 0
-run_bg=$(printf '%s' "$INPUT" | jq -r '.tool_input.run_in_background // false' 2>/dev/null) || run_bg="parse-error"
-command_text=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null) || command_text=""
-case "$run_bg:$command_text" in
-  true:*) ;;
-  parse-error:*) emit_deny 'run_in_background denied: cannot parse Bash tool_input'; exit 0 ;;
-  *:*run_in_background*true*) ;;
-  *) exit 0 ;;
-esac
-
-# Allow only a combinator-free documented `bgjob wait` to run in the background
-# while a registry row is live (#8707). That wait keeps the wait lease fresh for
-# long leaf children; any other background Bash still races the daemon.
-is_documented_bgjob_wait() {
-  local normalized=$1
-  # Collapse whitespace so multi-line skill fences still match. Avoid external
-  # tools so a restricted hook PATH cannot break the carve-out.
-  normalized=${normalized//$'\n'/ }
-  normalized=${normalized//$'\r'/ }
-  normalized=${normalized//$'\t'/ }
-  while [[ "$normalized" == *"  "* ]]; do
-    normalized=${normalized//  / }
-  done
-  case "$normalized" in
-    *'&&'*|*'||'*|*';'*|*'|'*|*'`'*|*'$('*|*'>'*|*'<'*) return 1 ;;
-  esac
-  # Require the verified shim path so a same-named decoy binary cannot pass.
-  case "$normalized" in
-    *'/scripts/larch.sh'*' bgjob wait '*|*'/scripts/larch.sh'*' bgjob wait') return 0 ;;
-  esac
-  return 1
-}
-
-if is_documented_bgjob_wait "$command_text"; then
-  exit 0
-fi
-
-cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || cwd=""
-cwd_canon=$(canonical_dir "$cwd" 2>/dev/null || true)
-if [ -z "$cwd_canon" ]; then
-  # No clone identity to compare, but the payload is definitely a background Bash launch.
-  # In normal Claude hook envelopes cwd is present; deny to keep active-run sessions closed.
-  emit_deny 'run_in_background denied: missing canonical cwd for Bash background launch'
-  exit 0
-fi
-
-registry_root="${LARCH_BGJOB_REGISTRY_ROOT:-${HOME:-}/.cache/larch/daemons}"
-[ -d "$registry_root" ] || exit 0
-
-found_same_clone=0
-for entry in "$registry_root"/*.env; do
-  [ -f "$entry" ] && [ ! -L "$entry" ] || continue
-  script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P) || {
-    emit_deny 'run_in_background denied: cannot locate shared registry codec'
+if [ -z "$PLUGIN_ROOT" ] || [ ! -x "$PLUGIN_ROOT/scripts/larch.sh" ]; then
+    printf '%s\n' "$STATIC_DENY"
     exit 0
-  }
-  plugin_root=$(CDPATH= cd -- "$script_dir/.." && pwd -P) || {
-    emit_deny 'run_in_background denied: cannot locate plugin root'
-    exit 0
-  }
-  [ -x "$plugin_root/scripts/larch.sh" ] || {
-    emit_deny 'run_in_background denied: shared registry codec unavailable'
-    exit 0
-  }
-  clone_path=$(CLAUDE_PLUGIN_ROOT="$plugin_root" "$plugin_root/scripts/larch.sh" kv get --file "$entry" --key CLONE_PATH --match first 2>/dev/null)
-  kv_rc=$?
-  if [ "$kv_rc" -ne 0 ]; then
-    emit_deny 'run_in_background denied: cannot read active bgjob registry entry'
-    exit 0
-  fi
-  [ -n "$clone_path" ] || continue
-  clone_canon=$(canonical_dir "$clone_path" 2>/dev/null || true)
-  [ -n "$clone_canon" ] || continue
-  if clone_paths_same "$clone_canon" "$cwd_canon"; then
-    found_same_clone=1
-    break
-  fi
-done
-
-if [ "$found_same_clone" = "1" ]; then
-  emit_deny "run_in_background denied: active larch bgjob registry exists for this clone ($entry)"
 fi
 
+LARCH_BOOTSTRAP_NO_INSTALL=1 "$PLUGIN_ROOT/scripts/larch.sh" hook deny-run-in-background 2>/dev/null
+if [ "$?" -ne 0 ]; then
+    printf '%s\n' "$STATIC_DENY"
+fi
 exit 0
