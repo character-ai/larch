@@ -85,7 +85,7 @@ crates/larch-cli/src/release_assets.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/release_plugin_runtime.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/release_prepare.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/release_publish.rs	gix-read	#7671	typed-read
-crates/larch-cli/src/release_stage.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/release_stage.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/rebalance_tests_workflow.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/redact_commands.rs	git-cli	#7671	typed-cli
 crates/larch-cli/src/rejected_analysis_commands.rs	gix-read	#7671	typed-read
