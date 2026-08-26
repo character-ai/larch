@@ -6946,12 +6946,7 @@ rust = ["design pause-save", "gh resolve-repo", "kv get"]
 [[callers]]
 path = "skills/rejected-analysis/SKILL.md"
 kind = "skill"
-rust = ["agent launch-review", "run-log sync", "verify skill-called"]
-
-[[callers]]
-path = "skills/rejected-analysis/scripts/rejected-analysis.sh"
-kind = "skill"
-rust = ["rejected-analysis finalize", "rejected-analysis ingest-verdict", "rejected-analysis prepare", "rejected-analysis record"]
+rust = ["agent launch-review", "rejected-analysis finalize", "rejected-analysis ingest-verdict", "rejected-analysis prepare", "rejected-analysis record", "run-log sync", "verify skill-called"]
 
 [[callers]]
 path = "skills/report-tokens/SKILL.md"

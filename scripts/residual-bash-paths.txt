@@ -54,10 +54,6 @@ scripts/test-subskill-anchors.sh
 scripts/test-token-vendor-scrapers.sh
 scripts/test-triage-structure.sh
 skills/design/scripts/design-clarify.sh
-skills/design/scripts/design-step3-entry.sh
-skills/design/scripts/design-step3-review.sh
-skills/design/scripts/design-step35.sh
-skills/design/scripts/design-step3b-tail.sh
 skills/design/scripts/design-step5b-annotate.sh
 skills/design/scripts/design-step5b-prepare.sh
 skills/design/scripts/design-step5c.sh
@@ -75,6 +71,7 @@ skills/design/scripts/test-gate-b-apply-mode.sh
 skills/design/scripts/test-step3-orchestrator-fence.sh
 skills/design/scripts/test-step3-review-cap.sh
 skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh
+skills/implement/scripts/cleanup.sh
 skills/implement/scripts/flush-execution-issues.sh
 skills/implement/scripts/hook-stop-fail-close.sh
 skills/implement/scripts/oos-disposition-checkpoint.sh
@@ -87,6 +84,7 @@ skills/implement/scripts/step-5-review.sh
 skills/implement/scripts/step-7a.sh
 skills/implement/scripts/step-8-seed-initial.sh
 skills/implement/scripts/step-8-ship.sh
+skills/implement/scripts/step-8-oos-checkpoint.sh
 skills/implement/scripts/step-18.sh
 skills/implement/scripts/step-19.sh
 skills/implement/scripts/step-architectural-guidelines-write-compose.sh
@@ -102,7 +100,6 @@ skills/implement/scripts/test-step-7a.sh
 skills/implement/scripts/test-write-final-report.sh
 skills/implement/scripts/write-final-report.sh
 skills/pause/scripts/test-pause-skill.sh
-skills/rejected-analysis/scripts/rejected-analysis.sh
 skills/rejected-analysis/scripts/test-rejected-analysis.sh
 skills/research/scripts/test-research-angle-prompts.sh
 skills/research/scripts/test-synthesis-subagent.sh
