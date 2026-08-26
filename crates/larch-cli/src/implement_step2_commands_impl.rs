@@ -54,6 +54,7 @@ impl DispatchLock {
 struct RunDispatchRequest {
     tmpdir: PathBuf,
     plugin_root: PathBuf,
+    repo_root: PathBuf,
     coder: String,
     answers: String,
     codex_binary_found: String,
@@ -137,6 +138,15 @@ fn parse_run_dispatch(arguments: &[OsString]) -> Result<RunDispatchRequest, Exit
             return Err(ExitCode::from(2));
         }
     }
+    let repo_root = match resolve_session_repo_root(&tmpdir) {
+        Ok(root) => root,
+        Err(error) => {
+            eprintln!(
+                "implement run-dispatch: persisted REPO_ROOT is unavailable before dispatch: {error}"
+            );
+            return Err(ExitCode::from(2));
+        }
+    };
     if !answers.is_empty() && !Path::new(&answers).is_file() {
         eprintln!("implement run-dispatch: --answers path does not exist: {answers}");
         return Err(ExitCode::from(2));
@@ -182,6 +192,7 @@ fn parse_run_dispatch(arguments: &[OsString]) -> Result<RunDispatchRequest, Exit
     Ok(RunDispatchRequest {
         tmpdir,
         plugin_root,
+        repo_root,
         coder,
         answers,
         codex_binary_found,
@@ -233,6 +244,7 @@ fn resolve_step2_effective_difficulty(tmpdir: &Path) -> String {
 /// recorded as charged, or the budget silently disappears from the ledger.
 fn mark_step2_telemetry(
     tmpdir: &Path,
+    repo_root: &Path,
     plugin_root: &Path,
     coder: &str,
     codex_binary_found: &str,
@@ -247,7 +259,7 @@ fn mark_step2_telemetry(
             "mark".into(),
             IMPLEMENT_STEP2_LABEL.into(),
         ];
-        match delegate_verified_larch(tmpdir, plugin_root, &argv) {
+        match delegate_verified_larch(repo_root, plugin_root, &argv) {
             Ok(output) if output.status().code() == Some(0) => {}
             _ => return false,
         }
@@ -266,7 +278,7 @@ fn mark_step2_telemetry(
     ];
     matches!(
         crate::implement_dispatch_commands::run_verified_larch_env_in(
-            tmpdir,
+            repo_root,
             plugin_root,
             &argv,
             &extra,
@@ -1406,11 +1418,18 @@ mod impl_tests {
     /// A minimal, fully valid `run-dispatch` fixture tmpdir.
     fn run_dispatch_fixture() -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = dir.path().join("repo-root");
+        fs::create_dir_all(&repo_root).expect("repo root");
+        test_git(&repo_root, &["init", "--quiet"]);
         let plugin_root = dir.path().join("plugin-root");
         fs::create_dir_all(&plugin_root).expect("plugin root");
         test_write_fixture(
             &dir.path().join("session-env.sh"),
-            &format!("LARCH_CLAUDE_PLUGIN_ROOT={}\n", plugin_root.display()),
+            &format!(
+                "LARCH_CLAUDE_PLUGIN_ROOT={}\nREPO_ROOT={}\n",
+                plugin_root.display(),
+                repo_root.display()
+            ),
         );
         test_write_fixture(&dir.path().join("feature-description.txt"), "feature\n");
         test_write_fixture(&dir.path().join("plan.txt"), "plan\n");
@@ -1512,7 +1531,29 @@ mod impl_tests {
         let dir = run_dispatch_fixture();
         test_write_fixture(
             &dir.path().join("session-env.sh"),
-            "LARCH_CLAUDE_PLUGIN_ROOT=/no/such/plugin/root\n",
+            &format!(
+                "LARCH_CLAUDE_PLUGIN_ROOT=/no/such/plugin/root\nREPO_ROOT={}\n",
+                dir.path().join("repo-root").display()
+            ),
+        );
+        let result = parse_run_dispatch(&test_arguments(&[
+            "--implement-tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--coder",
+            "codex",
+        ]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_run_dispatch_requires_a_persisted_repository_root() {
+        let dir = run_dispatch_fixture();
+        test_write_fixture(
+            &dir.path().join("session-env.sh"),
+            &format!(
+                "LARCH_CLAUDE_PLUGIN_ROOT={}\n",
+                dir.path().join("plugin-root").display()
+            ),
         );
         let result = parse_run_dispatch(&test_arguments(&[
             "--implement-tmpdir",
