@@ -94,6 +94,36 @@ does not claim terminal success. This bounded retry handles a transient guard
 failure. It does not authorize an alternate entrypoint or weaken a policy
 decision.
 
+#### Larch deny-hook runtime boundary
+
+The submodule-edit, token-scoped edit/write, and background-launch gates are
+Rust-owned `hook` verbs in `crates/larch-cli/src/hook_commands.rs`. Their shipped
+shell files are fail-closed compatibility shims: each enters only through
+`scripts/larch.sh`, sets `LARCH_BOOTSTRAP_NO_INSTALL=1`, and emits a static deny
+when the verified executable is unavailable or the Rust verb returns nonzero.
+Hook evaluation therefore never downloads or installs code. The
+[bootstrap and atomic-installation contract](supply-chain-credentials-and-services.md#bootstrap-and-atomic-installation)
+owns the no-install executable-validation and status boundary.
+
+`hook block-submodule-edit` uses the read-only `GixRepository` adapter. It
+denies only when the resolved target repository matches both locations of an
+initialized direct submodule checkout, so an unrelated nested repository does
+not inherit submodule policy. Malformed input and relative targets deny before
+repository discovery; symlink cycles deny after a repository root is found.
+Clearly non-Git paths and unavailable Git metadata fail open.
+
+`hook deny-edit-write` checks its token-scoped, TTL-bounded activation before
+reading the tool event. While active, only a positively resolved absolute path
+under canonical `/tmp` or the existing larch sessions cache is allowed. The
+deny envelope is fixed and byte-stable. An inactive Rust command emits nothing,
+but a delegation failure denies because the shim cannot establish inactivity.
+
+`hook deny-run-in-background` reads `CLONE_PATH` through the shared registry KV
+codec and denies an overlapping clone while any regular registry row remains.
+Malformed events, unresolved cwd identity, and unreadable regular rows fail
+closed. The combinator-free `scripts/larch.sh bgjob wait` form remains the only
+active-registry carve-out.
+
 Review launchers use the narrowest available CLI posture. Codex review runs use
 `--sandbox read-only`. Cursor review runs use `--mode ask`. Their launchers also
 compare the working tree with a pre-launch baseline and discard results after a
@@ -530,9 +560,10 @@ Active `bgjob wait` refreshes a session-local wait lease on every poll so an
 ephemeral start-time owner cannot orphan a live child mid-wait. The default
 wait chunk remains 270 seconds; the hard maximum is 7200 seconds for
 documented long leaf waits. While a registry row is live for the clone,
-`scripts/hook-deny-run-in-background.sh` denies Bash `run_in_background`
-launches, except a combinator-free documented `scripts/larch.sh bgjob wait`
-command that must own its own `--max-wait-s` deadline.
+the Rust-owned `hook deny-run-in-background` command, reached through
+`scripts/hook-deny-run-in-background.sh`, denies Bash `run_in_background`
+launches. A combinator-free documented `scripts/larch.sh bgjob wait` command
+that owns its own `--max-wait-s` deadline remains allowed.
 
 The daemon owns elapsed-time decisions with a suspend-pausing monotonic clock.
 It refreshes the registry row's wall-clock `HEARTBEAT_EPOCH` on every monitor
@@ -819,12 +850,14 @@ an unsafe pre-existing tree.
 ### Research
 
 `/research` is best-effort read-only for the repository. Its skill-scoped
-`scripts/deny-edit-write.sh research` hook mechanically confines only Claude's
-matched `Edit`, `Write`, and `NotebookEdit` calls to canonical `/tmp` and the
-larch cache sessions root (`~/.cache/larch/sessions`, the larch-owned session
-scratch tree, so a nested `/issue` can write its session-setup tmpdir body
-files) while a fresh activation sentinel exists. It does not cover `Bash`, child `Skill`
-invocations, or external subprocesses. `allowed-tools` does not add confinement.
+`scripts/deny-edit-write.sh research` shim delegates to the Rust-owned
+`hook deny-edit-write research` gate. While a fresh activation sentinel exists,
+it mechanically confines only Claude's matched `Edit`, `Write`, and
+`NotebookEdit` calls to canonical `/tmp` and the larch cache sessions root
+(`~/.cache/larch/sessions`, the larch-owned session scratch tree, so a nested
+`/issue` can write its session-setup tmpdir body files). It does not cover
+`Bash`, child `Skill` invocations, or external subprocesses. `allowed-tools`
+does not add confinement.
 
 Research Cursor and Codex lanes run against the working tree with write-capable
 user privileges. Their non-modification rule is prompt-enforced. Synthesis and

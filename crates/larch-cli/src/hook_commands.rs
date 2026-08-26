@@ -3,11 +3,16 @@
 use std::{
     env,
     ffi::OsString,
+    fs,
     io::{self, Read as _, Write as _},
+    path::{Path, PathBuf},
     process::ExitCode,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use larch_adapters::{GixRepository, bgjob_registry::find_entry_for_clone};
+use larch_core::RepositoryRead as _;
+use serde::Serialize;
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
 
@@ -22,12 +27,13 @@ use nix::{
     unistd::{UnlinkatFlags, unlinkat},
 };
 #[cfg(unix)]
+use std::os::unix::ffi::OsStringExt as _;
+#[cfg(unix)]
 use std::{
     fs::File,
     os::fd::{AsRawFd as _, OwnedFd},
-    path::{Path, PathBuf},
     thread,
-    time::{Duration, Instant},
+    time::Instant,
 };
 #[cfg(unix)]
 use uuid::Uuid;
@@ -39,6 +45,32 @@ const TMP_FALLBACK: &str = "/private/tmp";
 const REMINDER_TEXT: &str = "Read-poll detected: repeated identical Read calls. Use one read after state changes instead of polling.";
 const MAX_STDIN_BYTES: usize = 65_536;
 const MAX_STATE_BYTES: u64 = 512;
+const MAX_SYMLINK_HOPS: usize = 40;
+const ACTIVATION_TTL: Duration = Duration::from_secs(360 * 60);
+const ACTIVATION_SCAN_LIMIT: usize = 4_096;
+pub const DENY_EDIT_WRITE_TOKENS: &[&str] = &[
+    "research",
+    "audit-umbrella",
+    "file-bug",
+    "complete-umbrella",
+    "debate",
+    "triage",
+    "umbrella",
+];
+const DENY_EDIT_WRITE_REASON: &str = "The active skill is read-only-repo -- Edit/Write/NotebookEdit outside /tmp or the larch session cache is not permitted.";
+const BLOCK_READ_STDIN_REASON: &str =
+    "submodule edit guard: failed to read stdin, blocking as precaution";
+const BLOCK_PARSE_REASON: &str =
+    "submodule edit guard: failed to parse tool input, blocking as precaution";
+const BLOCK_ABSOLUTE_REASON: &str =
+    "submodule edit guard: tool_input.file_path is not absolute, blocking as precaution";
+const BACKGROUND_MALFORMED_REASON: &str =
+    "run_in_background denied: malformed hook JSON cannot rule out Bash background launch";
+const BACKGROUND_PARSE_REASON: &str = "run_in_background denied: cannot parse Bash tool_input";
+const BACKGROUND_CWD_REASON: &str =
+    "run_in_background denied: missing canonical cwd for Bash background launch";
+const BACKGROUND_REGISTRY_REASON: &str =
+    "run_in_background denied: cannot read active bgjob registry entry";
 #[cfg(unix)]
 const STATE_DIRECTORY_MODE: Mode = Mode::S_IRWXU;
 #[cfg(unix)]
@@ -64,6 +96,467 @@ struct StateRow {
     offset: String,
     count: String,
     epoch: String,
+}
+
+#[derive(Serialize)]
+struct DenyEnvelope<'reason> {
+    #[serde(rename = "hookSpecificOutput")]
+    hook_specific_output: DenyOutput<'reason>,
+}
+
+#[derive(Serialize)]
+struct DenyOutput<'reason> {
+    #[serde(rename = "hookEventName")]
+    hook_event_name: &'static str,
+    #[serde(rename = "permissionDecision")]
+    permission_decision: &'static str,
+    #[serde(rename = "permissionDecisionReason")]
+    permission_decision_reason: &'reason str,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProbeError {
+    SymlinkLimit,
+    ReadLink,
+    EmptyTarget,
+    Lookup,
+    Canonicalize,
+}
+
+fn deny_envelope(reason: &str) -> String {
+    serde_json::to_string(&DenyEnvelope {
+        hook_specific_output: DenyOutput {
+            hook_event_name: "PreToolUse",
+            permission_decision: "deny",
+            permission_decision_reason: reason,
+        },
+    })
+    .expect("a deny envelope containing only strings is serializable")
+}
+
+fn emit_deny(reason: &str) {
+    let _ = writeln!(io::stdout().lock(), "{}", deny_envelope(reason));
+}
+
+fn read_stdin_bytes() -> Result<Vec<u8>, ()> {
+    let mut input = Vec::new();
+    io::stdin()
+        .lock()
+        .take((MAX_STDIN_BYTES + 1) as u64)
+        .read_to_end(&mut input)
+        .map_err(|_| ())?;
+    (input.len() <= MAX_STDIN_BYTES).then_some(input).ok_or(())
+}
+
+fn json_text(value: Option<&Value>) -> Result<String, ()> {
+    match value {
+        None | Some(Value::Null) => Ok(String::new()),
+        Some(Value::String(value)) => Ok(value.clone()),
+        Some(value) => serde_json::to_string(value).map_err(|_| ()),
+    }
+}
+
+fn block_file_path(input: &[u8]) -> Result<Option<String>, ()> {
+    let payload: Value = serde_json::from_slice(input).map_err(|_| ())?;
+    let payload = payload.as_object().ok_or(())?;
+    let Some(tool_input) = payload.get("tool_input") else {
+        return Ok(None);
+    };
+    if tool_input.is_null() {
+        return Ok(None);
+    }
+    let tool_input = tool_input.as_object().ok_or(())?;
+    let path = json_text(tool_input.get("file_path"))?;
+    Ok((!path.is_empty()).then_some(path))
+}
+
+fn resolve_probe_directory(path: &Path) -> Result<Option<PathBuf>, ProbeError> {
+    let mut resolved = path.to_path_buf();
+    let mut hops = 0_usize;
+    loop {
+        match fs::symlink_metadata(&resolved) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                if hops >= MAX_SYMLINK_HOPS {
+                    return Err(ProbeError::SymlinkLimit);
+                }
+                let target = fs::read_link(&resolved).map_err(|_| ProbeError::ReadLink)?;
+                if target.as_os_str().is_empty() {
+                    return Err(ProbeError::EmptyTarget);
+                }
+                resolved = if target.is_absolute() {
+                    target
+                } else {
+                    resolved
+                        .parent()
+                        .unwrap_or_else(|| Path::new("/"))
+                        .join(target)
+                };
+                hops += 1;
+            }
+            Ok(_) => break,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                break;
+            }
+            Err(_) => return Err(ProbeError::Lookup),
+        }
+    }
+
+    let mut probe = resolved.as_path();
+    loop {
+        if probe == Path::new("/") {
+            return Ok(None);
+        }
+        match fs::metadata(probe) {
+            Ok(metadata) => {
+                let directory = if metadata.is_file() {
+                    probe.parent().unwrap_or_else(|| Path::new("/"))
+                } else {
+                    probe
+                };
+                return fs::canonicalize(directory)
+                    .map(Some)
+                    .map_err(|_| ProbeError::Canonicalize);
+            }
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                probe = probe.parent().ok_or(ProbeError::Lookup)?;
+            }
+            Err(_) => return Err(ProbeError::Lookup),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn repository_path(path: &larch_core::GitPath) -> PathBuf {
+    PathBuf::from(OsString::from_vec(path.as_bytes().to_vec()))
+}
+
+#[cfg(not(unix))]
+fn repository_path(path: &larch_core::GitPath) -> PathBuf {
+    PathBuf::from(String::from_utf8_lossy(path.as_bytes()).into_owned())
+}
+
+fn discovered_worktree_root(start: &Path) -> Option<PathBuf> {
+    let repository = GixRepository::discover(start).ok()?;
+    let work_dir = repository.location().work_dir?;
+    fs::canonicalize(repository_path(&work_dir)).ok()
+}
+
+fn block_submodule_reason(
+    input: &[u8],
+    project_dir: Option<&Path>,
+    current_dir: Option<&Path>,
+) -> Option<String> {
+    let file_path = match block_file_path(input) {
+        Ok(Some(path)) => PathBuf::from(path),
+        Ok(None) => return None,
+        Err(()) => return Some(BLOCK_PARSE_REASON.to_owned()),
+    };
+    if !file_path.is_absolute() {
+        return Some(BLOCK_ABSOLUTE_REASON.to_owned());
+    }
+    let repo_root = project_dir
+        .and_then(discovered_worktree_root)
+        .or_else(|| current_dir.and_then(discovered_worktree_root))?;
+    let probe_dir = match resolve_probe_directory(&file_path) {
+        Ok(Some(path)) => path,
+        Ok(None) | Err(ProbeError::Lookup | ProbeError::Canonicalize) => return None,
+        Err(ProbeError::SymlinkLimit) => {
+            return Some(format!(
+                "submodule edit guard: symlink resolution exceeded {MAX_SYMLINK_HOPS} hops (possible cycle), blocking as precaution"
+            ));
+        }
+        Err(ProbeError::ReadLink) => {
+            return Some(format!(
+                "submodule edit guard: readlink failed on '{}', blocking as precaution",
+                file_path.display()
+            ));
+        }
+        Err(ProbeError::EmptyTarget) => {
+            return Some(format!(
+                "submodule edit guard: readlink returned empty target for '{}', blocking as precaution",
+                file_path.display()
+            ));
+        }
+    };
+    let file_repository = GixRepository::discover(&probe_dir).ok()?;
+    let file_location = file_repository.location();
+    let file_repo_root =
+        fs::canonicalize(repository_path(file_location.work_dir.as_ref()?)).ok()?;
+    if file_repo_root == repo_root {
+        return None;
+    }
+    let file_git_dir = fs::canonicalize(repository_path(&file_location.common_dir)).ok()?;
+    let superproject = GixRepository::open(&repo_root).ok()?;
+    let checkouts = superproject.submodule_checkouts().ok()?;
+    let is_submodule = checkouts.into_iter().any(|checkout| {
+        fs::canonicalize(checkout.work_dir).ok().as_ref() == Some(&file_repo_root)
+            && fs::canonicalize(checkout.git_dir).ok().as_ref() == Some(&file_git_dir)
+    });
+    if !is_submodule {
+        return None;
+    }
+    let submodule_path = file_repo_root
+        .strip_prefix(&repo_root)
+        .ok()?
+        .to_string_lossy();
+    Some(format!(
+        "This file is inside the '{submodule_path}' submodule. Never edit submodules directly here; file PRs in the submodule's own repo instead."
+    ))
+}
+
+/// Run the fail-closed `hook block-submodule-edit` command.
+pub fn block_submodule_edit(_arguments: &[OsString]) -> ExitCode {
+    let Ok(input) = read_stdin_bytes() else {
+        emit_deny(BLOCK_READ_STDIN_REASON);
+        return ExitCode::SUCCESS;
+    };
+    let project_dir = env::var_os("CLAUDE_PROJECT_DIR").filter(|value| !value.is_empty());
+    let current_dir = env::current_dir().ok();
+    if let Some(reason) = block_submodule_reason(
+        &input,
+        project_dir.as_deref().map(Path::new),
+        current_dir.as_deref(),
+    ) {
+        emit_deny(&reason);
+    }
+    ExitCode::SUCCESS
+}
+
+fn cache_root(xdg_cache_home: Option<&Path>, home: Option<&Path>) -> Option<PathBuf> {
+    xdg_cache_home
+        .filter(|path| !path.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+        .or_else(|| {
+            home.filter(|path| !path.as_os_str().is_empty())
+                .map(|path| path.join(".cache"))
+        })
+}
+
+fn recognized_edit_token(token: &str) -> bool {
+    DENY_EDIT_WRITE_TOKENS.contains(&token)
+}
+
+fn activation_is_live(token: &str, cache_root: &Path, now: SystemTime) -> bool {
+    if !recognized_edit_token(token) {
+        return false;
+    }
+    let activation = cache_root.join("larch/deny-edit-write-active");
+    let mut pending = vec![activation];
+    let mut observed = 0_usize;
+    let prefix = format!("{token}-");
+    while let Some(directory) = pending.pop() {
+        let Ok(entries) = fs::read_dir(directory) else {
+            return false;
+        };
+        for entry in entries {
+            let Ok(entry) = entry else {
+                return false;
+            };
+            observed += 1;
+            if observed > ACTIVATION_SCAN_LIMIT {
+                return false;
+            }
+            let Ok(metadata) = fs::symlink_metadata(entry.path()) else {
+                return false;
+            };
+            if metadata.file_type().is_dir() {
+                pending.push(entry.path());
+                continue;
+            }
+            if !metadata.file_type().is_file()
+                || !entry
+                    .file_name()
+                    .as_encoded_bytes()
+                    .starts_with(prefix.as_bytes())
+            {
+                continue;
+            }
+            let Ok(modified) = metadata.modified() else {
+                return false;
+            };
+            if modified > now
+                || now
+                    .duration_since(modified)
+                    .is_ok_and(|age| age < ACTIVATION_TTL)
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn edit_target(input: &[u8]) -> Result<PathBuf, ()> {
+    let payload: Value = serde_json::from_slice(input).map_err(|_| ())?;
+    let payload = payload.as_object().ok_or(())?;
+    let tool_input = payload
+        .get("tool_input")
+        .and_then(Value::as_object)
+        .ok_or(())?;
+    ["file_path", "notebook_path"]
+        .into_iter()
+        .filter_map(|name| tool_input.get(name).and_then(Value::as_str))
+        .find(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .ok_or(())
+}
+
+fn active_edit_reason(input: &[u8], cache_root: &Path) -> Option<&'static str> {
+    let Ok(target) = edit_target(input) else {
+        return Some(DENY_EDIT_WRITE_REASON);
+    };
+    if !target.is_absolute() {
+        return Some(DENY_EDIT_WRITE_REASON);
+    }
+    let Ok(temporary_root) = fs::canonicalize("/tmp") else {
+        return Some(DENY_EDIT_WRITE_REASON);
+    };
+    let sessions_root = fs::canonicalize(cache_root.join("larch/sessions"))
+        .ok()
+        .filter(|path| path.is_dir());
+    let Ok(Some(probe_dir)) = resolve_probe_directory(&target) else {
+        return Some(DENY_EDIT_WRITE_REASON);
+    };
+    if probe_dir.starts_with(&temporary_root)
+        || sessions_root
+            .as_ref()
+            .is_some_and(|root| probe_dir.starts_with(root))
+    {
+        None
+    } else {
+        Some(DENY_EDIT_WRITE_REASON)
+    }
+}
+
+/// Run the token-scoped, fail-closed `hook deny-edit-write` command.
+pub fn deny_edit_write(arguments: &[OsString]) -> ExitCode {
+    let token = arguments
+        .first()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    let xdg_cache_home = env::var_os("XDG_CACHE_HOME").filter(|value| !value.is_empty());
+    let home = env::var_os("HOME").filter(|value| !value.is_empty());
+    let Some(cache_root) = cache_root(
+        xdg_cache_home.as_deref().map(Path::new),
+        home.as_deref().map(Path::new),
+    ) else {
+        return ExitCode::SUCCESS;
+    };
+    if !activation_is_live(token, &cache_root, SystemTime::now()) {
+        return ExitCode::SUCCESS;
+    }
+    let Ok(input) = read_stdin_bytes() else {
+        emit_deny(DENY_EDIT_WRITE_REASON);
+        return ExitCode::SUCCESS;
+    };
+    if let Some(reason) = active_edit_reason(&input, &cache_root) {
+        emit_deny(reason);
+    }
+    ExitCode::SUCCESS
+}
+
+fn is_documented_bgjob_wait(command: &str) -> bool {
+    let mut normalized = command.replace(['\n', '\r', '\t'], " ").trim().to_owned();
+    while normalized.contains("  ") {
+        normalized = normalized.replace("  ", " ");
+    }
+    if ["&&", "||", ";", "|", "`", "$(", ">", "<"]
+        .iter()
+        .any(|token| normalized.contains(token))
+    {
+        return false;
+    }
+    let arguments = normalized
+        .strip_prefix("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh")
+        .or_else(|| normalized.strip_prefix("\"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh\""));
+    arguments.is_some_and(|arguments| {
+        arguments.starts_with(" bgjob wait ") || arguments == " bgjob wait"
+    })
+}
+
+fn background_fields(payload: &Value) -> Result<Option<(String, String)>, ()> {
+    let Some(payload) = payload.as_object() else {
+        return Ok(None);
+    };
+    if json_text(payload.get("tool_name"))? != "Bash" {
+        return Ok(None);
+    }
+    let tool_input = match payload.get("tool_input") {
+        None | Some(Value::Null) => Map::new(),
+        Some(Value::Object(value)) => value.clone(),
+        Some(_) => return Err(()),
+    };
+    let run_in_background = json_text(tool_input.get("run_in_background"))?;
+    let command = json_text(tool_input.get("command"))?;
+    let cwd = json_text(payload.get("cwd"))?;
+    let background = run_in_background == "true"
+        || (command.contains("run_in_background") && command.contains("true"));
+    Ok(background.then_some((cwd, command)))
+}
+
+fn deny_run_in_background_reason(input: &[u8], registry_root: &Path) -> Option<String> {
+    let payload: Value = match serde_json::from_slice(input) {
+        Ok(payload) => payload,
+        Err(_) => return Some(BACKGROUND_MALFORMED_REASON.to_owned()),
+    };
+    let (cwd, command) = match background_fields(&payload) {
+        Ok(Some(fields)) => fields,
+        Ok(None) => return None,
+        Err(()) => return Some(BACKGROUND_PARSE_REASON.to_owned()),
+    };
+    if is_documented_bgjob_wait(&command) {
+        return None;
+    }
+    let cwd = fs::canonicalize(cwd).ok().filter(|path| path.is_dir());
+    let Some(cwd) = cwd else {
+        return Some(BACKGROUND_CWD_REASON.to_owned());
+    };
+    match find_entry_for_clone(registry_root, &cwd) {
+        Ok(Some(entry)) => Some(format!(
+            "run_in_background denied: active larch bgjob registry exists for this clone ({})",
+            entry.display()
+        )),
+        Ok(None) => None,
+        Err(_) => Some(BACKGROUND_REGISTRY_REASON.to_owned()),
+    }
+}
+
+/// Run the fail-closed `hook deny-run-in-background` command.
+pub fn deny_run_in_background(_arguments: &[OsString]) -> ExitCode {
+    if env::var("LARCH_HOOK_DENY_RUN_IN_BACKGROUND_DISABLE").as_deref() == Ok("1")
+        || env::var("LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT").as_deref() == Ok("1")
+    {
+        return ExitCode::SUCCESS;
+    }
+    let Ok(input) = read_stdin_bytes() else {
+        emit_deny(BACKGROUND_MALFORMED_REASON);
+        return ExitCode::SUCCESS;
+    };
+    let registry_root = env::var_os("LARCH_BGJOB_REGISTRY_ROOT")
+        .filter(|value| !value.is_empty())
+        .map_or_else(
+            || {
+                env::var_os("HOME").map_or_else(
+                    || PathBuf::from("/.cache/larch/daemons"),
+                    |home| PathBuf::from(home).join(".cache/larch/daemons"),
+                )
+            },
+            PathBuf::from,
+        );
+    if let Some(reason) = deny_run_in_background_reason(&input, &registry_root) {
+        emit_deny(&reason);
+    }
+    ExitCode::SUCCESS
 }
 
 /// Run the advisory `hook anti-read-poll` command.
@@ -93,15 +586,7 @@ pub fn anti_read_poll(arguments: &[OsString]) -> ExitCode {
 }
 
 fn parse_stdin_event() -> Option<ReadEvent> {
-    let mut input = Vec::new();
-    io::stdin()
-        .lock()
-        .take((MAX_STDIN_BYTES + 1) as u64)
-        .read_to_end(&mut input)
-        .ok()?;
-    if input.len() > MAX_STDIN_BYTES {
-        return None;
-    }
+    let input = read_stdin_bytes().ok()?;
     let payload: Value = serde_json::from_slice(&input).ok()?;
     parse_payload(&payload)
 }
@@ -606,10 +1091,15 @@ fn assert_or_unlink_replaceable_destination(state: &StateDirectory, name: &str) 
 #[cfg(test)]
 mod tests {
     use super::{
-        REMINDER_TEXT, ReadEvent, STATE_DIR_NAME, StateDirectory, StateRow, count_for,
-        elapsed_is_in_window, increment_decimal, normalize_decimal, parse_payload, parse_state_row,
-        path_hash, process_event_at, state_basename, write_state_row,
+        ACTIVATION_TTL, BACKGROUND_CWD_REASON, BACKGROUND_MALFORMED_REASON,
+        BACKGROUND_PARSE_REASON, BACKGROUND_REGISTRY_REASON, BLOCK_ABSOLUTE_REASON,
+        BLOCK_PARSE_REASON, DENY_EDIT_WRITE_REASON, REMINDER_TEXT, ReadEvent, STATE_DIR_NAME,
+        StateDirectory, StateRow, activation_is_live, active_edit_reason, block_submodule_reason,
+        count_for, deny_envelope, deny_run_in_background_reason, elapsed_is_in_window,
+        increment_decimal, normalize_decimal, parse_payload, parse_state_row, path_hash,
+        process_event_at, state_basename, write_state_row,
     };
+    use larch_test_support::{GitFixture, GitRepository};
     #[cfg(unix)]
     use nix::{sys::stat::Mode, unistd::mkfifo};
     use serde_json::json;
@@ -617,8 +1107,10 @@ mod tests {
     use std::os::unix::fs::PermissionsExt as _;
     use std::{
         fs,
+        path::Path,
         sync::{Arc, Barrier},
         thread,
+        time::SystemTime,
     };
     use tempfile::TempDir;
 
@@ -631,6 +1123,352 @@ mod tests {
             conversation_id: String::new(),
             now: now.to_owned(),
         }
+    }
+
+    fn file_payload(path: &Path) -> Vec<u8> {
+        serde_json::to_vec(&json!({"tool_input": {"file_path": path}})).expect("file payload")
+    }
+
+    fn background_payload(cwd: &Path, command: &str) -> Vec<u8> {
+        serde_json::to_vec(&json!({
+            "tool_name": "Bash",
+            "cwd": cwd,
+            "tool_input": {"command": command, "run_in_background": true},
+        }))
+        .expect("background payload")
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn submodule_guard_preserves_nested_repo_and_symlink_contracts() {
+        use std::os::unix::fs::symlink;
+
+        let repository = GitRepository::builder(GitFixture::Submodule)
+            .build()
+            .expect("submodule fixture");
+        let root = repository.root();
+        let submodule = root.join("submodule");
+
+        assert!(
+            block_submodule_reason(
+                &file_payload(&root.join("tracked.txt")),
+                Some(root),
+                Some(root)
+            )
+            .is_none()
+        );
+        for target in [
+            submodule.join("child.txt"),
+            submodule.join("missing/parent/new.txt"),
+        ] {
+            let reason = block_submodule_reason(&file_payload(&target), Some(root), Some(root))
+                .expect("submodule deny");
+            assert!(reason.contains("'submodule' submodule"), "{reason}");
+        }
+        let reason = block_submodule_reason(
+            &file_payload(&submodule.join("child.txt")),
+            Some(&root.join("missing-project-dir")),
+            Some(root),
+        )
+        .expect("cwd fallback deny");
+        assert!(reason.contains("submodule"));
+        let reason = block_submodule_reason(
+            &file_payload(&submodule.join("child.txt")),
+            Some(root),
+            Some(&submodule),
+        )
+        .expect("project anchor deny");
+        assert!(reason.contains("submodule"));
+
+        let nested = root.join("nested");
+        let output = repository
+            .git([
+                "init",
+                "--quiet",
+                nested.to_str().expect("UTF-8 fixture path"),
+            ])
+            .expect("initialize nested repository");
+        assert!(
+            output.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        fs::write(nested.join("file.txt"), "nested\n").expect("nested file");
+        assert!(
+            block_submodule_reason(
+                &file_payload(&nested.join("file.txt")),
+                Some(root),
+                Some(root)
+            )
+            .is_none()
+        );
+        let outside = TempDir::new().expect("outside repository");
+        assert!(
+            block_submodule_reason(
+                &file_payload(&outside.path().join("file.txt")),
+                Some(root),
+                Some(root),
+            )
+            .is_none()
+        );
+
+        symlink(root.join("tracked.txt"), root.join("super-link")).expect("superproject symlink");
+        symlink(
+            submodule.join("child.txt"),
+            root.join("absolute-submodule-link"),
+        )
+        .expect("absolute submodule symlink");
+        symlink("submodule/child.txt", root.join("relative-submodule-link"))
+            .expect("relative submodule symlink");
+        symlink("cycle-link", root.join("cycle-link")).expect("cycle symlink");
+        assert!(
+            block_submodule_reason(
+                &file_payload(&root.join("super-link")),
+                Some(root),
+                Some(root)
+            )
+            .is_none()
+        );
+        for link in ["absolute-submodule-link", "relative-submodule-link"] {
+            let reason =
+                block_submodule_reason(&file_payload(&root.join(link)), Some(root), Some(root))
+                    .expect("symlink into submodule denied");
+            assert!(reason.contains("submodule"), "{reason}");
+        }
+        let cycle = block_submodule_reason(
+            &file_payload(&root.join("cycle-link")),
+            Some(root),
+            Some(root),
+        )
+        .expect("cycle denied");
+        assert!(cycle.contains("symlink"), "{cycle}");
+    }
+
+    #[test]
+    fn submodule_guard_fails_closed_only_for_ambiguous_input() {
+        let temporary = TempDir::new().expect("temporary root");
+        assert_eq!(
+            block_submodule_reason(b"not json", Some(temporary.path()), Some(temporary.path())),
+            Some(BLOCK_PARSE_REASON.to_owned())
+        );
+        assert_eq!(
+            block_submodule_reason(
+                br#"{"tool_input":{"file_path":"relative.txt"}}"#,
+                Some(temporary.path()),
+                Some(temporary.path()),
+            ),
+            Some(BLOCK_ABSOLUTE_REASON.to_owned())
+        );
+        assert!(
+            block_submodule_reason(
+                &file_payload(&temporary.path().join("outside.txt")),
+                None,
+                Some(temporary.path()),
+            )
+            .is_none()
+        );
+        assert!(block_submodule_reason(br#"{"tool_input":{}}"#, None, None).is_none());
+    }
+
+    #[test]
+    fn edit_activation_is_token_scoped_pid_agnostic_and_ttl_bounded() {
+        let temporary = TempDir::new().expect("temporary cache");
+        let activation = temporary.path().join("larch/deny-edit-write-active");
+        fs::create_dir_all(&activation).expect("activation directory");
+        let sentinel = activation.join("research-999999");
+        fs::write(&sentinel, "").expect("activation sentinel");
+        let modified = fs::metadata(&sentinel)
+            .expect("sentinel metadata")
+            .modified()
+            .expect("sentinel mtime");
+        assert!(activation_is_live("research", temporary.path(), modified));
+        assert!(!activation_is_live("file-bug", temporary.path(), modified));
+        assert!(!activation_is_live("", temporary.path(), modified));
+        assert!(!activation_is_live("unknown", temporary.path(), modified));
+        assert!(!activation_is_live(
+            "research",
+            temporary.path(),
+            modified + ACTIVATION_TTL,
+        ));
+
+        for token in [
+            "audit-umbrella",
+            "file-bug",
+            "complete-umbrella",
+            "debate",
+            "triage",
+            "umbrella",
+        ] {
+            let path = activation.join(format!("{token}-1"));
+            fs::write(&path, "").expect("token sentinel");
+            let now = fs::metadata(&path)
+                .expect("token metadata")
+                .modified()
+                .expect("token mtime");
+            assert!(activation_is_live(token, temporary.path(), now), "{token}");
+        }
+        assert!(!activation_is_live(
+            "research",
+            &temporary.path().join("absent"),
+            SystemTime::now(),
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn active_edit_guard_allows_only_canonical_scratch_roots() {
+        use std::os::unix::fs::symlink;
+
+        let cache = TempDir::new_in(env!("CARGO_MANIFEST_DIR")).expect("non-tmp cache root");
+        let sessions = cache.path().join("larch/sessions");
+        fs::create_dir_all(sessions.join("session-a")).expect("sessions root");
+        let tmp = TempDir::new_in("/tmp").expect("/tmp scratch");
+        let tmp_new = tmp.path().join("missing/leaf.txt");
+        assert_eq!(
+            active_edit_reason(&file_payload(&tmp_new), cache.path()),
+            None
+        );
+        let tmp_existing = tmp.path().join("existing.txt");
+        fs::write(&tmp_existing, "existing\n").expect("existing /tmp target");
+        assert_eq!(
+            active_edit_reason(&file_payload(&tmp_existing), cache.path()),
+            None
+        );
+        assert_eq!(
+            active_edit_reason(
+                &serde_json::to_vec(&json!({
+                    "tool_input": {"file_path": "", "notebook_path": tmp.path().join("new.ipynb")}
+                }))
+                .expect("notebook payload"),
+                cache.path(),
+            ),
+            None
+        );
+        assert_eq!(
+            active_edit_reason(
+                &file_payload(&sessions.join("session-a/bodies/item.txt")),
+                cache.path(),
+            ),
+            None
+        );
+
+        for payload in [
+            file_payload(Path::new("relative.txt")),
+            file_payload(Path::new("/tmp/../etc/passwd")),
+            file_payload(&cache.path().join("larch/deny-edit-write-active/evil.txt")),
+            file_payload(&cache.path().join("larch/sessions/../evil.txt")),
+            b"not json".to_vec(),
+            br#"{"tool_input":{}}"#.to_vec(),
+        ] {
+            assert_eq!(
+                active_edit_reason(&payload, cache.path()),
+                Some(DENY_EDIT_WRITE_REASON)
+            );
+        }
+
+        let outside = cache.path().join("outside.txt");
+        fs::write(&outside, "outside\n").expect("outside target");
+        let link = tmp.path().join("outside-link");
+        symlink(&outside, &link).expect("outside symlink");
+        assert_eq!(
+            active_edit_reason(&file_payload(&link), cache.path()),
+            Some(DENY_EDIT_WRITE_REASON)
+        );
+        fs::remove_dir_all(&sessions).expect("remove sessions root");
+        assert_eq!(
+            active_edit_reason(
+                &file_payload(&sessions.join("missing/session-body.txt")),
+                cache.path(),
+            ),
+            Some(DENY_EDIT_WRITE_REASON)
+        );
+    }
+
+    #[test]
+    fn edit_deny_envelope_is_byte_stable() {
+        assert_eq!(
+            deny_envelope(DENY_EDIT_WRITE_REASON),
+            r#"{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"The active skill is read-only-repo -- Edit/Write/NotebookEdit outside /tmp or the larch session cache is not permitted."}}"#
+        );
+    }
+
+    #[test]
+    fn background_guard_preserves_wait_carveout_and_registry_fail_closed_behavior() {
+        let temporary = TempDir::new().expect("temporary root");
+        let clone = temporary.path().join("clone");
+        let registry = temporary.path().join("registry");
+        fs::create_dir_all(&clone).expect("clone root");
+        fs::create_dir_all(&registry).expect("registry root");
+        let payload = background_payload(&clone, "sleep 1");
+        assert_eq!(deny_run_in_background_reason(&payload, &registry), None);
+
+        let row = registry.join("run-demo.env");
+        fs::write(&row, format!("CLONE_PATH={}\n", clone.display())).expect("registry row");
+        let reason = deny_run_in_background_reason(&payload, &registry).expect("active deny");
+        assert!(reason.contains("active larch bgjob registry"), "{reason}");
+        let fallback_gate = serde_json::to_vec(&json!({
+            "tool_name": "Bash",
+            "cwd": clone,
+            "tool_input": {"command": "echo run_in_background=true"},
+        }))
+        .expect("fallback background payload");
+        let reason = deny_run_in_background_reason(&fallback_gate, &registry)
+            .expect("command-string background gate deny");
+        assert!(reason.contains("active larch bgjob registry"), "{reason}");
+
+        let wait = background_payload(
+            &clone,
+            "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh bgjob wait --step leaf --tmpdir /tmp/x --max-wait-s 7200",
+        );
+        assert_eq!(deny_run_in_background_reason(&wait, &registry), None);
+        let multiline_wait = background_payload(
+            &clone,
+            "\"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh\" bgjob wait \\\n  --step leaf \\\n  --tmpdir /tmp/x \\\n  --max-wait-s 7200",
+        );
+        assert_eq!(
+            deny_run_in_background_reason(&multiline_wait, &registry),
+            None
+        );
+        for command in [
+            "/tmp/decoy/larch.sh bgjob wait --step leaf --tmpdir /tmp/x --max-wait-s 7200",
+            "/tmp/decoy/scripts/larch.sh bgjob wait --step leaf --tmpdir /tmp/x --max-wait-s 7200",
+            "sleep 1 && ${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh bgjob wait --step leaf --tmpdir /tmp/x --max-wait-s 7200",
+        ] {
+            let reason =
+                deny_run_in_background_reason(&background_payload(&clone, command), &registry)
+                    .expect("unsafe wait denied");
+            assert!(reason.contains("active larch bgjob registry"), "{reason}");
+        }
+
+        assert_eq!(
+            deny_run_in_background_reason(b"not json", &registry).as_deref(),
+            Some(BACKGROUND_MALFORMED_REASON)
+        );
+        assert_eq!(
+            deny_run_in_background_reason(
+                br#"{"tool_name":"Bash","tool_input":{"run_in_background":true}}"#,
+                &registry,
+            )
+            .as_deref(),
+            Some(BACKGROUND_CWD_REASON)
+        );
+        assert_eq!(
+            deny_run_in_background_reason(
+                br#"{"tool_name":"Read","tool_input":{"run_in_background":true}}"#,
+                &registry,
+            ),
+            None
+        );
+        assert_eq!(
+            deny_run_in_background_reason(br#"{"tool_name":"Bash","tool_input":true}"#, &registry,)
+                .as_deref(),
+            Some(BACKGROUND_PARSE_REASON)
+        );
+        fs::write(&row, "not-kv\r\n").expect("malformed registry row");
+        assert_eq!(
+            deny_run_in_background_reason(&payload, &registry).as_deref(),
+            Some(BACKGROUND_REGISTRY_REASON)
+        );
     }
 
     #[test]

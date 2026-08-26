@@ -38,6 +38,7 @@ repos:
             scripts/flush\-vendor\-failure\-diagnostics\.sh|
             scripts/hook\-anti\-read\-poll\.sh|
             scripts/hook\-bg\-poll\-guard\.sh|
+            scripts/hook\-deny\-run\-in\-background\.sh|
             scripts/hook\-progress\-report\.sh|
             scripts/lint\-renderer\-substitution\-safety\.sh|
             scripts/pre\-commit\-bash\-syntax\.sh|
@@ -50,14 +51,12 @@ repos:
             scripts/test\-anti\-halt\-banners\.sh|
             scripts/test\-anti\-improvised\-wakeup\.sh|
             scripts/test\-audit\-edit\-write\.sh|
-            scripts/test\-block\-submodule\-edit\.sh|
             scripts/test\-bug\-structure\.sh|
             scripts/test\-cache\-key\-discipline\.sh|
             scripts/test\-cache\-root\-validation\.sh|
             scripts/test\-check\-stale\-plugin\.sh|
             scripts/test\-check\-topology\-rule\-paths\.sh|
             scripts/test\-compose\-plan\-goals\-test\.sh|
-            scripts/test\-deny\-edit\-write\.sh|
             scripts/test\-design\-multi\-round\-integration\.sh|
             scripts/test\-design\-structure\.sh|
             scripts/test\-effort\-prose\.sh|

@@ -1,7 +1,7 @@
 use std::{
     env, fs,
     path::{Path, PathBuf},
-    process::{Command, Output},
+    process::{Command, Output, Stdio},
     time::{Duration, SystemTime},
 };
 
@@ -2465,6 +2465,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "anti-read-poll",
     ),
     CleanInstallCase::new(
+        "clean-install-hook-block-submodule-edit",
+        "hook",
+        "block-submodule-edit",
+    ),
+    CleanInstallCase::new(
+        "clean-install-hook-deny-edit-write",
+        "hook",
+        "deny-edit-write",
+    ),
+    CleanInstallCase::new(
+        "clean-install-hook-deny-run-in-background",
+        "hook",
+        "deny-run-in-background",
+    ),
+    CleanInstallCase::new(
         "clean-install-plugin-read-version",
         "plugin",
         "read-version",
@@ -2988,6 +3003,196 @@ fn clean_install_validation_failures_precede_selector_dispatch() {
             "{failure} reached selector dispatch"
         );
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn hook_no_install_mode_never_bootstraps_and_still_uses_verified_binaries() {
+    let fixture = clean_install_fixture();
+    let entrypoint = fixture.root.join("scripts/larch.sh");
+    let unavailable = Command::new("/bin/bash")
+        .arg(&entrypoint)
+        .args(["hook", "block-submodule-edit"])
+        .env("HOME", &fixture.home)
+        .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
+        .env("LARCH_BOOTSTRAP_NO_INSTALL", "1")
+        .env_remove("LARCH_BINARY")
+        .env_remove("CLAUDE_PLUGIN_DATA")
+        .output()
+        .expect("run unavailable no-install hook");
+    assert_eq!(unavailable.status.code(), Some(97));
+    assert!(!fixture.root.join("bin").exists());
+
+    let invalid_override = Command::new("/bin/bash")
+        .arg(&entrypoint)
+        .args(["hook", "block-submodule-edit"])
+        .env("HOME", &fixture.home)
+        .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
+        .env("LARCH_BOOTSTRAP_NO_INSTALL", "1")
+        .env("LARCH_BINARY", "relative/larch")
+        .env_remove("CLAUDE_PLUGIN_DATA")
+        .output()
+        .expect("run invalid override in no-install mode");
+    assert_eq!(invalid_override.status.code(), Some(97));
+    assert!(!fixture.root.join("bin").exists());
+
+    fs::write(&fixture.events, b"").expect("clear override event log");
+    let override_output = Command::new("/bin/bash")
+        .arg(&entrypoint)
+        .args(["hook", "anti-read-poll"])
+        .env("HOME", &fixture.home)
+        .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
+        .env("LARCH_BOOTSTRAP_NO_INSTALL", "1")
+        .env("LARCH_BINARY", &fixture.wrapper)
+        .env("REAL_LARCH", &fixture.binary)
+        .env("CLEAN_INSTALL_EVENTS", &fixture.events)
+        .output()
+        .expect("run verified override in no-install mode");
+    assert!(
+        override_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&override_output.stderr)
+    );
+    assert!(
+        fs::read_to_string(&fixture.events)
+            .expect("override events")
+            .lines()
+            .any(|line| line == "hook anti-read-poll")
+    );
+
+    let installed = fixture.root.join("bin/larch");
+    fs::create_dir_all(installed.parent().expect("installed binary parent"))
+        .expect("create installed bin directory");
+    fs::copy(&fixture.wrapper, &installed).expect("install verified fixture binary");
+    let mut permissions = fs::metadata(&installed)
+        .expect("installed binary metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&installed, permissions).expect("make installed binary executable");
+    fs::write(&fixture.events, b"").expect("clear installed event log");
+    let installed_output = Command::new("/bin/bash")
+        .arg(&entrypoint)
+        .args(["hook", "anti-read-poll"])
+        .env("HOME", &fixture.home)
+        .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
+        .env("LARCH_BOOTSTRAP_NO_INSTALL", "1")
+        .env_remove("LARCH_BINARY")
+        .env("REAL_LARCH", &fixture.binary)
+        .env("CLEAN_INSTALL_EVENTS", &fixture.events)
+        .output()
+        .expect("run verified installed binary in no-install mode");
+    assert!(
+        installed_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&installed_output.stderr)
+    );
+    assert!(
+        fs::read_to_string(&fixture.events)
+            .expect("installed events")
+            .lines()
+            .any(|line| line == "hook anti-read-poll")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn hook_shims_emit_static_denies_when_no_verified_binary_is_available() {
+    let fixture = clean_install_fixture();
+    for (script, reason_fragment) in [
+        (
+            "block-submodule-edit.sh",
+            "larch hook unavailable, blocking as precaution",
+        ),
+        (
+            "deny-edit-write.sh",
+            "Edit/Write/NotebookEdit outside /tmp",
+        ),
+        (
+            "hook-deny-run-in-background.sh",
+            "run_in_background denied: larch hook unavailable",
+        ),
+    ] {
+        let source = repo_root().join("scripts").join(script);
+        let destination = fixture.root.join("scripts").join(script);
+        fs::copy(source, &destination).expect("copy hook shim");
+        let mut permissions = fs::metadata(&destination)
+            .expect("hook shim metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&destination, permissions).expect("make hook shim executable");
+
+        let output = Command::new("/bin/bash")
+            .arg(&destination)
+            .env("HOME", &fixture.home)
+            .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
+            .env_remove("LARCH_BINARY")
+            .env_remove("CLAUDE_PLUGIN_DATA")
+            .stdin(Stdio::null())
+            .output()
+            .expect("run hook shim without binary");
+        assert!(
+            output.status.success(),
+            "{script}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let payload: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("static deny JSON");
+        assert_eq!(
+            payload["hookSpecificOutput"]["permissionDecision"],
+            "deny",
+            "{script}"
+        );
+        assert!(
+            payload["hookSpecificOutput"]["permissionDecisionReason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains(reason_fragment)),
+            "{script}: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert!(!fixture.root.join("bin").exists(), "{script}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn no_install_mode_does_not_intercept_bootstrap_metadata_actions() {
+    let fixture = clean_install_fixture();
+    let entrypoint = fixture.root.join("scripts/larch.sh");
+    let invalid_preflight = Command::new("/bin/bash")
+        .arg(&entrypoint)
+        .args(["--preflight-release", "not-a-version"])
+        .env("LARCH_BOOTSTRAP_NO_INSTALL", "1")
+        .output()
+        .expect("run preflight validation");
+    assert_eq!(invalid_preflight.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&invalid_preflight.stderr)
+            .contains("requested release version is not a semantic version")
+    );
+
+    let bin = fixture.root.join("metadata-bin");
+    fs::create_dir(&bin).expect("create metadata bin");
+    let gh = bin.join("gh");
+    fs::write(
+        &gh,
+        "#!/bin/sh\nif [ \"$1\" = api ] && [ \"$2\" = --help ]; then exit 0; fi\nif [ \"$1\" = api ]; then printf 'v9.8.7\\n'; exit 0; fi\nexit 1\n",
+    )
+    .expect("write gh stub");
+    let mut permissions = fs::metadata(&gh).expect("gh metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&gh, permissions).expect("make gh stub executable");
+    let mut path_entries = vec![bin];
+    path_entries.extend(env::split_paths(&env::var_os("PATH").unwrap_or_default()));
+    let path = env::join_paths(path_entries).expect("metadata PATH");
+    let latest = Command::new("/bin/bash")
+        .arg(&entrypoint)
+        .arg("--latest-stable-version")
+        .env("PATH", path)
+        .env("LARCH_BOOTSTRAP_NO_INSTALL", "1")
+        .output()
+        .expect("run latest stable lookup");
+    assert!(latest.status.success(), "{}", String::from_utf8_lossy(&latest.stderr));
+    assert_eq!(String::from_utf8_lossy(&latest.stdout), "LARCH_STABLE_VERSION=9.8.7\n");
 }
 
 /// Pin the public Rust-owned bootstrap envelope on both paths. The verified

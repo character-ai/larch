@@ -199,6 +199,14 @@ an existing executable intact and prints retry guidance. Run the same command
 again after fixing a missing tool, authentication problem, or interrupted
 download.
 
+The deny and anti-read-poll hook wrappers set
+`LARCH_BOOTSTRAP_NO_INSTALL=1`. They may run an already verified override or
+installed executable, but they never start a download or installation from a
+hook event. When no verified executable is available, `scripts/larch.sh` exits
+97 and each wrapper applies its documented local allow or deny fallback.
+Explicit `--preflight-release` and `--latest-stable-version` actions are
+unaffected.
+
 `--preflight-release`, the upgrade path's pre-install verification, adds one
 check on top of that set: the `stable` branch must be at the release's tagged
 commit. It refuses the upgrade otherwise, before any plugin state changes,

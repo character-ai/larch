@@ -6,7 +6,7 @@
 //! keep a long-running step visible without a staleness marker. The bgjob
 //! command leaves extend this module rather than adding a second reader.
 
-use crate::read_kv_raw;
+use crate::{read_first_raw_key, read_kv_raw};
 use larch_core::{
     BGJOB_HEARTBEAT_STALE_AFTER_S, ProcessBirthIdentity, ProcessIdentityHost,
     ProcessIdentityValidationPolicy, RecordedProcessIdentity,
@@ -22,6 +22,88 @@ use std::{
 pub const REGISTRY_DIRNAME: &str = "daemons";
 const BGJOB_TMP_SUBDIR: &str = "bgjob";
 const SLUG_MAX_CHARS: usize = 97;
+const HOOK_REGISTRY_ENTRY_LIMIT: usize = 4_096;
+const HOOK_REGISTRY_ROW_MAX_BYTES: u64 = 65_536;
+
+/// Failure to inspect a background-job registry for a clone-scoped hook.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegistryCloneScanError {
+    /// The registry or requested clone root could not be inspected safely.
+    UnreadableRoot,
+    /// A regular registry row could not be read with the shared wire codec.
+    UnreadableEntry,
+    /// The registry exceeded the bounded hook scan.
+    ScanLimitExceeded,
+}
+
+/// Return the first registry row whose canonical clone overlaps `clone_root`.
+///
+/// The hook needs only the `CLONE_PATH` field. This reader keeps the shared KV
+/// codec as the sole owner of registry parsing without applying statusline
+/// liveness requirements to an entry that the daemon still owns.
+///
+/// # Errors
+///
+/// Returns a stable error when an existing registry directory or regular
+/// registry row cannot be read.
+pub fn find_entry_for_clone(
+    registry_root: &Path,
+    clone_root: &Path,
+) -> Result<Option<PathBuf>, RegistryCloneScanError> {
+    let clone_root =
+        fs::canonicalize(clone_root).map_err(|_| RegistryCloneScanError::UnreadableRoot)?;
+    if !clone_root.is_dir() {
+        return Err(RegistryCloneScanError::UnreadableRoot);
+    }
+    let entries = match fs::read_dir(registry_root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(RegistryCloneScanError::UnreadableRoot),
+    };
+    let mut paths = Vec::new();
+    for entry in entries {
+        let path = entry
+            .map_err(|_| RegistryCloneScanError::UnreadableRoot)?
+            .path();
+        if path.extension().is_none_or(|value| value != "env") {
+            continue;
+        }
+        if paths.len() >= HOOK_REGISTRY_ENTRY_LIMIT {
+            return Err(RegistryCloneScanError::ScanLimitExceeded);
+        }
+        paths.push(path);
+    }
+    paths.sort();
+    for path in paths {
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            return Err(RegistryCloneScanError::UnreadableEntry);
+        };
+        if !metadata.file_type().is_file() {
+            continue;
+        }
+        if metadata.len() > HOOK_REGISTRY_ROW_MAX_BYTES {
+            return Err(RegistryCloneScanError::UnreadableEntry);
+        }
+        let raw_clone = read_first_raw_key(&path, "CLONE_PATH")
+            .map_err(|_| RegistryCloneScanError::UnreadableEntry)?;
+        let Some(raw_clone) = raw_clone.filter(|value| !value.is_empty()) else {
+            continue;
+        };
+        let Ok(entry_clone) = fs::canonicalize(&raw_clone) else {
+            continue;
+        };
+        if !entry_clone.is_dir() {
+            continue;
+        }
+        if entry_clone == clone_root
+            || entry_clone.starts_with(&clone_root)
+            || clone_root.starts_with(&entry_clone)
+        {
+            return Ok(Some(path));
+        }
+    }
+    Ok(None)
+}
 
 /// Narrow liveness port over one recorded process identity.
 ///
@@ -194,7 +276,7 @@ fn validated_child_path(raw: &str, root: &Path) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{IdentityLiveness, has_live_entry, validate_slug};
+    use super::{IdentityLiveness, find_entry_for_clone, has_live_entry, validate_slug};
     use larch_core::{ProcessIdentityValidationPolicy, RecordedProcessIdentity};
     use std::{cell::RefCell, fs, path::Path};
     use tempfile::TempDir;
@@ -399,5 +481,74 @@ mod tests {
             host.0.borrow().as_slice(),
             [ProcessIdentityValidationPolicy::ExactCommand]
         );
+    }
+
+    #[test]
+    fn clone_scan_uses_the_shared_codec_and_canonical_overlap() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let registry = sandbox.path().join("registry");
+        let clone = sandbox.path().join("clone");
+        let child = clone.join("child");
+        fs::create_dir_all(&registry).expect("registry");
+        fs::create_dir_all(&child).expect("clone child");
+        fs::write(
+            registry.join("run.env"),
+            format!("CLONE_PATH={}\n", clone.display()),
+        )
+        .expect("registry row");
+
+        assert_eq!(
+            find_entry_for_clone(&registry, &child)
+                .expect("scan")
+                .and_then(|path| path.file_name().map(ToOwned::to_owned)),
+            Some("run.env".into())
+        );
+        assert!(
+            find_entry_for_clone(&registry, sandbox.path())
+                .expect("parent overlap")
+                .is_some()
+        );
+
+        let other = sandbox.path().join("other");
+        fs::create_dir(&other).expect("other clone");
+        fs::write(
+            registry.join("run.env"),
+            format!(
+                "CLONE_PATH={}\nCLONE_PATH={}\n",
+                clone.display(),
+                other.display()
+            ),
+        )
+        .expect("duplicate registry row");
+        assert!(
+            find_entry_for_clone(&registry, &clone)
+                .expect("first-value scan")
+                .is_some()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn clone_scan_skips_symlinks_and_rejects_malformed_regular_rows() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let registry = sandbox.path().join("registry");
+        let clone = sandbox.path().join("clone");
+        fs::create_dir_all(&registry).expect("registry");
+        fs::create_dir_all(&clone).expect("clone");
+        let target = sandbox.path().join("target.env");
+        fs::write(&target, format!("CLONE_PATH={}\n", clone.display())).expect("target row");
+        std::os::unix::fs::symlink(&target, registry.join("linked.env")).expect("registry symlink");
+        assert!(
+            find_entry_for_clone(&registry, &clone)
+                .expect("symlink scan")
+                .is_none()
+        );
+
+        fs::write(registry.join("broken.env"), "CLONE_PATH=bad\r\n").expect("broken row");
+        assert!(find_entry_for_clone(&registry, &clone).is_err());
+
+        fs::remove_file(registry.join("broken.env")).expect("remove broken row");
+        fs::write(registry.join("oversized.env"), vec![b'x'; 65_537]).expect("oversized row");
+        assert!(find_entry_for_clone(&registry, &clone).is_err());
     }
 }

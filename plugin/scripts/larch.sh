@@ -12,6 +12,7 @@ readonly RELEASE_WORKFLOW="character-ai/larch/.github/workflows/rust-release-ass
 # candidate branches /release Step 5 creates.
 readonly RELEASE_PIN_REF="stable"
 readonly LOCK_WAIT_SECONDS=120
+readonly LARCH_NO_INSTALL_EXIT=97
 
 plugin_root=""
 plugin_data=""
@@ -622,6 +623,7 @@ main() {
     local version=""
     local target=""
     local override="${LARCH_BINARY:-}"
+    local no_install="${LARCH_BOOTSTRAP_NO_INSTALL:-}"
 
     if [ "${1:-}" = "--preflight-release" ]; then
         [ "$#" -eq 2 ] || die "--preflight-release requires exactly one version"
@@ -650,20 +652,33 @@ main() {
     target="$(resolve_target)"
 
     if [ -n "$override" ]; then
-        validate_absolute_path "LARCH_BINARY" "$override"
+        if [ "$no_install" = "1" ]; then
+            (validate_absolute_path "LARCH_BINARY" "$override") 2>/dev/null \
+                || exit "$LARCH_NO_INSTALL_EXIT"
+        else
+            validate_absolute_path "LARCH_BINARY" "$override"
+        fi
+        if binary_matches_version "$override" "$version" && binary_passes_self_check "$override" "$version" "$target"; then
+            run_binary "$override" "$@"
+        fi
+        [ "$no_install" = "1" ] && exit "$LARCH_NO_INSTALL_EXIT"
         binary_matches_version "$override" "$version" || die "LARCH_BINARY is not an executable for plugin version $version"
-        binary_passes_self_check "$override" "$version" "$target" || die "LARCH_BINARY self-check does not match $version for $target"
-        run_binary "$override" "$@"
+        die "LARCH_BINARY self-check does not match $version for $target"
     fi
 
     bin_dir="$plugin_root/bin"
     binary_path="$bin_dir/larch"
     if [ -e "$binary_path" ] || [ -L "$binary_path" ]; then
-        [ -f "$binary_path" ] && [ ! -L "$binary_path" ] || die "existing larch binary is not a regular file"
-        if binary_matches_version "$binary_path" "$version" && binary_passes_self_check "$binary_path" "$version" "$target"; then
+        if [ -f "$binary_path" ] && [ ! -L "$binary_path" ] \
+            && binary_matches_version "$binary_path" "$version" \
+            && binary_passes_self_check "$binary_path" "$version" "$target"; then
             run_binary "$binary_path" "$@"
         fi
+        [ "$no_install" = "1" ] && exit "$LARCH_NO_INSTALL_EXIT"
+        [ -f "$binary_path" ] && [ ! -L "$binary_path" ] || die "existing larch binary is not a regular file"
     fi
+
+    [ "$no_install" = "1" ] && exit "$LARCH_NO_INSTALL_EXIT"
 
     if [ -e "$plugin_root/.git" ] || [ -L "$plugin_root/.git" ]; then
         die "local --plugin-dir checkout needs an explicit build: run 'cargo build --locked --release --package larch-cli' and set LARCH_BINARY to target/release/larch"
