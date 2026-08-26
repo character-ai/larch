@@ -306,16 +306,20 @@ A release version names one synthetic projection commit, and both halves of an
 install derive from it. The projection's first parent is the merged release
 commit on `main`; its tree matches that parent except for the generated
 `plugin/` subtree. `release stage` records the previous `stable` tip as the
-projection's second parent. `.claude-plugin/marketplace.json` pins its
-`git-subdir` source to that branch, so no merge to `main` can change what an
-install receives.
+projection's second parent, unless that tip is already an ancestor of the
+merged commit, as it is for the first release after the cutover.
+`.claude-plugin/marketplace.json` pins its `git-subdir` source to that branch,
+so no merge to `main` can change what an install receives.
 
 `release finish` fast-forwards `stable` to the tagged projection commit last,
 only after immutable publication, release and asset attestation verification,
 and Latest promotion succeed. It then re-reads the remote branch and fails the
 release when the branch does not name the tagged projection commit. The push
-carries no force and no lease. The projection's second parent therefore keeps
-the update fast-forwardable, and the pin can only advance. A published release
+carries no force and no lease. The projection's ancestry therefore keeps the
+update fast-forwardable, and the pin can only advance. `release stage
+--dry-run` rehearses the projection with no tag, push, or draft;
+`.claude/skills/release/references/first-projection-release-runbook.md` holds
+the rehearsal and the rollback plan. A published release
 whose pin did not advance fails `release finish` rather than reporting success,
 because no installer would see it.
 

@@ -2557,12 +2557,17 @@ struct PromoteLatestArguments {
 struct StageReleaseArguments {
     #[arg(long)]
     version: String,
-    #[arg(long)]
-    notes_file: PathBuf,
+    /// Draft body; required unless --dry-run.
+    #[arg(long, required_unless_present = "dry_run")]
+    notes_file: Option<PathBuf>,
     #[arg(long = "repo")]
     repository: String,
     #[arg(long)]
     pr: String,
+    /// Build and prove the projection commit without tagging, pushing, or
+    /// creating a draft.
+    #[arg(long)]
+    dry_run: bool,
 }
 
 #[derive(Args)]
@@ -4167,9 +4172,10 @@ fn run_release(
         ReleaseCommand::SetVersion(arguments) => Ok(release_version::run(&arguments.version)),
         ReleaseCommand::Stage(arguments) => Ok(release_stage::stage(
             &arguments.version,
-            &arguments.notes_file,
+            arguments.notes_file.as_deref(),
             &arguments.repository,
             &arguments.pr,
+            arguments.dry_run,
         )),
         ReleaseCommand::ValidateAssets(arguments) => Ok(release_assets::validate_assets(
             &release_assets::ValidateArguments {

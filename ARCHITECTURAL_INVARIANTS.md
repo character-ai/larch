@@ -123,8 +123,9 @@ with a commit trailer would require a transition release. Cached bootstraps
 compare the `stable` and tag commit IDs and cannot prove the trailer, so that
 shape would strand direct upgrades from older versions. Mechanical backing:
 `release stage` gives the projection commit the merged `main` commit as its
-first parent and the previous `stable` tip as its second parent, and rejects
-changes outside `plugin/`; the descriptor pins its source to the `stable`
+first parent, adds the previous `stable` tip as its second parent unless that
+tip is already an ancestor of the merged commit, and rejects changes outside
+`plugin/`; the descriptor pins its source to the `stable`
 branch that `release finish` fast-forwards to the tagged projection commit only
 after immutable publication, attestation verification, and Latest promotion
 succeed; `verify_release_pin` in `scripts/larch.sh` refuses an upgrade whose
