@@ -215,24 +215,24 @@ assert_contains "codex implementer PLR0911 checklist" \
     'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
 assert_contains "cursor implementer PLR0911 checklist" \
     'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
-assert_contains "implementer base runtime type-validation guidance" \
-    'Treat a declared type as the contract for internal values.' "$REPO_ROOT/agents/_implementer-base.md"
-assert_contains "implementer base G-Py-11 suppression guidance" \
-    'Follow G-Py-11: every lint or type suppression needs an inline reason.' "$REPO_ROOT/agents/_implementer-base.md"
-assert_contains "codex implementer G-Py-11 suppression guidance" \
-    'Follow G-Py-11: every lint or type suppression needs an inline reason.' "$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
-assert_contains "cursor implementer G-Py-11 suppression guidance" \
-    'Follow G-Py-11: every lint or type suppression needs an inline reason.' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
-assert_contains "cursor implementer exact-type reason guidance" \
-    'type(value) is not int` with `# exact runtime type rejects bool and subclasses' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
-assert_contains "cursor implementer pyright type-check suppression guidance" \
-    'type: ignore[reportUnnecessaryIsInstance]' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
+assert_contains "implementer base Rust boundary-validation guidance" \
+    'Treat a Rust type as the contract for internal values.' "$REPO_ROOT/agents/_implementer-base.md"
+assert_contains "implementer base G-Rs-7 suppression guidance" \
+    'Follow G-Rs-7: every Rust lint suppression needs an inline reason and the narrowest scope.' "$REPO_ROOT/agents/_implementer-base.md"
+assert_contains "codex implementer G-Rs-7 suppression guidance" \
+    'Follow G-Rs-7: every Rust lint suppression needs an inline reason and the narrowest scope.' "$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
+assert_contains "cursor implementer G-Rs-7 suppression guidance" \
+    'Follow G-Rs-7: every Rust lint suppression needs an inline reason and the narrowest scope.' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
+assert_contains "cursor implementer Rust expect guidance" \
+    '#[expect(clippy::too_many_arguments, reason = "the wire schema fixes this signature")]' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
+assert_contains "cursor implementer Rust allow guidance" \
+    '#[allow(dead_code, reason = "called by the generated entrypoint")]' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
 assert_contains "implementer base architectural acknowledgment field" \
-    '"architectural_acknowledgment": "honoring I-Sec-1, G-Py-4 for this change",' "$REPO_ROOT/agents/_implementer-base.md"
+    '"architectural_acknowledgment": "honoring I-Sec-1, G-Rs-2 for this change",' "$REPO_ROOT/agents/_implementer-base.md"
 assert_contains "codex implementer architectural acknowledgment field" \
-    '"architectural_acknowledgment": "honoring I-Sec-1, G-Py-4 for this change",' "$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
+    '"architectural_acknowledgment": "honoring I-Sec-1, G-Rs-2 for this change",' "$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
 assert_contains "cursor implementer architectural acknowledgment field" \
-    '"architectural_acknowledgment": "honoring I-Sec-1, G-Py-4 for this change",' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
+    '"architectural_acknowledgment": "honoring I-Sec-1, G-Rs-2 for this change",' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
 assert_contains "implementer base architectural knowledge snapshot load" \
     '. "$IMPLEMENT_TMPDIR/step2-architectural-knowledge.env"' "$REPO_ROOT/agents/_implementer-base.md"
 assert_contains "codex implementer architectural knowledge snapshot load" \

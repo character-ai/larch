@@ -71,13 +71,11 @@ Preventive checks, not hard guards:
 
 Before adding or materially expanding behavior, run a targeted repository search for the same job, contract, or owning helper. Reuse or extract the existing owner when it is within firm or `### MAY_UPDATE:` plan scope. Never copy an implementation solely because its owner file is outside scope. `needs_qa` resolves ambiguity only within approved scope; it never authorizes an out-of-plan edit. If correct reuse requires an unplanned file, leave the tree unchanged when possible and emit `status=bailed` with `bail_reason="plan-scope-insufficient-reuse-owner"`; the operator must rerun `/design` with the required owner file. Do not invent a manifest field for reuse evidence.
 
-## Runtime type validation
+## Rust lint and boundary validation
 
-Follow G-Py-11: every lint or type suppression needs an inline reason. Use `# type: ignore[code]  # reason`, `# noqa: CODE - reason`, or `# pyright: ignore[rule]  # reason`; bare suppressions fail architectural review.
+Follow G-Rs-7: every Rust lint suppression needs an inline reason and the narrowest scope. Prefer `#[expect(clippy::too_many_arguments, reason = "the wire schema fixes this signature")]` when the lint should remain present. Use `#[allow(dead_code, reason = "called by the generated entrypoint")]` only when expectation semantics do not fit. Bare or broad suppressions fail architectural review.
 
-Treat a declared type as the contract for internal values. Do not add a runtime type check after a type annotation and surrounding guards already narrow the value; remove the check instead. Add validation only at an untyped or untrusted boundary where it enforces a runtime property the annotation alone cannot.
-
-When exact-type validation is genuinely required, such as rejecting `bool` or subclasses for an `int` input, use `type(value) is not int` with `# exact runtime type rejects bool and subclasses`. When `isinstance()` remains necessary at a dynamic boundary but Pyright cannot see that boundary, use `# type: ignore[reportUnnecessaryIsInstance]  # runtime value originates outside the typed boundary`. Do not suppress a check that can be omitted. See `docs/linting.md#runtime-type-validation` before introducing a suppression.
+Treat a Rust type as the contract for internal values. Do not add redundant runtime validation after parsing or a typed constructor has established the invariant. Validate at an untyped or untrusted boundary, then convert to a domain newtype or enum per G-Rs-1 instead of carrying `serde_json::Value`, raw strings, or boolean flags deeper into the domain.
 
 ## Hard guards
 
@@ -120,7 +118,7 @@ Read this template once and write this shape. Do not invent fields or omit requi
     "Add the example helper flow",
     "Cover the helper with an offline harness"
   ],
-  "architectural_acknowledgment": "honoring I-Sec-1, G-Py-4 for this change",
+  "architectural_acknowledgment": "honoring I-Sec-1, G-Rs-2 for this change",
   "commit_message": "Implement example helper flow\n\nAdd the helper, wire it into the skill, and cover it with the offline harness.",
   "difficulty": {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "Adds a helper, skill wiring, and harness coverage."},
   "todos_left": [],

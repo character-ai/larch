@@ -19,67 +19,43 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: before adding or materially expanding behavior, search for an existing implementation and canonical owner. Reuse or extend that owner. If both sites need the behavior, extract the shared part into the owning module and include that file in the plan. Do not create a second owner merely to keep the diff inside one file.
 - Deviate when: copies are generated output, contract-fixed snapshots or fixtures, or an intentional fork with an independent lifecycle; name the sibling in the plan and explain why the implementations should diverge.
 
-## Python coding practices
+## Rust coding practices
 
-### G-Py-1: Pass composite data as frozen dataclasses
-- Why: immutability, plus named, refactor-safe fields across boundaries.
-- Deviate when: scalar returns; genuine builders; an external dict or JSON parsed into a frozen dataclass at the edge. Aspirational today; `frozen=True` appears in a minority of files.
+### G-Rs-1: Prefer domain types over stringly-typed primitives
+- Why: newtypes and enums make illegal states unrepresentable and make call sites self-documenting. Use `RunId(String)` or `enum Outcome` instead of passing an unvalidated `String` or boolean flag through the domain.
+- Deviate when: a one-call-site private helper, or a signature fixed by an external API or protocol; validate and narrow the value at the boundary.
 
-### G-Py-2: Annotate types beyond signatures, including locals
-- Why: annotations document intent and catch what inference will not demand.
-- Deviate when: for locals, see G-Py-9; only scalar literals and loop targets may stay unannotated. Note: ruff `ANN` is ignored today, so presence is unenforced; `ANN001`/`ANN201` would mechanize signatures and leave local annotation as the residue.
+### G-Rs-2: Fail loudly and fail closed; never silently discard errors
+- Why: a discarded `Result` or catch-all fallback hides the failure class and breaks auditability. Propagate errors with `?`, return a specific error enum, and avoid `.ok()` or `let _ =` when the caller must know whether the operation succeeded.
+- Deviate when: a documented, narrow degraded path reports its outcome to the caller, or a best-effort telemetry write follows G-Obs-1.
 
-### G-Py-3: Prefer domain types over stringly-typed primitives
-- Why: illegal states become unrepresentable, and call sites self-document.
-- Deviate when: a one-call-site private helper, or a signature fixed by an external API or protocol. Note: ruff `FBT001`/`FBT003` already flag this and are widely `# noqa`'d today.
+### G-Rs-3: Isolate side effects behind injectable traits
+- Why: a narrow port lets domain logic run offline with a fake while production composition supplies the concrete adapter.
+- Guidance: accept the smallest trait the use case needs, such as `R: ExternalProcessRunner`, instead of constructing a concrete process, filesystem, clock, or service client inside domain logic.
+- Deviate when: thin CLI composition glue contains no domain decision to test.
 
-### G-Py-4: Fail loudly and fail closed; never silently swallow
-- Why: loud failure preserves auditability and the codebase's fail-closed parity. Catch narrow, named exceptions; a bare `except:` or a blind `except Exception` that swallows hides real bugs like a misspelled name, `KeyboardInterrupt`, or `SystemExit`.
-- Deviate when: a documented, narrow degraded path the caller handles, or an outermost thread or process handler that logs and re-raises.
+### G-Rs-4: Wrap external programs as typed operations over the injected runner
+- Why: operation-specific request, result, and error types give callers one refactor-safe contract instead of raw argv and ad-hoc exit-code checks.
+- Guidance: follow the `GitCli<R>` shape: accept `R: ExternalProcessRunner`, build a validated `ProcessRequest`, and convert `ProcessOutput` into the owning domain result before returning it. Do not expose an arbitrary-argv escape hatch.
+- Deviate when: a one-shot bounded probe has no reusable domain result; it may inspect `ProcessOutput` directly but must still use `ExternalProcessRunner`.
 
-### G-Py-5: Isolate side effects behind injectable seams
-- Why: injectable seams keep logic unit-testable offline.
-- Deviate when: thin CLI dispatch glue with nothing to test.
+### G-Rs-5: Re-verify security- or integrity-critical mutations against the owning surface
+- Why: a redaction, cleanup, or remote mutation that silently leaves the prior state is worse than a loud failure. A same-surface read turns "probably changed" into a checked postcondition.
+- Guidance: after a GraphQL write, read the same relationship; after a scrub or cleanup, scan the resulting artifact or path state. Do not verify through a denormalized proxy. Bound retries and label the wait when the owning read is eventually consistent.
+- Deviate when: the mutation carries no security or integrity weight, or no same-surface read exists; in the latter case, record the residual uncertainty.
 
-### G-Py-6: Pythonic judgment (PEP 20) is the scope; PEP 8 mechanics are not
-- Why: Ruff and Pyright own the deterministic style and type-checking layer.
-- Deviate when: an uncovered mechanical requirement needs a new lint rule.
+### G-Rs-6: Make bounded-loop totality explicit
+- Why: a retry or selection loop that unexpectedly exhausts its bound must not fall through to `None`, an empty value, or a default that looks successful.
+- Guidance: return a typed exhaustion error after the loop, or use `unreachable!(...)` only when a proved invariant makes loop exit impossible.
+- Deviate when: the function intentionally returns a named default after the loop.
 
-### G-Py-7: Wrap external CLIs (git, gh) as typed functions over the injected Runner; read helpers raise ShipError, mutating helpers return CommandResult
-- Why: call sites get refactor-safe typed results and one uniform failure mode, not ad-hoc returncode checks.
-- Deviate when: a one-shot internal probe with nothing to type, or a parser that needs the raw `CommandResult` (use the `*_read` variant).
+### G-Rs-7: Give every lint suppression an inline reason and the narrowest scope that works
+- Why: the reason lets reviewers and architectural assessments distinguish a deliberate carve-out from a silenced defect. Prefer `#[expect(clippy::too_many_arguments, reason = "the wire schema fixes this signature")]` when the lint should remain present. Use `#[allow(dead_code, reason = "called by the generated entrypoint")]` only when expectation semantics do not fit.
+- Deviate when: generated or vendored code cannot carry local attributes; exclude that bounded surface with a reason.
 
-### G-Py-8: After a security- or integrity-critical mutation, re-verify the postcondition and raise if the invariant did not hold
-- Why: a redaction or cleanup that silently leaves the bad state is worse than a loud failure; re-checking turns "probably scrubbed" into a proven invariant.
-- Deviate when: the operation is cheap to retry and carries no security weight.
-
-### G-Py-9: Strongly type every local declaration; use the most-specific type and never `Any`
-- Why: a local whose inferred type is absent, imprecise, or `Any` (`payload = json.loads(raw)`, `client = make_client()`) hides bugs; name the narrowest provable type.
-- Deviate when: the type is obvious from the RHS (scalar literals like `count = 0`, loop targets); a union the checker cannot narrow even with a cast (say why); or a boundary that forces `Any` (narrow to a protocol or typed alias at the first safe site).
-
-### G-Py-10: Make loop totality explicit when a bounded loop must always return, instead of relying on fall-through
-- Why: an impossible loop exit should be loud; otherwise a later edit to the bound returns `None` or `""` silently.
-- Deviate when: the function legitimately returns a default after the loop, and that default is intended.
-
-### G-Py-11: Give every lint or type suppression an inline reason and the narrowest scope that works
-- Why: the reason lets a reviewer, and the `/design` and `/implement` assessments, tell a deliberate carve-out from a silenced defect. Use `# noqa: CODE - reason`, `# pyright: ignore[rule]  # reason`, or `# type: ignore[code]  # reason`. This codebase annotates suppressions densely, so a bare one reads as unexplained debt.
-- Deviate when: generated or vendored code cannot carry local suppressions; exclude that bounded surface with a reason.
-
-### G-Py-12: Break an import cycle at the call site with a documented function-level import, not by collapsing the leaf/domain layering
-- Why: `larch.core` leaf modules must not import domain modules at top level; a local import with a narrow `# noqa: PLC0415 - <reason>` keeps the graph acyclic without merging modules or hoisting logic to the wrong layer.
-- Deviate when: the cycle signals real mislayering; move the code to the correct module instead of importing through the seam.
-
-### G-Py-13: Acquire every external resource through a context manager so cleanup runs on every path
-- Why: a manual `open()`/`close()` or acquire/release leaks the handle when an exception fires between them. A `with` block, or `contextlib.closing`, releases the file, lock, descriptor, or subprocess deterministically. This is the standard Python pattern.
-- Deviate when: a resource whose lifetime outlives the enclosing scope; return it, or wrap it in its own context-manager type.
-
-### G-Py-14: Prefer typed helper functions for monkeypatched callables with parameters
-- Why: pyright strict mode can flag untyped lambda parameters in `monkeypatch.setattr` callables, and helper functions make the fake contract reviewable.
-- Deviate when: the callable has no parameters or a narrow inline pyright suppression is clearer; preserve existing suppressions and keep any new suppression on the smallest possible line.
-
-### G-Py-15: Partition status values into terminal and non-terminal sets; never branch on truthiness
-- Why: `/analyze-bugs` short-circuited on any truthy mechanical verdict, so the routing value `NEEDS_DEEP` masked already-ingested deep verdicts (#6153); resume hydration coerced any unrecognized merge result, including empty, to already-merged, and the reconciler collapsed every refresh skip into a spurious terminal STALLED (#6018).
-- Guidance: when a status, verdict, or result type has routing or in-progress members, define the terminal subset once, next to the type, and route every "is this final?" decision through that membership test; make validators reject unknown values instead of coercing them to a member; never gate on the presence or truthiness of a status value.
+### G-Rs-8: Partition status values into terminal and non-terminal sets; never infer finality from presence
+- Why: `/analyze-bugs` short-circuited on any present mechanical verdict, so the routing value `NEEDS_DEEP` masked already-ingested deep verdicts (#6153); resume hydration coerced an unknown merge result to already merged, and the reconciler collapsed every refresh skip into a spurious terminal STALLED (#6018).
+- Guidance: represent status as an enum, define the terminal subset once next to that type, and route every `is_terminal` decision through an exhaustive match. Make deserialization reject unknown values instead of coercing them to a member; never treat `Option::is_some()` or a non-empty string as proof of finality.
 - Deviate when: the status never crosses a function boundary and has no special members; a local boolean is fine.
 
 ## Configuration and protocol literals
@@ -241,7 +217,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Obs-1: Keep telemetry writes best-effort, count-only, and fail-soft; a write failure skips the metric without failing the parent, and telemetry never stores prompt or payload text
 - Why: an operation must not fail because a metric could not be recorded, and a panel-size or digest-size row that captured prompt text would leak it into published archives. larch's panel and checks telemetry store byte and token counts only, behind best-effort flock writers.
-- Deviate when: a security or integrity postcondition, which fails closed per G-Py-8 and is not telemetry.
+- Deviate when: a security or integrity postcondition, which fails closed per G-Rs-5 and is not telemetry.
 
 ### G-Obs-2: Keep the remote archive authoritative and the human-facing surface a slim, marker-keyed reference to it, not a second copy of the payload
 - Why: copying bulky payloads into an issue or PR body bloats them and drifts from the source of truth. larch publishes full run content to append-only object storage and keeps tracking-issue comments as marker-keyed summaries that name the provider, skill, and run ID.
@@ -313,11 +289,6 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 ### G-Ext-1: Verify a new or changed external-CLI invocation with the exact argv, or a side-effect-free `--help` or `--dry-run` probe, before commit; document platform-specific flags and treat the output as untrusted
 - Why: a flag-unavailability failure (`--sandbox`, `--prompt` vs `--print`) shows up as a silent reviewer or CI miss, not a loud error, and external-agent output can carry injected instructions. Probing the real argv and framing the output as data closes both gaps.
 - Deviate when: an unchanged invocation already covered by a harness that runs the real command.
-
-### G-Ext-2: Verify a remote mutation by re-reading the surface you mutated
-- Why: an asynchronous rollup counter read back zero immediately after a successful dependency write and produced a false "may already exist" warning (#3701); inferring merge state from unrelated output fields misreported a PR (#4025).
-- Guidance: after a GraphQL write, verify with a GraphQL read of the same relationship; never verify through a denormalized or eventually-consistent rollup, and when only an eventually-consistent read exists, poll it with bounded retries and label the wait.
-- Deviate when: no same-surface read exists; then bound the retries and record the residual uncertainty.
 
 ### G-Ext-3: Treat GitHub search as a recall filter; re-apply the shared normalized predicate locally before consuming results
 - Why: GitHub search tokenizes bracketed terms, so `[BUG] in:title` also matches any title containing "bug", and prefix-only local matching missed retitled `[DONE] [BUG]` issues; both directions corrupted bug-mining selection (#6604, #6618).

@@ -173,7 +173,7 @@ larch codes each rule and gives it two parts:
 - **When to deviate.** The explicit exceptions.
 
 The "when to deviate" line matters most. It stops an aspirational rule from
-becoming dogma the agent applies blindly. larch's `G-Py-4`, for example, says to
+becoming dogma the agent applies blindly. larch's `G-Rs-2`, for example, says to
 fail loudly and never swallow errors, then names the one narrow case where a quiet
 degraded path is fine.
 
@@ -185,7 +185,7 @@ migration, from prose preference to mechanical check, is the through-line of thi
 whole guide.
 
 Adapt the structure, not the rules. The coded formats port to any repo. The
-specific rules are larch's, about Python, shell, and skill authoring. Write your
+specific rules are larch's, about Rust, shell, and skill authoring. Write your
 own for your architecture.
 
 ### 5. Keep the always-loaded context lean
