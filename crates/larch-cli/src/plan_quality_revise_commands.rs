@@ -312,7 +312,7 @@ fn emit_plan_gate(design_tmpdir: &Path, plugin: &Path) -> bool {
 
 /// `plan revise-waterfall`
 pub fn revise_waterfall(arguments: &[OsString]) -> ExitCode {
-    const PROGRAM: &str = "cli.py plan revise-waterfall";
+    const PROGRAM: &str = "larch plan revise-waterfall";
     const USAGE: &str = include_str!("../assets/plan-quality-help/revise-waterfall.usage.txt");
     let parsed = match parse_required_with_help(
         arguments,
@@ -764,7 +764,7 @@ fn run_revise_attempt(
 
 /// `plan auto-fix-commands`
 pub fn auto_fix_commands(arguments: &[OsString]) -> ExitCode {
-    const PROGRAM: &str = "cli.py plan auto-fix-commands";
+    const PROGRAM: &str = "larch plan auto-fix-commands";
     const USAGE: &str = include_str!("../assets/plan-quality-help/auto-fix-commands.usage.txt");
     let parsed = match parse_required_with_help(
         arguments,

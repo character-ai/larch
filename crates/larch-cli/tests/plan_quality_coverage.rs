@@ -43,6 +43,141 @@ fn larch() -> Command {
     Command::new(env!("CARGO_BIN_EXE_larch"))
 }
 
+fn repo_root() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("repository root")
+}
+
+#[test]
+fn plan_quality_help_and_usage_errors_name_larch() {
+    let plan_verbs = [
+        "auto-fix-commands",
+        "check-size",
+        "compose-goals-test",
+        "optional-trailers",
+        "parse-commands",
+        "revise-waterfall",
+        "set-oversize-override",
+        "validate",
+        "validate-commands",
+    ];
+    for verb in plan_verbs {
+        let output = larch()
+            .args(["plan", verb, "--help"])
+            .output()
+            .expect("run plan help");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "verb={verb} stderr={stderr}");
+        assert!(
+            stdout.starts_with(&format!("usage: larch plan {verb} ")),
+            "verb={verb} stdout={stdout}"
+        );
+        assert!(!stdout.contains("cli.py"), "verb={verb} stdout={stdout}");
+        assert!(stderr.is_empty(), "verb={verb} stderr={stderr}");
+    }
+
+    for verb in [
+        "auto-fix-commands",
+        "check-size",
+        "compose-goals-test",
+        "optional-trailers",
+        "parse-commands",
+        "revise-waterfall",
+        "set-oversize-override",
+        "validate",
+        "validate-commands",
+    ] {
+        let output = larch()
+            .args(["plan", verb])
+            .output()
+            .expect("run plan usage error");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(2), "verb={verb} stderr={stderr}");
+        assert!(
+            stderr.starts_with(&format!("usage: larch plan {verb} ")),
+            "verb={verb} stderr={stderr}"
+        );
+        assert!(!stderr.contains("cli.py"), "verb={verb} stderr={stderr}");
+    }
+}
+
+#[test]
+fn plan_review_step35_help_and_usage_errors_name_larch() {
+    let step35_help = larch()
+        .args(["plan-review", "step35", "--help"])
+        .env("CLAUDE_PLUGIN_ROOT", repo_root())
+        .output()
+        .expect("run step35 help");
+    assert!(step35_help.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&step35_help.stdout),
+        "usage: larch plan-review step35 [-h] --design-tmpdir DESIGN_TMPDIR\n\noptions:\n  -h, --help            show this help message and exit\n  --design-tmpdir DESIGN_TMPDIR\n"
+    );
+    assert!(step35_help.stderr.is_empty());
+
+    let step35_error = larch()
+        .args(["plan-review", "step35"])
+        .env("CLAUDE_PLUGIN_ROOT", repo_root())
+        .output()
+        .expect("run step35 usage error");
+    let step35_stderr = String::from_utf8_lossy(&step35_error.stderr);
+    assert_eq!(step35_error.status.code(), Some(2));
+    assert!(
+        step35_stderr.starts_with(
+            "usage: larch plan-review step35 [-h] --design-tmpdir DESIGN_TMPDIR\n"
+        ),
+        "{step35_stderr}"
+    );
+    assert!(!step35_stderr.contains("cli.py"), "{step35_stderr}");
+}
+
+#[test]
+fn step2b_postplan_help_precedes_environment_validation() {
+    let postplan_help = larch()
+        .args(["design", "step2b-postplan", "--help"])
+        .env("CLAUDE_PLUGIN_ROOT", repo_root())
+        .env_remove("DESIGN_TMPDIR")
+        .output()
+        .expect("run step2b-postplan help");
+    let postplan_stdout = String::from_utf8_lossy(&postplan_help.stdout);
+    assert!(postplan_help.status.success());
+    assert!(
+        postplan_stdout.starts_with("usage: larch design step2b-postplan [-h] "),
+        "{postplan_stdout}"
+    );
+    assert!(!postplan_stdout.contains("cli.py"), "{postplan_stdout}");
+    assert!(postplan_help.stderr.is_empty());
+
+    let delimited_help = larch()
+        .args(["design", "step2b-postplan", "--", "--help"])
+        .env("CLAUDE_PLUGIN_ROOT", repo_root())
+        .env_remove("DESIGN_TMPDIR")
+        .output()
+        .expect("run delimited step2b-postplan help token");
+    assert_eq!(delimited_help.status.code(), Some(1));
+    assert!(delimited_help.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&delimited_help.stderr),
+        "/design Step 2b postplan: DESIGN_TMPDIR required\n"
+    );
+}
+
+#[test]
+fn plan_quality_help_assets_do_not_name_the_retired_python_entry() {
+    let help_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/plan-quality-help");
+    for entry in fs::read_dir(help_root).expect("read plan-quality help assets") {
+        let path = entry.expect("help asset entry").path();
+        if !path.is_file() {
+            continue;
+        }
+        let text = fs::read_to_string(&path).expect("read plan-quality help asset");
+        assert!(!text.contains("cli.py"), "asset={}", path.display());
+    }
+}
+
 #[test]
 fn auto_fix_commands_dispatch_and_validate_success_path() {
     let root = unique_root("autofix-ok");

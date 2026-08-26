@@ -86,10 +86,9 @@ impl CleanInstallCase {
             // clean-install `--help` token is an extra argument, so the verb
             // prints its usage and exits 1 like the frozen Python parser.
             | "clean-install-design-read-result-env"
-            // The two Step 2b wrapper verbs ignore the unbound `--help` token and
-            // then refuse on the missing `DESIGN_TMPDIR`, exiting 1.
+            // The Step 2b drafter wrapper ignores the unbound `--help` token and
+            // then refuses on the missing `DESIGN_TMPDIR`, exiting 1.
             | "clean-install-design-step2b-drafter"
-            | "clean-install-design-step2b-postplan"
             | "clean-install-design-step3-continuation-entry"
             | "clean-install-design-step5c"
             // `ci rerun-failed` prints its help and then exits with its own
@@ -286,8 +285,8 @@ impl CleanInstallCase {
             | "clean-install-pr-body-update"
             // `step3b-entry` requires `--mode finalize|diagram`; the clean-install
             // `--help` token carries no mode, so the entry refuses with exit 2.
-            // (`postplan-emit` owns a real `--help` action and exits 0 by default;
-            // the two Step 2b wrapper verbs join the `=> 1` arm above.)
+            // (`postplan-emit` and `step2b-postplan` own real `--help` actions and
+            // exit 0 by default; the Step 2b drafter joins the `=> 1` arm above.)
             | "clean-install-design-step3b-entry"
             | "clean-install-design-gate-b"
             | "clean-install-design-step3-entry"

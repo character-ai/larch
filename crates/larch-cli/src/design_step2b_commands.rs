@@ -974,6 +974,8 @@ const WRAPPER_VALUE_FLAGS: &[&str] = &[
     "--validate-skipped-count",
 ];
 
+const STEP2B_POSTPLAN_HELP: &str = "usage: larch design step2b-postplan [-h] [--session-env-path SESSION_ENV_PATH] [--claude-pid CLAUDE_PID] [--plugin-root PLUGIN_ROOT] [--site SITE] [--snapshot-original] [--write-completion-only] [--include-step2b] [--write-step2b-completion-only]\n\noptions:\n  -h, --help            show this help message and exit\n  --session-env-path SESSION_ENV_PATH\n  --claude-pid CLAUDE_PID\n  --plugin-root PLUGIN_ROOT\n  --site SITE\n  --snapshot-original\n  --write-completion-only\n  --include-step2b\n  --write-step2b-completion-only";
+
 /// The subset of `WrapperArgs` fields the step2b verbs read.
 #[derive(Default)]
 #[expect(
@@ -1481,7 +1483,16 @@ fn run_pause_save_terminal(
 }
 
 pub fn step2b_postplan(arguments: &[OsString]) -> ExitCode {
-    exit_from_i32(step2b_postplan_run(&utf8_arguments(arguments)))
+    let argv = utf8_arguments(arguments);
+    if argv
+        .iter()
+        .take_while(|argument| argument.as_str() != "--")
+        .any(|argument| matches!(argument.as_str(), "-h" | "--help"))
+    {
+        println!("{STEP2B_POSTPLAN_HELP}");
+        return ExitCode::SUCCESS;
+    }
+    exit_from_i32(step2b_postplan_run(&argv))
 }
 
 fn step2b_postplan_run(argv: &[String]) -> i32 {

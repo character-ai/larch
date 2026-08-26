@@ -1,1 +1,1 @@
-usage: cli.py plan parse-commands [-h] --plan-file PLAN_FILE --output OUTPUT [--repo-root REPO_ROOT]
+usage: larch plan parse-commands [-h] --plan-file PLAN_FILE --output OUTPUT [--repo-root REPO_ROOT]
