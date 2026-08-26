@@ -699,6 +699,15 @@ enum HookCommand {
     /// Warn after repeated identical Read calls without ever blocking the hook.
     #[command(name = "anti-read-poll", disable_help_flag = true)]
     AntiReadPoll(RawCompatibilityArguments),
+    /// Deny edits inside checked-out submodules of the current superproject.
+    #[command(name = "block-submodule-edit", disable_help_flag = true)]
+    BlockSubmoduleEdit(RawCompatibilityArguments),
+    /// Confine active read-only skill writes to larch scratch roots.
+    #[command(name = "deny-edit-write", disable_help_flag = true)]
+    DenyEditWrite(RawCompatibilityArguments),
+    /// Deny background Bash launches while this clone owns a bgjob row.
+    #[command(name = "deny-run-in-background", disable_help_flag = true)]
+    DenyRunInBackground(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -3379,6 +3388,15 @@ fn run(
         }
         Domain::Hook(HookCommand::AntiReadPoll(arguments)) => {
             Ok(hook_commands::anti_read_poll(&arguments.arguments))
+        }
+        Domain::Hook(HookCommand::BlockSubmoduleEdit(arguments)) => {
+            Ok(hook_commands::block_submodule_edit(&arguments.arguments))
+        }
+        Domain::Hook(HookCommand::DenyEditWrite(arguments)) => {
+            Ok(hook_commands::deny_edit_write(&arguments.arguments))
+        }
+        Domain::Hook(HookCommand::DenyRunInBackground(arguments)) => {
+            Ok(hook_commands::deny_run_in_background(&arguments.arguments))
         }
         Domain::Issue(command) => Ok(match command {
             IssueCommand::AddBlockedBy(arguments) => {

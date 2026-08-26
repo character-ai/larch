@@ -10,6 +10,7 @@ scripts/cleanup-sessionstart.sh
 scripts/deny-edit-write.sh
 scripts/external-tool-registry.sh
 scripts/hook-anti-read-poll.sh
+scripts/hook-deny-run-in-background.sh
 scripts/larch.sh
 scripts/sessionstart-statusline.sh
 scripts/pre-commit-bash-syntax.sh
@@ -21,11 +22,9 @@ scripts/sleep-seconds.sh
 scripts/test-anti-halt-banners.sh
 scripts/test-anti-improvised-wakeup.sh
 scripts/test-audit-edit-write.sh
-scripts/test-block-submodule-edit.sh
 scripts/test-cache-key-discipline.sh
 scripts/test-cache-root-validation.sh
 scripts/test-check-stale-plugin.sh
-scripts/test-deny-edit-write.sh
 scripts/test-design-multi-round-integration.sh
 scripts/test-effort-prose.sh
 scripts/test-external-tool-registry.sh

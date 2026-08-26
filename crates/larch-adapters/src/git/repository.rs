@@ -30,6 +30,15 @@ pub struct GixRepository {
     location: RepositoryLocation,
 }
 
+/// One initialized submodule checkout owned by a superproject.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SubmoduleCheckout {
+    /// Canonicalizable worktree path named by the superproject.
+    pub work_dir: PathBuf,
+    /// Canonicalizable repository path backing the initialized checkout.
+    pub git_dir: PathBuf,
+}
+
 /// Bounded path recorder for a `gix` tree traversal.
 ///
 /// `gix`'s convenient `files()` preset materializes every entry before the
@@ -200,6 +209,33 @@ impl GixRepository {
     fn trusted(&self) -> Result<gix::ThreadSafeRepository, RepositoryError> {
         gix::ThreadSafeRepository::open_opts(&self.git_dir, read_options().open_path_as_is(true))
             .map_err(|error| map_open_error(&error))
+    }
+
+    /// Return initialized submodule worktree and repository locations.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable repository error when submodule configuration or an
+    /// initialized checkout cannot be read.
+    pub fn submodule_checkouts(&self) -> Result<Vec<SubmoduleCheckout>, RepositoryError> {
+        let repository = self.local()?;
+        let Some(submodules) = repository
+            .submodules()
+            .map_err(|_| error(RepositoryErrorKind::MalformedConfig))?
+        else {
+            return Ok(Vec::new());
+        };
+        submodules
+            .map(|submodule| {
+                let work_dir = submodule
+                    .work_dir()
+                    .map_err(|_| error(RepositoryErrorKind::MalformedConfig))?;
+                let git_dir = submodule
+                    .git_dir_try_old_form()
+                    .map_err(|_| error(RepositoryErrorKind::CorruptRepository))?;
+                Ok(SubmoduleCheckout { work_dir, git_dir })
+            })
+            .collect()
     }
 
     /// Return every path represented in the repository index.

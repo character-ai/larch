@@ -1,25 +1,15 @@
-# scripts/deny-edit-write.sh — contract
+# `deny-edit-write.sh` contract
 
-`scripts/deny-edit-write.sh` is a token-gated PreToolUse hook used by `/research`, `/audit-umbrella`, `/file-bug`, `/triage`, `/umbrella`, `/complete-umbrella`, and `/debate`. Each consumer passes its skill name as the recognized first argument.
+`scripts/deny-edit-write.sh` is the fail-closed PreToolUse shim for the Rust-owned `hook deny-edit-write <token>` command. It forwards stdin through `scripts/larch.sh` with `LARCH_BOOTSTRAP_NO_INSTALL=1`. A missing launcher, unavailable verified binary, or nonzero Rust command emits the fixed deny envelope and exits zero; hooks never download or install an executable.
 
 ## Activation gate
 
-Before reading stdin or checking `jq`, the hook checks `${XDG_CACHE_HOME:-${HOME:-}/.cache}/larch/deny-edit-write-active` for a fresh sentinel named `<token>-*`. Recognized token prefixes are `research`, `audit-umbrella`, `file-bug`, `triage`, `umbrella`, `complete-umbrella`, and `debate`. The TTL is 360 minutes. The filename embeds the writer's `$PPID` for debugging and per-run overwrite only. `/debate`'s sentinel is written by `session setup --deny-edit-write debate`, so its suffix embeds the setup process PID; the other consumers keep their hand-written `<token>-$PPID` fences.
+The Rust owner checks `${XDG_CACHE_HOME:-${HOME:-}/.cache}/larch/deny-edit-write-active` before reading stdin. A fresh regular sentinel named `<token>-*` activates one of these recognized tokens: `research`, `audit-umbrella`, `file-bug`, `complete-umbrella`, `debate`, `triage`, or `umbrella`. The TTL is 360 minutes. The suffix is diagnostic only; activation does not correlate parent PIDs.
 
-A missing activation directory, unreadable directory, stale sentinel, missing token, or unrecognized token is inactive. Inactive hooks exit 0 with empty stdout. There is no any-sentinel fallback, so a stale tokenless registration cannot be re-armed by another skill's fresh sentinel. The hook performs no `$PPID` correlation because production PreToolUse parent PIDs can diverge from orchestrator Bash parent PIDs.
+A missing or unreadable activation directory, stale sentinel, missing token, or unrecognized token is inactive. An inactive Rust command exits zero with empty stdout. The shim fallback denies because delegation failure cannot prove that the token is inactive.
 
 ## Active scratch enforcement
 
-When activation is live, the hook permits the call only when the tool's target path resolves to an absolute path under canonical `/tmp` or the larch cache `sessions/` root. Every other active outcome denies: missing path, relative path, traversal outside either root, symlink cycle, canonicalization failure, or `jq` runtime failure.
+An active call is allowed only when `tool_input.file_path` or `tool_input.notebook_path` resolves to an absolute path under canonical `/tmp` or the existing larch cache `sessions/` root. Missing or malformed input, a relative path, traversal outside an allowed root, a symlink cycle, or a resolution failure denies.
 
-The script reads stdin JSON and extracts the target via `jq -r '[.tool_input.file_path, .tool_input.notebook_path] | map(select(type == "string" and length > 0)) | .[0] // empty'`. `map(select(length > 0))` is required because `jq`'s `//` treats the empty string as present, so a naïve `// empty` would let an empty `file_path` shadow a valid `notebook_path`. NotebookEdit uses `notebook_path`; the length-aware fallback prevents fail-open on that shape.
-
-Path resolution mirrors `scripts/block-submodule-edit.sh`: bounded symlink walk (max depth 40; cycle means deny), nearest-existing-ancestor probe via `dirname`, then canonicalization via `cd … && pwd -P` to handle macOS `/tmp` to `/private/tmp` aliasing. The allowed roots are canonicalized before comparison. The decision is exact equality or a root-prefix match.
-
-On allow the script emits empty stdout and exits 0. On deny it emits a fixed-literal `hookSpecificOutput` JSON envelope through local `hook_emit` and exits 0. The deny envelope is composed only from fixed ASCII literals (single fixed reason string, no runtime interpolation into the deny JSON) and is byte-identical across the active `jq`-absent static path, the `block()` helper's `jq -cn` path, and `block()`'s inner static fallback. The hook writes deny JSON through a local FD-3 `hook_emit` path.
-
-The hook is the sole mechanical enforcer of the active scratch-only policy for the matched Claude tool surface. `allowed-tools` declares each orchestrator's surface but does not confine writes; see `docs/security/workflow-trust-and-mutations.md` for the residual-risk framing. `/research` must keep matcher `Edit|Write|NotebookEdit`. The other consumers keep only the Write matchers their prompts declare. `/triage` activates its token only after the initial security, repository-target, and immutable-main gates. Skills that delegate through `Skill` keep that surface outside this path matcher.
-
-Stale or leaked registrations no longer deny by themselves. A fresh activation sentinel is required for each consumer token.
-
-`scripts/test-deny-edit-write.sh` is the table-driven regression harness. It isolates the larch cache home and covers inactive, active, stale, cross-token, tokenless-inactive, foreign-PID, unset-`HOME`, NotebookEdit, path-canonicalization, idempotency, and `jq`-absent-active behavior. It is wired into `make lint` via the `test-deny-edit-write` target. The harness fails when its own `jq` is missing because the assertions need a JSON parser. Edits to the hook must stay in sync with the harness. The test script is added to `agent-lint.toml`'s exclude list because agent-lint's dead-script rule does not follow Makefile-only references.
+Allow emits no stdout. Deny emits one byte-stable `hookSpecificOutput` JSON envelope with a fixed reason and exits zero. The Rust owner does not depend on `jq`. Migrated regression cases in `crates/larch-cli/src/hook_commands.rs` cover activation, token isolation, freshness, NotebookEdit fallback, canonical containment, traversal, symlinks, and exact serialization.

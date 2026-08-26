@@ -341,6 +341,18 @@ Marketplace users normally leave it unset. Claude Code supplies
 `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA`; the bootstrap installs under the
 former and keeps its bounded concurrency lock under the latter.
 
+### `LARCH_BOOTSTRAP_NO_INSTALL`
+
+`LARCH_BOOTSTRAP_NO_INSTALL=1` tells `scripts/larch.sh` to use a verified
+`LARCH_BINARY` or installed `bin/larch` but never download or install one. If
+neither executable validates, the shim exits with status 97 before creating
+bootstrap state. The shipped deny and anti-read-poll hook wrappers set this
+variable and apply their documented local fallback when status 97 is returned.
+
+The setting does not alter `--preflight-release` or
+`--latest-stable-version`; those explicit bootstrap metadata actions keep their
+normal behavior.
+
 ### Stall Recovery Reports
 
 Step 18a files public stall reports only for **terminal failures**. It does not file on first detection.

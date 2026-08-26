@@ -14,5 +14,6 @@ if [ -z "$PLUGIN_ROOT" ] || [ ! -x "$PLUGIN_ROOT/scripts/larch.sh" ]; then
     exit 0
 fi
 
-"$PLUGIN_ROOT/scripts/larch.sh" hook anti-read-poll 2>/dev/null || true
+LARCH_BOOTSTRAP_NO_INSTALL=1 \
+    "$PLUGIN_ROOT/scripts/larch.sh" hook anti-read-poll 2>/dev/null || true
 exit 0

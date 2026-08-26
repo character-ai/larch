@@ -331,6 +331,14 @@ that validated absolute path before any further bootstrap work; an explicit
 `CLAUDE_PLUGIN_ROOT` still wins and remains subject to the same absolute-path,
 non-symlink directory checks.
 
+The deny and anti-read-poll hook wrappers set
+`LARCH_BOOTSTRAP_NO_INSTALL=1`. In this mode, the shim still validates and
+executes a matching `LARCH_BINARY` or installed `bin/larch`, but it exits with
+the distinct status 97 before lock creation, download, or installation when
+neither is valid. The hook wrapper then applies its own fixed allow or deny
+fallback. The mode does not intercept the explicit `--preflight-release` or
+`--latest-stable-version` actions.
+
 The staged binary must pass `--version` and compact-JSON
 `larch bootstrap self-check`. A same-directory rename installs it atomically.
 An existing regular binary retains a hard-link rollback through post-install
