@@ -102,10 +102,26 @@ fn finalize_case(name: &'static str, values: &[&str], seeds: Vec<SeedFile>) -> R
     recorded_case(name, &arguments, seeds, &design_env())
 }
 
+fn step5c_child_case(
+    name: &'static str,
+    public_arguments: &[&str],
+    mut seeds: Vec<SeedFile>,
+) -> RecordedCase {
+    let mut values = vec!["step5c"];
+    values.extend_from_slice(public_arguments);
+    values.extend([
+        "--bgjob-child",
+        "--merge-result-env",
+        "{sandbox}/design/.step5c-merge.env",
+    ]);
+    seeds.push(SeedFile::text("design/.step5c-merge.env", ""));
+    finalize_case(name, &values, seeds)
+}
+
 fn gate_c_case() -> RecordedCase {
-    let mut case = finalize_case(
+    let mut case = step5c_child_case(
         "design-step5c-gate-c-refusal",
-        &["step5c", "--skip-validate"],
+        &["--skip-validate"],
         vec![
             SeedFile::text("design/.completed/step-5b", ""),
             SeedFile::text("design/.completed/step-3", ""),
@@ -131,9 +147,9 @@ fn gate_c_case() -> RecordedCase {
 }
 
 fn fake_publish_case(name: &'static str, mode: &str) -> RecordedCase {
-    let mut case = finalize_case(
+    let mut case = step5c_child_case(
         name,
-        &["step5c"],
+        &[],
         vec![
             SeedFile::text("design/.completed/step-5b", ""),
             SeedFile::text("design/composed-plan.md", "## Plan\n\nReady.\n"),
@@ -156,10 +172,9 @@ fn fake_publish_case(name: &'static str, mode: &str) -> RecordedCase {
 }
 
 fn step5c_missing_step5b_case() -> RecordedCase {
-    finalize_case(
+    let mut case = step5c_child_case(
         "design-step5c-missing-step5b",
         &[
-            "step5c",
             "--session-env-path",
             "{sandbox}/source-env.sh",
             "--claude-pid",
@@ -167,9 +182,17 @@ fn step5c_missing_step5b_case() -> RecordedCase {
         ],
         vec![
             SeedFile::text("design/.keep", ""),
-            SeedFile::text("source-env.sh", "STANDALONE_HEAVY_FAILED=true\n"),
+            SeedFile::expanded_text(
+                "source-env.sh",
+                "DESIGN_TMPDIR={sandbox}/design\n",
+            ),
         ],
-    )
+    );
+    case.program = case
+        .program
+        .clone()
+        .env("STANDALONE_HEAVY_FAILED", "true");
+    case
 }
 
 fn step6_cleanup_success_case() -> RecordedCase {

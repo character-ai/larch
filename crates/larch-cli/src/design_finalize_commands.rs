@@ -21,9 +21,10 @@ use larch_core::{
         OPTIONAL_SIZE_TRAILER_KEYS, OVERSIZE_OVERRIDE_OPERATOR, match_trailer_line,
         parse_final_trailers, validate_plan_facets,
     },
-    has_live_entry, private_atomic_write, read_for, result_env_path, unlink_entry,
-    validate_merge_result_env,
+    has_live_entry, parse_allowlisted_env_line, private_atomic_write, read_for, result_env_path,
+    unlink_entry, validate_merge_result_env,
 };
+use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 use crate::clarify_orchestrator::write_result_env;
@@ -40,8 +41,18 @@ use crate::design_step2b_commands::{
 use crate::design_terminal_commands::{STAGE_EXTRA_FLAGS, emit_report_gate_sidecars_from_disk};
 
 const STEP5C_STEP: &str = "design-step5c";
+const STEP5C_BUDGET_S: &str = "21600";
 const TAIL_BYTE_CAP: usize = 16_384;
 const INFO_ICON: &str = "\u{2139}";
+
+const STEP5C_SESSION_ENV_KEYS: &[&str] = &[
+    "CLAUDE_PLUGIN_ROOT",
+    "DESIGN_TMPDIR",
+    "ISSUE_NUMBER",
+    "REPO",
+    "SESSION_ID",
+    "STANDALONE_HEAVY_FAILED",
+];
 
 const STEP5C_STATUS_ALLOW: &[&str] = &[
     "ARCHITECTURE_SOURCE",
@@ -102,6 +113,14 @@ fn validate_tmpdir(raw: &str) -> Result<PathBuf, String> {
         return Err("design-tmpdir: path must name a directory".to_owned());
     }
     Ok(path)
+}
+
+fn validate_step5c_adapter_tmpdir(raw: &str) -> Result<PathBuf, (u8, String)> {
+    if raw.is_empty() || !Path::new(raw).is_dir() {
+        return Err((1, "design-step5c.sh: DESIGN_TMPDIR required".to_owned()));
+    }
+    validate_design_tmpdir_result(raw).map_err(|message| (2, message))?;
+    Ok(resolve_design_tmpdir(raw))
 }
 
 fn read_env_rows(text: &str, allow: &[&str]) -> Vec<(String, String)> {
@@ -928,8 +947,168 @@ fn failed_publish_finish(
     emit_report_gate_sidecars_from_disk(design_tmpdir);
 }
 
+#[derive(Debug)]
+struct Step5cAdapterArgs {
+    public_args: Vec<OsString>,
+    bgjob_child: bool,
+    merge_result_env: OsString,
+    fresh_attempt: bool,
+}
+
+fn parse_step5c_adapter_args(arguments: &[OsString]) -> Result<Step5cAdapterArgs, &'static str> {
+    let count = arguments.len();
+    let child_suffix = count >= 3
+        && arguments[count - 3] == "--bgjob-child"
+        && arguments[count - 2] == "--merge-result-env"
+        && !arguments[count - 1].is_empty();
+    let public_end = if child_suffix { count - 3 } else { count };
+    if arguments[..public_end]
+        .iter()
+        .any(|argument| argument == "--bgjob-child" || argument == "--merge-result-env")
+    {
+        return Err("adapter child controls must be one terminal suffix");
+    }
+
+    let mut public_args = Vec::with_capacity(public_end);
+    let mut fresh_attempt = false;
+    let mut before_public_separator = true;
+    for argument in &arguments[..public_end] {
+        if before_public_separator && argument == "--" {
+            before_public_separator = false;
+            public_args.push(argument.clone());
+            continue;
+        }
+        if before_public_separator && argument == "--fresh-attempt" {
+            if fresh_attempt {
+                return Err("duplicate --fresh-attempt");
+            }
+            fresh_attempt = true;
+            continue;
+        }
+        public_args.push(argument.clone());
+    }
+
+    Ok(Step5cAdapterArgs {
+        public_args,
+        bgjob_child: child_suffix,
+        merge_result_env: if child_suffix {
+            arguments[count - 1].clone()
+        } else {
+            OsString::new()
+        },
+        fresh_attempt,
+    })
+}
+
+fn ambient_step5c_env(parsed: &WrapperArgs) -> Env {
+    let mut env = Env::new();
+    for key in STEP5C_SESSION_ENV_KEYS {
+        if let Ok(value) = std::env::var(key) {
+            let _ = env.insert((*key).to_owned(), value);
+        }
+    }
+    if !parsed.plugin_root().is_empty() {
+        let _ = env.insert(
+            "CLAUDE_PLUGIN_ROOT".to_owned(),
+            parsed.plugin_root().to_owned(),
+        );
+    }
+    env
+}
+
+fn resolve_step5c_env(parsed: &WrapperArgs, runner: &dyn Step0Runner) -> Result<Env, ExitCode> {
+    let mut env = ambient_step5c_env(parsed);
+    if parsed.session_env_path().is_empty() {
+        return Ok(env);
+    }
+    let plugin_root = require_plugin_root(env_get(&env, "CLAUDE_PLUGIN_ROOT", ""))?;
+    let mut args = vec![
+        "bgjob".to_owned(),
+        "adapt".to_owned(),
+        "--resolve-session-env".to_owned(),
+        "--session-env-path".to_owned(),
+        parsed.session_env_path().to_owned(),
+    ];
+    if !parsed.claude_pid.is_empty() {
+        args.extend(["--owner-pid".to_owned(), parsed.claude_pid.clone()]);
+    }
+    let resolved = runner.run(&plugin_root, &args, &[], false);
+    eprint!("{}", resolved.stderr);
+    if resolved.code != 0 {
+        if resolved.stdout.is_empty() {
+            println!("BGJOB_ERROR=session-env-resolution-failed");
+        } else {
+            print_text(&resolved.stdout);
+        }
+        return Err(ExitCode::from(2));
+    }
+    for line in resolved.stdout.lines() {
+        let Some((key, value)) =
+            parse_allowlisted_env_line(line, STEP5C_SESSION_ENV_KEYS, None, true)
+        else {
+            continue;
+        };
+        let _ = env.insert(key, value);
+    }
+    Ok(env)
+}
+
+fn step5c_input_fingerprint_with(
+    design_tmpdir: &Path,
+    read: impl FnOnce(&Path) -> std::io::Result<Vec<u8>>,
+) -> String {
+    let source = design_tmpdir.join(".step3-review-result.env");
+    let Ok(metadata) = fs::symlink_metadata(&source) else {
+        return "source-absent".to_owned();
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return "source-absent".to_owned();
+    }
+    let Ok(bytes) = read(&source) else {
+        return "compute-failed".to_owned();
+    };
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+fn step5c_input_fingerprint(design_tmpdir: &Path) -> String {
+    step5c_input_fingerprint_with(design_tmpdir, |path| fs::read(path))
+}
+
+fn publish_step5c_merge_env(design_tmpdir: &Path, merge_result_env: &Path) -> Result<(), ()> {
+    let required = [
+        "PUBLISH_RC",
+        "PLAN_WRITE_OK",
+        "PUBLISH_OK",
+        "VALIDATE_STATUS",
+        "FINAL_SUMMARY_PATH",
+        "CLEANUP_ELIGIBLE",
+    ];
+    let Some(rows) = read_env_file(
+        &design_tmpdir.join(".design-step5c-status.env"),
+        STEP5C_STATUS_ALLOW,
+    )
+    .filter(|rows| {
+        required
+            .iter()
+            .all(|key| rows.iter().any(|row| row.0 == *key))
+    }) else {
+        return Err(());
+    };
+    let mut body = String::new();
+    for (key, value) in &rows {
+        let _ = writeln!(&mut body, "{key}={value}");
+    }
+    let merge_result_env =
+        validate_merge_result_env(merge_result_env, design_tmpdir).map_err(|_| ())?;
+    private_atomic_write(&merge_result_env, &body, design_tmpdir).map_err(|_| ())
+}
+
 #[allow(clippy::too_many_lines)] // The ordered publish and recovery branches form one compatibility state machine.
-fn step5c_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
+fn step5c_core_with(
+    arguments: &[OsString],
+    runner: &dyn Step0Runner,
+    resolved_env: Option<&Env>,
+) -> ExitCode {
     let argv = utf8(arguments);
     let parsed = match parse_wrapper(&argv) {
         Ok(parsed) => parsed,
@@ -938,10 +1117,12 @@ fn step5c_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let env = wrapper_env(&parsed);
+    let env = resolved_env
+        .cloned()
+        .unwrap_or_else(|| wrapper_env(&parsed));
     let raw_tmpdir = env_get(&env, "DESIGN_TMPDIR", "");
     if raw_tmpdir.is_empty() {
-        eprintln!("/design Step 5c: DESIGN_TMPDIR required");
+        eprintln!("design-step5c.sh: DESIGN_TMPDIR required");
         return ExitCode::from(1);
     }
     let design_tmpdir = match validate_tmpdir(raw_tmpdir) {
@@ -1182,64 +1363,106 @@ fn step5c_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-pub fn step5c(arguments: &[OsString]) -> ExitCode {
-    let child_suffix = arguments.len() >= 3
-        && arguments[arguments.len() - 3] == "--bgjob-child"
-        && arguments[arguments.len() - 2] == "--merge-result-env"
-        && !arguments[arguments.len() - 1].is_empty();
-    let invalid_child_control = arguments.iter().enumerate().any(|(index, arg)| {
-        (arg == "--bgjob-child" || arg == "--merge-result-env")
-            && !(child_suffix && (index == arguments.len() - 3 || index == arguments.len() - 2))
-    });
-    if invalid_child_control {
-        eprintln!("design-step5c.sh: adapter child controls must be one terminal suffix");
-        return ExitCode::from(2);
-    }
-    let core_arguments = if child_suffix {
-        &arguments[..arguments.len() - 3]
-    } else {
-        arguments
+#[cfg(test)]
+fn step5c_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
+    step5c_core_with(arguments, runner, None)
+}
+
+fn step5c_adapter_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
+    let adapter = match parse_step5c_adapter_args(arguments) {
+        Ok(parsed) => parsed,
+        Err(message) => {
+            eprintln!("design-step5c.sh: {message}");
+            return ExitCode::from(2);
+        }
     };
-    let result = step5c_with(core_arguments, &LiveStep0Runner);
-    if !child_suffix {
+    let parsed = match parse_wrapper(&utf8(&adapter.public_args)) {
+        Ok(parsed) => parsed,
+        Err(message) => {
+            eprintln!("design-step5c.sh: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    let mut env = match resolve_step5c_env(&parsed, runner) {
+        Ok(env) => env,
+        Err(code) => return code,
+    };
+    let raw_tmpdir = env_get(&env, "DESIGN_TMPDIR", "");
+    let design_tmpdir = match validate_step5c_adapter_tmpdir(raw_tmpdir) {
+        Ok(path) => path,
+        Err((code, message)) => {
+            eprintln!("{message}");
+            return ExitCode::from(code);
+        }
+    };
+    let _ = env.insert(
+        "DESIGN_TMPDIR".to_owned(),
+        design_tmpdir.display().to_string(),
+    );
+    let plugin_root = match require_plugin_root(env_get(&env, "CLAUDE_PLUGIN_ROOT", "")) {
+        Ok(path) => path,
+        Err(code) => return code,
+    };
+
+    if adapter.bgjob_child {
+        let result = step5c_core_with(&adapter.public_args, runner, Some(&env));
+        if publish_step5c_merge_env(&design_tmpdir, Path::new(&adapter.merge_result_env)).is_err() {
+            return ExitCode::from(1);
+        }
         return result;
     }
-    let Ok(parsed) = parse_wrapper(&utf8(core_arguments)) else {
-        return ExitCode::from(1);
-    };
-    let env = wrapper_env(&parsed);
-    let tmpdir = PathBuf::from(env_get(&env, "DESIGN_TMPDIR", ""));
-    let merge_env = PathBuf::from(&arguments[arguments.len() - 1]);
-    let required = [
-        "PUBLISH_RC",
-        "PLAN_WRITE_OK",
-        "PUBLISH_OK",
-        "VALIDATE_STATUS",
-        "FINAL_SUMMARY_PATH",
-        "CLEANUP_ELIGIBLE",
+
+    let mut adapt_args = vec![
+        "bgjob".to_owned(),
+        "adapt".to_owned(),
+        "--step".to_owned(),
+        STEP5C_STEP.to_owned(),
+        "--tmpdir".to_owned(),
+        design_tmpdir.display().to_string(),
+        "--budget-s".to_owned(),
+        STEP5C_BUDGET_S.to_owned(),
     ];
-    let Some(rows) = read_env_file(
-        &tmpdir.join(".design-step5c-status.env"),
-        STEP5C_STATUS_ALLOW,
-    )
-    .filter(|rows| {
-        required
+    if !parsed.claude_pid.is_empty() {
+        adapt_args.extend(["--owner-pid".to_owned(), parsed.claude_pid.clone()]);
+    }
+    if !parsed.session_env_path().is_empty() {
+        adapt_args.extend([
+            "--session-env-path".to_owned(),
+            parsed.session_env_path().to_owned(),
+        ]);
+    }
+    if adapter.fresh_attempt {
+        adapt_args.push("--replace-completed-result".to_owned());
+    }
+    adapt_args.extend([
+        "--input-fingerprint".to_owned(),
+        step5c_input_fingerprint(&design_tmpdir),
+        "--".to_owned(),
+        "design".to_owned(),
+        "step5c".to_owned(),
+    ]);
+    adapt_args.extend(
+        adapter
+            .public_args
             .iter()
-            .all(|key| rows.iter().any(|row| row.0 == *key))
-    }) else {
-        return ExitCode::from(1);
-    };
-    let mut body = String::new();
-    for (key, value) in &rows {
-        let _ = writeln!(&mut body, "{key}={value}");
-    }
-    let Ok(merge_env) = validate_merge_result_env(&merge_env, &tmpdir) else {
-        return ExitCode::from(1);
-    };
-    if private_atomic_write(&merge_env, &body, &tmpdir).is_err() {
-        return ExitCode::from(1);
-    }
-    result
+            .map(|argument| argument.to_string_lossy().into_owned()),
+    );
+    let output = runner.run(
+        &plugin_root,
+        &adapt_args,
+        &[(
+            "DESIGN_TMPDIR".to_owned(),
+            design_tmpdir.display().to_string(),
+        )],
+        false,
+    );
+    print_text(&output.stdout);
+    eprint!("{}", output.stderr);
+    exit_from_i32(output.code)
+}
+
+pub fn step5c(arguments: &[OsString]) -> ExitCode {
+    step5c_adapter_with(arguments, &LiveStep0Runner)
 }
 
 fn pause_args(design_tmpdir: &Path, ctx: &StepCtx) -> Vec<String> {

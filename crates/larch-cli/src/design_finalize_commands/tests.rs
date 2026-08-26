@@ -293,6 +293,18 @@ mod design_finalize_commands_tests {
         let (_sandbox, design, _plugin) = fixture();
         assert!(validate_tmpdir(design.to_str().unwrap()).is_ok());
         assert!(validate_tmpdir(design.join("missing").to_str().unwrap()).is_err());
+        assert_eq!(
+            validate_step5c_adapter_tmpdir("").expect_err("missing adapter tmpdir"),
+            (1, "design-step5c.sh: DESIGN_TMPDIR required".to_owned())
+        );
+        let dotted = design.join("..").join("design");
+        let (code, message) = validate_step5c_adapter_tmpdir(dotted.to_str().unwrap())
+            .expect_err("dotted adapter tmpdir");
+        assert_eq!(code, 2);
+        assert_eq!(
+            message,
+            "design-tmpdir: path must not contain '.' or '..' segments"
+        );
         let rows = read_env_rows(
             "PLAN_WRITE_OK=true\r\nPUBLISH_OK=true\nUNKNOWN=no\nPUBLISH_OK=false\n",
             STEP5C_STATUS_ALLOW,
@@ -347,6 +359,178 @@ mod design_finalize_commands_tests {
         );
         assert_eq!(phase_tail(&design, "tail.log"), "tail contents");
         assert_eq!(phase_tail(&design, "absent.log"), "");
+    }
+
+    #[test]
+    fn step5c_adapter_validates_controls_and_fingerprint_tokens() {
+        assert_eq!(
+            parse_step5c_adapter_args(&[
+                "--bgjob-child".into(),
+                "--session-env-path".into(),
+                "source.env".into(),
+            ])
+            .expect_err("mid-argv child control"),
+            "adapter child controls must be one terminal suffix"
+        );
+        assert_eq!(
+            parse_step5c_adapter_args(&["--fresh-attempt".into(), "--fresh-attempt".into(),])
+                .expect_err("duplicate fresh attempt"),
+            "duplicate --fresh-attempt"
+        );
+        let child = parse_step5c_adapter_args(&[
+            "--skip-validate".into(),
+            "--bgjob-child".into(),
+            "--merge-result-env".into(),
+            "/tmp/result.env".into(),
+        ])
+        .expect("terminal child suffix");
+        assert!(child.bgjob_child);
+        assert_eq!(child.merge_result_env, "/tmp/result.env");
+        assert_eq!(child.public_args, [OsString::from("--skip-validate")]);
+        let control_shaped_path = parse_step5c_adapter_args(&[
+            "--bgjob-child".into(),
+            "--merge-result-env".into(),
+            "--bgjob-child".into(),
+        ])
+        .expect("control-shaped merge path");
+        assert!(control_shaped_path.bgjob_child);
+        assert_eq!(control_shaped_path.merge_result_env, "--bgjob-child");
+
+        let after_separator = parse_step5c_adapter_args(&["--".into(), "--fresh-attempt".into()])
+            .expect("public fresh-attempt token");
+        assert!(!after_separator.fresh_attempt);
+        assert_eq!(
+            after_separator.public_args,
+            [OsString::from("--"), OsString::from("--fresh-attempt")]
+        );
+
+        let (_sandbox, design, _plugin) = fixture();
+        assert_eq!(step5c_input_fingerprint(&design), "source-absent");
+        write(design.join(".step3-review-result.env"), "review-result\n");
+        assert_eq!(
+            step5c_input_fingerprint(&design),
+            format!("{:x}", Sha256::digest(b"review-result\n"))
+        );
+        assert_eq!(
+            step5c_input_fingerprint_with(&design, |_| {
+                Err(std::io::Error::other("injected read failure"))
+            }),
+            "compute-failed"
+        );
+    }
+
+    #[test]
+    fn step5c_parent_resolves_session_and_launches_typed_child() {
+        let (sandbox, design, plugin) = fixture();
+        let args = wrapper_args(sandbox.path(), &design, &plugin, "run-1", "123");
+        let resolved = format!(
+            "export DESIGN_TMPDIR={}\nexport ISSUE_NUMBER=8586\nexport SESSION_ID=run-1\nexport REPO=acme/repo\n",
+            design.display()
+        );
+        let runner = QueueRunner::new([
+            child(0, &resolved, ""),
+            child(0, "BGJOB_STATUS=STARTED STEP=design-step5c PGID=9\n", ""),
+        ]);
+        assert_eq!(step5c_adapter_with(&args, &runner), ExitCode::SUCCESS);
+        let calls = runner.calls.borrow();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0][..3], ["bgjob", "adapt", "--resolve-session-env"]);
+        let adapt = &calls[1];
+        assert_eq!(value_after(adapt, "--step"), Some("design-step5c"));
+        assert_eq!(value_after(adapt, "--budget-s"), Some("21600"));
+        assert_eq!(
+            value_after(adapt, "--input-fingerprint"),
+            Some("source-absent")
+        );
+        let separator = adapt
+            .iter()
+            .position(|value| value == "--")
+            .expect("separator");
+        assert_eq!(&adapt[separator + 1..separator + 3], ["design", "step5c"]);
+        assert!(!adapt.iter().any(|value| value == "--fresh-attempt"));
+        drop(calls);
+
+        write(design.join(".step3-review-result.env"), "review-result\n");
+        let expected = format!("{:x}", Sha256::digest(b"review-result\n"));
+        let runner = QueueRunner::new([
+            child(0, &resolved, ""),
+            child(0, "BGJOB_STATUS=STARTED STEP=design-step5c PGID=10\n", ""),
+        ]);
+        let mut fresh_args = vec![OsString::from("--fresh-attempt")];
+        fresh_args.extend(args);
+        assert_eq!(step5c_adapter_with(&fresh_args, &runner), ExitCode::SUCCESS);
+        let calls = runner.calls.borrow();
+        let adapt = &calls[1];
+        assert!(
+            adapt
+                .iter()
+                .any(|value| value == "--replace-completed-result")
+        );
+        assert_eq!(
+            value_after(adapt, "--input-fingerprint"),
+            Some(expected.as_str())
+        );
+    }
+
+    #[test]
+    fn step5c_child_merge_requires_and_copies_the_status_contract() {
+        let (_sandbox, design, _plugin) = fixture();
+        let merge = design.join("merge.env");
+        write(&merge, "");
+        write(
+            design.join(".design-step5c-status.env"),
+            "PUBLISH_RC=0\nPLAN_WRITE_OK=true\nPUBLISH_OK=true\nVALIDATE_STATUS=ok\nFINAL_SUMMARY_PATH=/tmp/final-summary.md\nCLEANUP_ELIGIBLE=true\n",
+        );
+        publish_step5c_merge_env(&design, &merge).expect("merge status");
+        let body = fs::read_to_string(&merge).expect("merge body");
+        assert!(body.contains("PUBLISH_RC=0\n"));
+        assert!(body.contains("CLEANUP_ELIGIBLE=true\n"));
+
+        write(
+            design.join(".design-step5c-status.env"),
+            "PUBLISH_RC=0\nPLAN_WRITE_OK=true\n",
+        );
+        assert!(publish_step5c_merge_env(&design, &merge).is_err());
+    }
+
+    #[test]
+    fn step5c_child_suffix_runs_the_core_and_publishes_its_status() {
+        let (sandbox, design, plugin) = fixture();
+        let merge = design.join("merge.env");
+        write(&merge, "");
+        let mut args = wrapper_args(sandbox.path(), &design, &plugin, "run-1", "123");
+        args.extend([
+            OsString::from("--bgjob-child"),
+            OsString::from("--merge-result-env"),
+            merge.as_os_str().to_owned(),
+        ]);
+        let resolved = format!(
+            "export DESIGN_TMPDIR={}\nexport ISSUE_NUMBER=8586\nexport SESSION_ID=run-1\nexport REPO=acme/repo\n",
+            design.display()
+        );
+        let runner = QueueRunner::new([child(0, &resolved, "")]);
+
+        assert_eq!(step5c_adapter_with(&args, &runner), ExitCode::from(1));
+        assert_eq!(runner.calls.borrow().len(), 1);
+        let body = fs::read_to_string(&merge).expect("child merge body");
+        assert!(body.contains("PUBLISH_RC=not-run\n"));
+        assert!(body.contains("PLAN_WRITE_OK=\n"));
+        assert!(body.contains("PUBLISH_OK=\n"));
+        assert!(body.contains("CLEANUP_ELIGIBLE=false\n"));
+    }
+
+    #[test]
+    fn step5c_core_without_design_tmpdir_exits_one() {
+        let (_sandbox, _design, plugin) = fixture();
+        let env = Env::from([(
+            "CLAUDE_PLUGIN_ROOT".to_owned(),
+            plugin.display().to_string(),
+        )]);
+
+        assert_eq!(
+            step5c_core_with(&[], &QueueRunner::default(), Some(&env)),
+            ExitCode::from(1)
+        );
     }
 
     #[test]

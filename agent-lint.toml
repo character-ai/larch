@@ -163,10 +163,7 @@ exclude = [
   # and larch bumps agent-lint. Detection is intentionally degraded for
   # these paths.
   # Remove this block after that agent-lint upgrade restores real reachability.
-  "skills/design/scripts/design-clarify.sh",
   "skills/design/scripts/design-clarify.md",
-  "skills/design/scripts/test-design-clarify.sh",
-  "skills/design/scripts/test-design-clarify.md",
   "skills/design/scripts/design-step3-entry.sh",
   "skills/design/scripts/design-step3-entry.md",
   "skills/design/scripts/design-step3-review.sh",
@@ -181,10 +178,7 @@ exclude = [
   "skills/design/scripts/design-step5b-annotate.md",
   "skills/design/scripts/design-step5b-prepare.sh",
   "skills/design/scripts/design-step5b-prepare.md",
-  "skills/design/scripts/design-step5c.sh",
   "skills/design/scripts/design-step5c.md",
-  "skills/design/scripts/test-design-step5c.sh",
-  "skills/design/scripts/test-design-step5c.md",
   "skills/implement/scripts/step-7a.sh",
   # Delegation smoke for step-7a.sh; behavioral authority is
   # crates/larch-cli/src/implement_review_commands.rs.

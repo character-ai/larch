@@ -79,6 +79,6 @@ After the child returns, validate the completion proof against the live approved
 
 Require exit zero, `UMBRELLA_COMPLETION_VERIFIED=true`, and exact `UMBRELLA_NUMBER=$ISSUE_NUMBER`. Any incomplete or stale proof preserves the open original and `$DESIGN_TMPDIR` without claiming success. Keep `decompose annotate`, `decompose migrate-deps`, and `decompose close-original` off the Split-path; `/umbrella` is the single mutation owner.
 
-For Step 5c size refusal, accepted Partition is terminal. Export `SUMMARY_OUTCOME=approved-partition`, run the Final summary block, and exit `0`. Do not rerun Step 5c or continue against the converted original. Only Override reruns `design-step5c.sh --fresh-attempt`.
+For Step 5c size refusal, accepted Partition is terminal. Export `SUMMARY_OUTCOME=approved-partition`, run the Final summary block, and exit `0`. Do not rerun Step 5c or continue against the converted original. Only Override reruns `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" design step5c --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" --claude-pid "$PPID" --fresh-attempt`.
 
 Panel dispatch and aggregate CLI commands remain available to their existing non-Split callers.

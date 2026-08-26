@@ -98,7 +98,7 @@ test-harnesses: test-harnesses-1 test-harnesses-2
 
 test-harnesses-1: test-hook-anti-read-poll
 
-test-harnesses-2: test-harness-shards-coverage test-harness-no-python3 test-prompt-template-invariants test-gate-b-apply-mode test-read-result-env test-token-vendor-scrapers test-external-tool-registry test-resolve-upstream-larch-repo test-cache-root-validation test-cache-key-discipline test-architectural-guidelines-step test-references-headers test-extinct-notification-stack test-pipe-sigpipe-safety test-quick-mode-docs-sync test-check-stale-plugin oos-disposition-gate-bash-harness test-render-cost-line-callsites test-plan-adequacy-audit write-final-report-bash-harness step-7a-bash-harness test-implement-timing-rehydration test-pause-skill flush-execution-issues-bash-harness test-subskill-anchors test-rejected-analysis test-implement-anti-halt test-step-8-oos-checkpoint test-design-clarify test-implement-fence-shape test-legacy-title-prefix-literals-scope test-implement-step2-routing test-triage-structure test-anti-halt test-implement-rebase-macro test-research-angle-prompts test-implement-step8-exit3-first-fixer test-orchestrator-scope-sync test-brainstorm-prompts test-synthesis-subagent test-implement-cleanup-roundtrip test-anti-improvised-wakeup test-implement-relevant-checks-anti-halt test-fluff-analysis-corpus test-implement-positional-issue test-effort-prose
+test-harnesses-2: test-harness-shards-coverage test-harness-no-python3 test-prompt-template-invariants test-gate-b-apply-mode test-read-result-env test-token-vendor-scrapers test-external-tool-registry test-resolve-upstream-larch-repo test-cache-root-validation test-cache-key-discipline test-architectural-guidelines-step test-references-headers test-extinct-notification-stack test-pipe-sigpipe-safety test-quick-mode-docs-sync test-check-stale-plugin oos-disposition-gate-bash-harness test-render-cost-line-callsites test-plan-adequacy-audit write-final-report-bash-harness step-7a-bash-harness test-implement-timing-rehydration test-pause-skill flush-execution-issues-bash-harness test-subskill-anchors test-rejected-analysis test-implement-anti-halt test-step-8-oos-checkpoint test-implement-fence-shape test-legacy-title-prefix-literals-scope test-implement-step2-routing test-triage-structure test-anti-halt test-implement-rebase-macro test-research-angle-prompts test-implement-step8-exit3-first-fixer test-orchestrator-scope-sync test-brainstorm-prompts test-synthesis-subagent test-implement-cleanup-roundtrip test-anti-improvised-wakeup test-implement-relevant-checks-anti-halt test-fluff-analysis-corpus test-implement-positional-issue test-effort-prose
 
 test-pipe-sigpipe-safety:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
@@ -323,7 +323,7 @@ test-design-driver:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch design_step1_commands::tests
 
 test-design-clarify:
-	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-clarify.sh
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch clarify_orchestrator::tests
 
 test-design-publish:
 	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-core --lib design::publish::
@@ -934,8 +934,7 @@ test-design-step0-init:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch design_step0_commands::tests
 
 test-design-step5c:
-	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step5c.sh
-	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --bin larch design_finalize_commands::tests
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch design_finalize_commands::tests
 
 test-design-step6:
 	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --bin larch design_finalize_commands::tests
