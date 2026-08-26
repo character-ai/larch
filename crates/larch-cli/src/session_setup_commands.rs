@@ -52,8 +52,9 @@ const SETUP_OPTIONS: &[&str] = &[
     "--deny-edit-write",
 ];
 /// The deny-edit-write activation tokens, duplicated from the hook allowlist
-/// in `scripts/deny-edit-write.sh` (a Bash `case` line Rust cannot import).
-/// `deny_edit_write_tokens_match_the_hook_allowlist` pins set equality.
+/// in `hook_commands` (the policy the `scripts/deny-edit-write.sh` shim
+/// delegates to). `deny_edit_write_tokens_match_the_hook_allowlist` pins set
+/// equality so the two Rust copies cannot drift.
 const DENY_EDIT_WRITE_TOKENS: &[&str] = &[
     "research",
     "audit-umbrella",
@@ -1504,21 +1505,12 @@ mod tests {
     use super::{DENY_EDIT_WRITE_TOKENS, SetupResult, write_setup_envelope};
     use std::io::{self, Write};
 
-    /// G-Cfg-3 deviation guard: the token list lives in a Bash `case` line the
-    /// Rust binary cannot import, so pin set equality against the hook source.
+    /// G-Cfg-3 deviation guard: the deny-edit-write allowlist is duplicated in
+    /// `hook_commands` (the policy the shim delegates to), so pin set equality
+    /// so the two Rust copies cannot drift.
     #[test]
     fn deny_edit_write_tokens_match_the_hook_allowlist() {
-        let hook = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../scripts/deny-edit-write.sh"),
-        )
-        .expect("read scripts/deny-edit-write.sh");
-        let case_line = hook
-            .lines()
-            .map(str::trim)
-            .find(|line| line.ends_with(") ;;") && line.contains('|'))
-            .expect("hook token case line");
-        let mut hook_tokens: Vec<&str> = case_line.trim_end_matches(") ;;").split('|').collect();
+        let mut hook_tokens: Vec<&str> = crate::hook_commands::DENY_EDIT_WRITE_TOKENS.to_vec();
         hook_tokens.sort_unstable();
         let mut rust_tokens: Vec<&str> = DENY_EDIT_WRITE_TOKENS.to_vec();
         rust_tokens.sort_unstable();

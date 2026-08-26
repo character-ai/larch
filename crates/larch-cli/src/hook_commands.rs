@@ -617,7 +617,7 @@ fn assert_or_unlink_replaceable_destination(state: &StateDirectory, name: &str) 
 const MAX_SYMLINK_HOPS: usize = 40;
 
 const DENY_EDIT_WRITE_TTL_MINUTES: u64 = 360;
-const DENY_EDIT_WRITE_TOKENS: [&str; 7] = [
+pub const DENY_EDIT_WRITE_TOKENS: [&str; 7] = [
     "research",
     "audit-umbrella",
     "file-bug",

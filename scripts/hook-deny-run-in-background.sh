@@ -23,8 +23,7 @@ if [ -z "$PLUGIN_ROOT" ] || [ ! -x "$PLUGIN_ROOT/scripts/larch.sh" ]; then
     exit 0
 fi
 
-LARCH_BOOTSTRAP_NO_INSTALL=1 "$PLUGIN_ROOT/scripts/larch.sh" hook deny-run-in-background 2>/dev/null
-if [ "$?" -ne 0 ]; then
+if ! LARCH_BOOTSTRAP_NO_INSTALL=1 "$PLUGIN_ROOT/scripts/larch.sh" hook deny-run-in-background 2>/dev/null; then
     printf '%s\n' "$STATIC_DENY"
 fi
 exit 0
