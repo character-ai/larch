@@ -81,6 +81,15 @@ pub const MERGE_KEYS: [&str; 10] = [
 pub const STEP3_ROUND_CARRY_KEYS: [&str; 2] =
     ["DEGRADED_PANEL_WARNING", "INVALID_SLOT_PANEL_WARNING"];
 
+/// Tally keys copied from a round summary into a Step 3 bail-out envelope.
+pub const STEP3_ROUND_TALLY_KEYS: [&str; 5] = [
+    "ACCEPTED_COUNT",
+    "IMPORTANT_ACCEPTED_COUNT",
+    "TALLY_PLAN_REVIEW_STATUS",
+    "AGGREGATOR_STATUS",
+    "VOTING_TALLY_FILE",
+];
+
 /// Remove carriage returns and newlines before emitting one `KEY=value` value.
 #[must_use]
 pub fn strip_crlf(value: &str) -> String {
@@ -119,6 +128,38 @@ pub fn merge_step3_round_carry_warnings(
             && let Some(value) = carry.get(key).filter(|value| !value.is_empty())
         {
             merged.insert(key.to_owned(), value.clone());
+        }
+    }
+    merged
+}
+
+fn tally_value_is_absent(key: &str, value: &str) -> bool {
+    value.is_empty()
+        || (matches!(key, "ACCEPTED_COUNT" | "IMPORTANT_ACCEPTED_COUNT") && value == "0")
+}
+
+/// Merge round tally KVs into an envelope without overwriting a present non-default value.
+///
+/// `ACCEPTED_COUNT=0` and `IMPORTANT_ACCEPTED_COUNT=0` are treated as absent so a
+/// bail-out that cloned empty degraded-panel state still picks up the round summary.
+#[must_use]
+pub fn merge_step3_round_tally(
+    values: &BTreeMap<String, String>,
+    round_tally: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    let mut merged = values.clone();
+    for key in STEP3_ROUND_TALLY_KEYS {
+        if !merged
+            .get(key)
+            .is_none_or(|value| tally_value_is_absent(key, value))
+        {
+            continue;
+        }
+        if let Some(value) = round_tally
+            .get(key)
+            .filter(|value| !tally_value_is_absent(key, value))
+        {
+            merged.insert((*key).to_owned(), value.clone());
         }
     }
     merged
