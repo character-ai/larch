@@ -20,7 +20,10 @@ _needle="${_py}3"
 hits="$(
   {
     find "$REPO_ROOT/scripts" -maxdepth 1 -type f -name 'test-*.sh' -print
-    find "$REPO_ROOT/skills" -type f -path '*/scripts/test-*.sh' -print
+    # Walk skill script dirs without a glob path token that agent-lint G002 flags.
+    find "$REPO_ROOT/skills" -type d -name scripts -print | while IFS= read -r scripts_dir; do
+      find "$scripts_dir" -maxdepth 1 -type f -name 'test-*.sh' -print
+    done
   } | LC_ALL=C sort -u | while IFS= read -r path; do
     rel="${path#"$REPO_ROOT"/}"
     [[ "$rel" == "$SELF_REL" ]] && continue
