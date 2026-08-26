@@ -19,9 +19,9 @@ use std::{
 use larch_adapters::GixRepository;
 use larch_core::{
     DuplicatePolicy, KvDocument, MalformedLinePolicy, ParseOptions, ProcessOutput,
-    REASON_STALE_PLAN_BASE_SCOPE, RepositoryRead as _, Revision, StatusOptions, emit_kv,
-    parse_receipt, private_atomic_write, read_confined_regular_text, read_confined_result_env,
-    read_universal_newlines, validate_run_id,
+    REASON_STALE_PLAN_BASE_SCOPE, ReceiptRefreshStage, RepositoryRead as _, Revision,
+    StatusOptions, emit_kv, parse_receipt, private_atomic_write, read_confined_regular_text,
+    read_confined_result_env, read_universal_newlines, validate_run_id,
 };
 
 use crate::{
@@ -424,6 +424,7 @@ fn run_governance_refresh(tmpdir: &Path) -> Result<GovernanceRefreshReport, Stri
         "--previous-base-sha".into(), inputs.receipt_base.clone().into(),
         "--base-sha".into(), inputs.target_base.clone().into(),
         "--run-id".into(), inputs.run_id.clone().into(),
+        "--stage".into(), "ship".into(),
     ];
     let output = run_larch(&inputs.root, &argv)?;
     let published = KvDocument::parse(
@@ -495,7 +496,7 @@ fn append_scope_drift(tmpdir: &Path, inputs: &GovernanceRefreshInputs) -> Result
     }
     let entry = fs::read_to_string(&source)
         .map_err(|error| format!("cannot read {SCOPE_DRIFT_RECORD}: {error}"))?;
-    if !valid_receipt_scope_drift(&entry) {
+    if !valid_receipt_scope_drift(&entry, ReceiptRefreshStage::Ship) {
         return Err(format!("{SCOPE_DRIFT_RECORD} is malformed"));
     }
     let staged = tmpdir.join(SCOPE_DRIFT_RECORD);

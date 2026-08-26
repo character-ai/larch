@@ -149,7 +149,9 @@ prior receipt base, and current target SHA. It rejects a moving base or any
 changed plan, receipt, blocker, or owner input before mutation. A successful
 read-back replaces Preflight's issue snapshot and produces one bounded,
 JSON-quoted path-only drift record for Step 0 (or the ship-gate refresh) to
-append once under `Warnings`. After Step 0 the managed `[IMPLEMENTING]` title
+append once under `Warnings`. The optional `--stage` defaults to `preflight`;
+`ship governance-refresh` passes `--stage ship` so the durable heading names
+its actual site. After Step 0 the managed `[IMPLEMENTING]` title
 accepts the mutation only under the implementation run lease: `--run-id`
 binds it when no `RUN_ID`, `LARCH_RUN_ID`, or `SESSION_ID` environment key
 names the run, and a refresh without either refuses with `missing-lease`
