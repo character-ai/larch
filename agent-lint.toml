@@ -8,7 +8,6 @@ desc-truncated-max-chars = 200
 error = ["S021", "G009", "G010", "G011"]
 claude-import-path-budgets = { "AGENTS.md" = 89, "KARPATHY_CLAUDE.md" = 54, "BASH_AUTHORING.md" = 115 }
 inline-path-prefixes = [
-  "python/",
   "skills/",
   "scripts/",
   "docs/",
@@ -85,8 +84,7 @@ suppress = [
 # below|above` invariant in references/*.md. The cross-skill Consumer/
 # Contract/When-to-load header-triplet invariant moved out of this harness
 # as of #308 — see scripts/test-references-headers.sh below. It is
-# referenced only from Makefile (test-implement-structure target) and
-# python/tests/skills/test_skill_structure.py (sibling contract), matching the
+# referenced only from Makefile (test-implement-structure target), matching the
 # same Makefile-only pattern as the other test-* harnesses above.
 #
 # scripts/test-references-headers.sh is the cross-skill structural
@@ -97,8 +95,8 @@ suppress = [
 # anchored line-start patterns (to avoid false-passes on prose or fenced-
 # code examples). Owns the triplet invariant formerly held by
 # make test-implement-structure assertion (8). Companion to
-# make test-implement-structure (python/tests/skills/test_skill_structure.py,
-# /implement-specific topology) and make test-research-structure (stricter
+# make test-implement-structure (/implement-specific topology) and
+# make test-research-structure (stricter
 # /research-local first-20-lines tightening layered on top of this global
 # presence check). Referenced
 # only from Makefile (test-references-headers target) and
@@ -143,9 +141,8 @@ suppress = [
 # RESEARCH_PROMPT_BASELINE byte pin (post-#508 rename of RESEARCH_PROMPT;
 # the same `grep -F "RESEARCH_PROMPT"` substring also matches the four angle
 # prompt names ARCH/EDGE/EXT/SEC), and the validation XML wrapper tag pins. It is
-# referenced only from Makefile (test-research-structure target) and
-# python/tests/skills/test_skill_structure.py (sibling contract), matching the same
-# Makefile-only pattern as the other test-* harnesses above.
+# referenced only from Makefile (test-research-structure target), matching the
+# same Makefile-only pattern as the other test-* harnesses above.
 #
 # make test-review-structure is the structural regression harness for
 # skills/review/SKILL.md and skills/review/references/ invariants (closes
@@ -161,19 +158,9 @@ suppress = [
 # 2-line reference header schema (**Consumer**: and **Binding convention**:
 # in the first 20 lines — deliberately NOT the /implement
 # Consumer/Contract/When-to-load triplet). It is referenced only from
-# Makefile (test-review-structure target) and
-# python/tests/skills/test_skill_structure.py (sibling contract), matching the same
+# Makefile (test-review-structure target), matching the same
 # Makefile-only pattern as the other test-* harnesses above.
 #
-# scripts/test-python/cli.py render reviewer is the regression harness for
-# python/cli.py render reviewer (closes #417 — alignment of /research
-# Codex+Cursor validation lanes with the unified code-reviewer archetype).
-# The renderer itself is structurally referenced from skills/research/
-# references/validation-phase.md (loaded via MANDATORY directive from
-# skills/research/SKILL.md) and is therefore not excluded; the test harness
-# is referenced only from Makefile (test-render-reviewer-prompt target) and
-#  (sibling contract), matching the
-# same Makefile-only pattern as the other test-* harnesses above.
 exclude = [
   # plugin/ is a generated, byte-for-byte runtime projection of the canonical
   # plugin sources. Scan the canonical paths once; release plugin-runtime
@@ -209,8 +196,8 @@ exclude = [
   "skills/design/scripts/test-design-step5c.md",
   "skills/implement/scripts/step-7a.sh",
   # Delegation smoke for step-7a.sh; behavioral authority is
-  # python/tests/implement/test_step_7a.py (step-7a-py-harness /
-  # test-step-7a). Makefile smoke leaf: step-7a-bash-harness.
+  # crates/larch-cli/src/implement_review_commands.rs.
+  # Makefile smoke leaf: step-7a-bash-harness.
   "skills/implement/scripts/test-step-7a.sh",
   "skills/implement/scripts/flush-execution-issues.sh",
   # Delegation smoke for flush-execution-issues.sh; behavioral authority is
@@ -276,16 +263,6 @@ exclude = [
   # The upstream-repo resolution harness is Makefile-only. Agent-lint's
   # G004/dead-script graph does not follow Makefile targets.
   "scripts/test-resolve-upstream-larch-repo.sh",
-  # larch-log migration harnesses are Makefile/pre-commit only. They are not
-  # invoked from skill prose at runtime, so dead-script reachability is a false
-  # positive for these test entrypoints.
-  "python/test_run_logs.py",
-  # python/test_redact.py is a retained removal input for #8903; it is not
-  # invoked from runtime skill prose.
-  "python/test_redact.py",
-  # Makefile-only harness for metadata summary publication. Runtime reachability
-  # is through Step 0 helpers, not direct SKILL.md invocation.
-  "python/test_pr_body.py",
   # Stop-hook helpers are runtime-registered in hooks/hooks.json, not invoked
   # from skills/implement/SKILL.md.
   "skills/implement/scripts/hook-stop-fail-close.sh",
@@ -340,28 +317,13 @@ exclude = [
   # their sibling contracts, but not invoked by skill runtime prose.
   # Issue-anchored plan helpers (#2484): runtime scripts + harnesses are
   # now covered by the temporary reachability stopgap above while
-  # agent-lint cannot follow their Python and Makefile edges.
+  # agent-lint cannot follow their Makefile edges.
   # scripts/test-check-stale-plugin.sh is the regression harness for
   # scripts/check-stale-plugin.sh (version-skew detection). Referenced only
   # from Makefile (test-check-stale-plugin target) and
   # scripts/test-check-stale-plugin.md (sibling contract), matching the same
   "scripts/test-check-stale-plugin.sh",
   "scripts/test-check-stale-plugin.md",
-  # The Rust `session cleanup-tmpdir` invoke-time audit log. Referenced only from
-  # (sibling contract), matching the same Makefile-only pattern as the other
-  # Makefile-only harnesses above.
-  # /cleanup (sibling contract in test-cleanup.md). The Python fixture remains
-  # a removal input for #8903.
-  # python/cli.py session entry-gate. Referenced only from Makefile
-  # (sibling contract), matching the same Makefile-only pattern as
-  # scripts/test-sessionstart-health.sh above. Both the .sh and the .md are
-  # excluded.
-  # for the presence-detection (CODEX_PRESENT/CURSOR_PRESENT) defaults in
-  # scripts/larch.sh session setup. Referenced only from Makefile
-  #  is the regression harness for
-  # python/cli.py mermaid sanitize. Referenced only
-  # from Makefile (test-mermaid-fragments target) and its sibling contract,
-  # matching the Makefile-only harness pattern above.
   "scripts/audit-edit-write.sh",
   "scripts/test-audit-edit-write.sh",
   # Relevant-checks helper and hook harnesses are Makefile-only regression
@@ -371,14 +333,9 @@ exclude = [
   "scripts/test-sessionstart-statusline.sh",
   "scripts/test-hook-stop-fail-close.sh",
   # scripts/test-bgjob.sh is the Makefile-only regression harness for bgjob
-  # start/wait/reap coverage (make test-bgjob -> pytest python/tests/bgjob).
+  # start/wait/reap coverage (make test-bgjob -> cargo integration bgjob::).
   # agent-lint's G004/dead-script rule does not follow Makefile targets.
   "scripts/test-bgjob.sh",
-  # agent-lint does not follow source directives.
-  # (script-md-siblings / G004).
-  # not invokable directly). It provides is_transient_net_signature() to
-  # shell callsites via source directives only, which agent-lint does not follow.
-  # Python retry callers use python/retry.py instead.
   # scripts/external-tool-registry.sh is a sourced-only shell library (no
   # shebang, not invokable directly). It is referenced from shell consumers via
   # source directives only, which agent-lint does not follow.
@@ -394,16 +351,6 @@ exclude = [
   # (test-external-tool-registry target) and scripts/test-external-tool-registry.md
   # (sibling contract).
   "scripts/test-external-tool-registry.sh",
-  # scripts/test-python/cli.py generate check is the regression harness for the
-  # generator-registry walker. Referenced only from Makefile
-  # (test-check-generators target) and
-  # (sibling contract).
-  "scripts/test-python/cli.py generate check",
-  # scripts/test-python/cli.py generate topology-docs is the regression harness for the
-  # topology projection generator. Referenced only from Makefile
-  # (test-generate-topology-docs target) and
-  # (sibling contract).
-  "scripts/test-python/cli.py generate topology-docs",
   # skills/implement/references/rebase-checkpoint-routing.md is a lazy reference
   # target invoked only from skills/implement/SKILL.md foreground fences (G004
   # does not follow markdown invocations). The rebase checkpoint command itself
@@ -415,13 +362,6 @@ exclude = [
   "scripts/larch.sh checks repair-loop",
   "skills/implement/references/checks-repair-loop.md",
   # SKILL.md fences; sibling contract below.
-  # python/cli.py render findings-view — ad-hoc operator CLI to reconstruct
-  # dropped markdown views from review-findings-full.jsonl; no automated caller.
-  "python/cli.py render findings-view",
-  "python/rendering.py",
-  # python/cli.py push rebase (#856). It is referenced only from Makefile
-  # (sibling contract), matching the same Makefile-only pattern as the other
-  # test-* harnesses above.
   # Makefile (test-drop-release notes-commit target) and the sibling .md stub,
   # matching the same Makefile-only pattern as the other test-* harnesses above.
   # as a tiny future amend primitive with a sibling contract.
@@ -436,12 +376,6 @@ exclude = [
   # same Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-harness-shards-coverage.sh",
   "scripts/test-harness-shards-coverage.md",
-  # python/test_pr_body.py is the offline harness for
-  # python/cli.py render run-summary. Referenced from Makefile
-  # (test-render-run-summary target) and python/test_pr_body.py
-  # (sibling contract).
-  "python/test_pr_body.py",
-  "python/test_pr_body.py",
   # scripts/test-legacy-title-prefix-literals-scope.sh — allow-listed git-grep
   # audit for legacy bracket literals (Makefile test-legacy-title-prefix-literals-scope).
   "scripts/test-legacy-title-prefix-literals-scope.sh",
@@ -464,11 +398,6 @@ exclude = [
   # scripts/test-triage-structure.sh is the Makefile-only structural harness
   # for skills/triage/SKILL.md. Same dead-script false-positive pattern.
   "scripts/test-triage-structure.sh",
-  # python/tests/skills/test_skill_structure.py owns alias/bug/design/implement/
-  # learn-from-bugs/research/review structure pins (formerly seven Bash harnesses).
-  "python/tests/skills/test_skill_structure.py",
-  # for python/cli.py session write-design-env (Makefile test-write-design-
-  # current-env target). Same Makefile-only pattern as other design test-*.
   "skills/design/scripts/test-findings-classification.sh",
   "skills/design/scripts/decompose-prompts/decomposition-specialist.txt",
   "skills/design/scripts/decompose-prompts/dependency-analyst.txt",
@@ -485,13 +414,6 @@ exclude = [
   # pr-prep materialize failure with manifest OOS (Makefile
   # test-ship-pr-oos-pr-prep target). Same Makefile-only pattern as
   # test-ship-pr-rebase.sh.
-  # harness for python/cli.py push rebase's --keep-on-conflict local-only rebase
-  # Same Makefile-only pattern as other test-* harnesses.
-  # for python/cli.py push rebase's force-with-lease race-recovery path.
-  # pattern as other test-* harnesses.
-  # for python/cli.py push rebase's fork-mode lease snapshot (issue #2322).
-  # as other test-* harnesses.
-  # harness for python/cli.py push rebase's --no-push fetch transient-retry path.
   # scripts/test-implement-step8-exit3-first-fixer.sh — structural pins for the
   # first-fixer-non-health autonomous CI-fix path in skills/implement/SKILL.md.
   # Makefile test-implement-step8-exit3-first-fixer target; sibling contract
@@ -542,7 +464,6 @@ exclude = [
   "scripts/test-extinct-notification-stack.sh",
   "scripts/test-orchestrator-scope-sync.sh",
   "scripts/test-quick-mode-docs-sync.sh",
-  "scripts/test-python/cli.py render reviewer",
   # test harness ships with no runtime consumers yet. Phase 3 is the
   # first consumer via skills/implement/SKILL.md (not in this phase).
   # Agent-lint does not follow sibling `source` directives or Makefile targets.
@@ -552,26 +473,6 @@ exclude = [
   # Phase 2 wires /implement tracking adoption as its first consumer.
   # (itself excluded above), so the reachability graph treats it as dead too.
   # Phase 3 (skills/implement/SKILL.md wiring) removes both exclusions.
-  # python/test_preflight.py is the regression harness for python/cli.py
-  # implement preflight, wired into Makefile test-preflight target only.
-  "python/test_preflight.py",
-  # python/tests/report/test_final_report.py is the regression harness for
-  # python/cli.py final-report write (behavioral authority). Makefile wires it
-  # via write-final-report-py-harness / test-write-final-report and
-  # test-step-18b-final-report; write-final-report-bash-harness is the
-  # delegation smoke only.
-  "python/test_final_report.py",
-  # scripts/test-python/cli.py render lane-status is the regression harness for
-  # python/cli.py render lane-status (the /research lane-attribution formatter
-  # added by #421). Wired only via Makefile test-render-lane-status target;
-  # the formatter itself IS structurally referenced from skills/research/
-  # SKILL.md Step 3, but the harness is not — same Makefile-only shape as
-  # the other test-* harnesses above.
-  "scripts/test-python/cli.py render lane-status",
-  # python/rendering.py is a sourced-only helper (no shebang,
-  # not executable, defines render_lane() and sanitize_reason() consumed by
-  # python/cli.py render lane-status via `source`).
-  "python/rendering.py",
   # dev-only release apply script's pre-commit same-version probe and
   # contract), matching the same Makefile-only harness pattern as
   # /research; closes #518). The token-tally helper is invoked from
@@ -585,8 +486,6 @@ exclude = [
   # sibling contracts.
   "scripts/test-token-vendor-scrapers.sh",
   "scripts/test-render-cost-line-callsites.sh",
-  "python/test_pr_body.py",
-  "python/test_pr_body.py",
   # offline regression harnesses for the /implement timing-reporting PoC
   # (parallel to the token-reporting harnesses above). They are referenced
   # only from Makefile targets, docs/linting.md, and sibling contracts.
@@ -603,7 +502,6 @@ exclude = [
   # cannot be pinned there; referenced only from the present reference doc.
   "skills/implement/scripts/step-architectural-guidelines-write-staged.sh",
   "skills/implement/scripts/step-architectural-guidelines-write-staged.md",
-  "python/admission.py",
   "scripts/test-token-vendor-scrapers.md",
   "skills/research/scripts/test-research-angle-prompts.md",
   "skills/implement/scripts/test-implement-relevant-checks-anti-halt.md",
@@ -617,18 +515,10 @@ exclude = [
   "scripts/test-hook-anti-read-poll.md",
   "scripts/hook-anti-read-poll.md",
   "scripts/sessionstart-statusline.md",
-  "python/session_env.py (session restore-finalize-state)",
   "scripts/test-triage-structure.md",
   "skills/design/scripts/test-findings-classification.md",
   "skills/pause/scripts/test-pause-skill.md",
   "scripts/test-implement-timing-rehydration.md",
-  # Referenced from Makefile (test-promote-release target in test-harnesses-20)
-  # and python/test_release.py (sibling contract). G004 cannot discover
-  # the Makefile edge.
-  "python/test_release.py",
-  # #2714); dollar-primary summaries flow through python render run-summary. G004
-  # would flag it without an explicit SKILL.md literal path.
-  "python/cli.py render run-summary",
   # tmpdir-corruption hardening (#1339): redact-tmpdir-paths.sh is invoked
   # via shell variable indirection ($REDACT_TMPDIR_HELPER) — agent-lint's
   # G004/dead-script rule scans SKILL.md/hooks.json/settings.json for
@@ -645,19 +535,13 @@ exclude = [
   "scripts/test-cache-key-runtime-audit.sh",
   "scripts/test-cache-key-runtime-audit.md",
   # scripts/larch.sh gh remote-repo is the one-URL/one-remote-name parser the
-  # Rust `admission fork-env` owner reuses in process, and that remaining Python
-  # callers reach through shell variable indirection via larch_entrypoint().
+  # Rust `admission fork-env` owner reuses in process.
   # agent-lint's G004/dead-script rule scans for literal-path references in
   # SKILL.md / hooks.json / settings.json and does not follow shell-variable
   # indirection. Sibling contract: crates/larch-cli/src/github_repository_resolution.rs.
   "scripts/larch.sh gh remote-repo",
   # scripts/larch.sh cleanup run. Not cited from SKILL.md by design
   # (contributors discover it by editing the sibling .sh).
-  # python/test_pr_body.py is the retained PR-body, diagram, and run-summary
-  # regression harness. It is referenced from Makefile and sibling contracts,
-  # but NOT from SKILL.md runtime prose.
-  "python/test_pr_body.py",
-  "python/test_pr_body.py",
   # line-count helper. It is referenced from Makefile and from the primary
   # script's sibling contract, but NOT from SKILL.md runtime prose — same
   # Makefile-only pattern as the other test-* harnesses above.
@@ -676,16 +560,10 @@ exclude = [
   # $PLUGIN_ROOT/scripts/... edges that G004 cannot discover.
   "scripts/larch.sh progress write-design-round-meta",
   # scripts/larch.sh progress write-implement-round-meta synthesizes per-round round-meta.json
-  # for /implement code-review rounds. It is invoked at runtime only from
-  # python/review/round_runner.py via its shared runtime entrypoint and
+  # for /implement code-review rounds. It is invoked at runtime from the Rust
+  # progress/phase-detail owner via its shared runtime entrypoint and
   # $PLUGIN_ROOT/scripts/... edges that G004 cannot discover (issue #4038).
   "scripts/larch.sh progress write-implement-round-meta",
-  # scripts/test-python/cli.py diagrams upsert is the offline harness for the
-  # shared larch:diagrams helper. It is referenced from Makefile and from the
-  # helper's sibling contract rather than from SKILL.md runtime prose.
-  "scripts/test-python/cli.py diagrams upsert",
-  # entry point) rather than directly from SKILL.md orchestrator prose.
-  # Remains callable independently for test contexts and future callers.
   # larch-log batches (plan-review-tally, code-review-tally). It wraps
   # the fragile two-step prose contract in skills/implement/SKILL.md Steps 1 and 5.
   # Invoked from SKILL.md Step 1 (plan-review-tally batch) and Step 5
@@ -698,18 +576,13 @@ exclude = [
   # script factoring work. They are
   # referenced from Makefile targets in test-harnesses-2 and from sibling
   # contracts, not from runtime skill prose.
-  "python/test_pr_body.py",
   "skills/implement/scripts/test-refresh-execution-issues.sh",
   "skills/implement/scripts/test-refresh-execution-issues.md",
   "skills/implement/scripts/test-write-final-report.sh",
   "skills/implement/scripts/test-write-final-report.md",
   "skills/implement/scripts/test-step-18.md",
-  "python/test_pr_body.py",
   "skills/implement/scripts/test-cleanup.sh",
   "skills/implement/scripts/test-cleanup.md",
-  # shebang, not invokable directly). It is referenced from review-and-fix CLI
-  # and python/cli.py checks lint-fix via `source` directives only, which agent-lint does
-  # regression harness.
   # scripts/test-prompt-template-invariants.sh is the cross-cutting
   # structural invariants harness for subagent prompt templates (issue #2421).
   # Referenced only from Makefile (test-prompt-template-invariants target),
@@ -1015,14 +888,14 @@ closure-max-content-tokens = 26303
 # (a second-level Gate B load) and approval-gates-gate-b.md (a mainline
 # unconditional load) were over-counted transitively. The declared sources
 # never grew: their plain sum still equals the 777-line review retired with
-# python/skill-closure-baseline.json (#7593). The reconciled caps equaled that
+# the skill-closure baseline (#7593). The reconciled caps equaled that
 # sum plus plan-review.md, the one SKILL.md-direct conditional load ("Load
 # plan-review.md only for maintainer editing work") missing from the list.
 # Issue #7942 removes later content-reduction slack from that declared set.
 # Issue #8462 documents bgjob FINAL_SUMMARY_READY readiness alongside markers.
 # Issue #8449's Rust cutover increases the measured conditional closure by five tokens.
-# Issue #8576 retargets plan CLI citations to scripts/larch.sh (slightly longer than
-# python/cli.py), adding eight measured conditional tokens.
+# Issue #8576 retargets plan CLI citations to scripts/larch.sh, adding eight
+# measured conditional tokens.
 # Issue #8577 retargets the design parse-flags/route/init-runparams citations to
 # scripts/larch.sh the same way, adding three measured conditional tokens.
 # Issue #8614 retargets the shared final-summary Step 18 citation to
@@ -1040,8 +913,7 @@ closure-max-content-tokens = 26303
 # Python-test pointer, reducing the post-#8583 conditional closure by four
 # estimated tokens and three content tokens.
 # Issue #8581 retargets the design render-gate approval-gates citations to
-# scripts/larch.sh (slightly longer than python/cli.py), adding one estimated and
-# two content conditional tokens.
+# scripts/larch.sh, adding one estimated and two content conditional tokens.
 conditional-max-lines = 779
 conditional-max-tokens = 19704
 conditional-max-content-tokens = 19634
