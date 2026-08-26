@@ -941,8 +941,11 @@ fn write_rejected_body(
 ) -> Result<(), i32> {
     let mut body = String::new();
     emit(&mut body, REJECTED_BEGIN);
+    // Prefer cumulative rejected corpus across automatic rounds; current-round
+    // rejected-findings.md alone is empty after a final round with no rejections.
     let rejected = design.join("rejected-findings.md");
-    if nonempty_regular(&rejected) {
+    let rejected_all = design.join("rejected-findings-all.md");
+    if nonempty_regular(&rejected) || nonempty_regular(&rejected_all) {
         let design_text = design.display().to_string();
         let framed = run_larch(
             plugin_root,
@@ -1629,6 +1632,38 @@ mod tests {
                 && body.contains("dialectic-clarifier-digest.md")
         );
         assert!(design.join(".completed/step-4").is_file());
+    }
+
+    #[test]
+    fn step4_tail_frames_cumulative_rejected_when_current_round_empty() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join(".completed/finalize"), "").unwrap();
+        fs::write(
+            design.join("run-params.json"),
+            "{\"skip_approve_requested\":false}\n",
+        )
+        .unwrap();
+        fs::write(design.join("rejected-findings.md"), "").unwrap();
+        fs::write(
+            design.join("rejected-findings-all.md"),
+            "### [Plan Review] FINDING_5\n\nround-1 rejection\n",
+        )
+        .unwrap();
+        let env = source_env(&design, &[]);
+        let merge = design.join("merge.env");
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let mut args = entry_args(&env);
+        args.extend([
+            "--bgjob-child".into(),
+            "--merge-result-env".into(),
+            merge.as_os_str().into(),
+        ]);
+        let result = step4_tail_with(&args, &LiveStep0Runner);
+        assert_eq!(result.code, ExitCode::SUCCESS);
+        let framed = fs::read_to_string(design.join("gatec-rejected-findings-framed.md")).unwrap();
+        assert!(framed.contains(REJECTED_BEGIN));
+        assert!(framed.contains("rejected body\n"));
+        assert!(framed.contains(REJECTED_END));
     }
 
     #[test]
