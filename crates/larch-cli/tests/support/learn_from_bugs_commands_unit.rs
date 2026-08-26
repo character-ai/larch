@@ -81,7 +81,7 @@ fn coverage_index_filters_sources_and_ignores_fenced_guidelines() {
     let directory = tempfile::tempdir().unwrap();
     fs::write(
         directory.path().join("ARCHITECTURAL_GUIDELINES.md"),
-        "```markdown\n### G-Fake-1: ignored\n```\n### G-Real-1: used\n",
+        "```markdown\n### G-Fake-1: ignored\n```\n### G-Rs-1: used\n",
     )
     .unwrap();
     fs::create_dir_all(directory.path().join("python/larch/lint")).unwrap();
@@ -146,7 +146,7 @@ fn coverage_index_filters_sources_and_ignores_fenced_guidelines() {
     let coverage = coverage_index(directory.path());
     assert_eq!(
         coverage.guidelines,
-        vec![("G-Real-1".to_owned(), "used".to_owned())]
+        vec![("G-Rs-1".to_owned(), "used".to_owned())]
     );
     assert_eq!(coverage.python_lints, vec!["lint_nested".to_owned()]);
     assert_eq!(

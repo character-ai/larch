@@ -360,7 +360,7 @@ const ARCHITECTURAL_KNOWLEDGE_PREAMBLE: &str = concat!(
     "Read ARCHITECTURAL_INVARIANTS.md before ARCHITECTURAL_GUIDELINES.md when both are present. ",
     "Treat `I-*` entries as hard constraints for this change, and `G-*` entries as judgment-tier principles for relevant changed languages and surfaces. ",
     "Apply them only within the plan's scope; they do not license unrelated edits or override AGENTS.md, hard guards, higher-priority rules, or the plan. ",
-    "Emit `architectural_acknowledgment` in the manifest, for example `honoring I-Sec-1, G-Py-4 for this change`; ",
+    "Emit `architectural_acknowledgment` in the manifest, for example `honoring I-Sec-1, G-Rs-2 for this change`; ",
     "if a present file has no parsed entries, acknowledge that no entries were present.\n\n",
 );
 
@@ -618,7 +618,7 @@ mod tests {
     #[test]
     fn guideline_entries_collapse_to_the_mechanized_row_when_present() {
         let text = concat!(
-            "### G-Py-4: Annotate locals\n",
+            "### G-Rs-7: Explain lint suppressions\n",
             "- Why: reviewers read types.\n",
             "- Deviate when: never.\n",
             "- Mechanized: make rust-check\n",
@@ -627,7 +627,9 @@ mod tests {
             "- Why: fence state must be shared.\n",
         );
         let parsed = parse_entries(ArchitecturalKind::Guidelines, text);
-        assert!(parsed.contains("### G-Py-4: Annotate locals\n- Mechanized: make rust-check"));
+        assert!(
+            parsed.contains("### G-Rs-7: Explain lint suppressions\n- Mechanized: make rust-check")
+        );
         assert!(!parsed.contains("reviewers read types"));
         assert!(parsed.contains("### G-Md-3: Balanced fences\n- Why: fence state must be shared."));
     }
