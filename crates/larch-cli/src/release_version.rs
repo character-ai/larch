@@ -18,7 +18,6 @@ use serde_json::Value as JsonValue;
 use toml::Value as TomlValue;
 
 const PLUGIN_JSON: &str = ".claude-plugin/plugin.json";
-const PROJECTED_PLUGIN_JSON: &str = "plugin/.claude-plugin/plugin.json";
 const CARGO_MANIFEST: &str = "Cargo.toml";
 const CARGO_LOCK: &str = "Cargo.lock";
 const TEST_REPOSITORY_ROOT: &str = "LARCH_RELEASE_SET_VERSION_REPO_ROOT";
@@ -135,14 +134,6 @@ fn stage_transaction(
 ) -> Result<Vec<StagedFile>, String> {
     let cargo = source_file(root, Path::new(CARGO_MANIFEST))?;
     let lock = source_file(root, Path::new(CARGO_LOCK))?;
-    let projected = optional_source_file(root, Path::new(PROJECTED_PLUGIN_JSON))?;
-    if projected
-        .as_ref()
-        .is_some_and(|file| file.original != plugin.original)
-    {
-        return Err("runtime projection plugin version source is out of sync".to_owned());
-    }
-
     let cargo_data = toml_data(&cargo.original, CARGO_MANIFEST)?;
     let workspace_version = workspace_version(&cargo_data)?;
     if workspace_version != current {
@@ -173,10 +164,10 @@ fn stage_transaction(
     let lock_rendered =
         replace_lock_versions(&lock.original, &versions.member_names, current, new)?;
 
-    let mut staged = vec![
+    Ok(vec![
         StagedFile {
             source: plugin,
-            rendered: plugin_rendered.clone(),
+            rendered: plugin_rendered,
         },
         StagedFile {
             source: cargo,
@@ -186,14 +177,7 @@ fn stage_transaction(
             source: lock,
             rendered: lock_rendered,
         },
-    ];
-    if let Some(source) = projected {
-        staged.push(StagedFile {
-            source,
-            rendered: plugin_rendered,
-        });
-    }
-    Ok(staged)
+    ])
 }
 
 fn source_file(root: &RepositoryRoot, relative: &Path) -> Result<SourceFile, String> {
@@ -226,17 +210,6 @@ fn release_read_path(root: &RepositoryRoot, relative: &Path) -> Result<ConfinedP
 
 fn read_release_file(path: &ConfinedPath, relative: &Path) -> Result<String, String> {
     read_utf8(path).map_err(|_| format!("{} is not valid UTF-8", relative.display()))
-}
-
-fn optional_source_file(
-    root: &RepositoryRoot,
-    relative: &Path,
-) -> Result<Option<SourceFile>, String> {
-    match fs::symlink_metadata(root.path().join(relative)) {
-        Ok(_) => source_file(root, relative).map(Some),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error.to_string()),
-    }
 }
 
 fn plugin_version(text: &str, source: &str) -> Result<String, String> {
@@ -625,11 +598,6 @@ fn verify_release_version(root: &RepositoryRoot, expected: &str) -> Result<(), S
         &versions.member_names,
         expected,
     )?;
-    if let Some(projected) = optional_source_file(root, Path::new(PROJECTED_PLUGIN_JSON))?
-        && plugin_version(&projected.original, PROJECTED_PLUGIN_JSON)? != expected
-    {
-        return Err("runtime projection plugin version does not match release version".to_owned());
-    }
     Ok(())
 }
 

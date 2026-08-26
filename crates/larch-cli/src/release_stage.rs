@@ -294,20 +294,7 @@ impl Services for ProductionServices {
     }
 
     fn commit_parents_and_tree(&self, oid: &str) -> Result<(Vec<String>, String), String> {
-        let id = self.object_id(oid)?;
-        let commit = self
-            .repository
-            .walk_commits(&id, 1)
-            .map_err(|error| error.to_string())?
-            .into_iter()
-            .next()
-            .ok_or_else(|| format!("commit {oid} was not found"))?;
-        let parents = commit
-            .parents
-            .iter()
-            .map(larch_core::ObjectId::to_hex)
-            .collect();
-        Ok((parents, commit.tree.to_hex()))
+        release_common::commit_parents_and_tree_at(&self.repository, oid)
     }
 
     fn changed_paths(&self, base: &str, head: &str) -> Result<Vec<String>, String> {
@@ -331,24 +318,7 @@ impl Services for ProductionServices {
     }
 
     fn projected_plugin_version(&self, oid: &str) -> Result<String, String> {
-        let id = self.object_id(oid)?;
-        let bytes = self
-            .repository
-            .blob_at_commit(
-                &id,
-                &GitPath::new(b"plugin/.claude-plugin/plugin.json".to_vec()),
-            )
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| {
-                format!("projected plugin.json read at {oid} failed: file is missing")
-            })?;
-        let value: serde_json::Value = serde_json::from_slice(&bytes)
-            .map_err(|_| format!("projected plugin.json at {oid} is invalid JSON"))?;
-        value
-            .get("version")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned)
-            .ok_or_else(|| format!("projected plugin.json at {oid} has no version"))
+        release_common::projected_plugin_version_at(&self.repository, oid)
     }
 
     fn staged_release(
@@ -773,7 +743,10 @@ fn validate_candidate_with(
     let (repository, slug) = repositories(repo)?;
     require_origin(services, &repository)?;
     require_policy(services, &slug)?;
-    if release_common::merged_release_commit(&services.pull_request(&slug, pr)?)? != source_commit {
+    let pull_request = services.pull_request(&slug, pr)?;
+    let merged_commit = release_common::merged_release_commit(&pull_request)?;
+    let (parents, _) = services.commit_parents_and_tree(source_commit)?;
+    if parents.first().map(String::as_str) != Some(merged_commit) {
         return Err(
             "release candidate PR merge commit changed after the tag was created".to_owned(),
         );
@@ -978,7 +951,7 @@ mod tests {
                 build_calls: Cell::new(0),
                 create_local_tag_calls: Cell::new(0),
                 created_tag: RefCell::new(None),
-                remote_tag: RefCell::new(Some(SOURCE.to_owned())),
+                remote_tag: RefCell::new(Some(PROJECTION.to_owned())),
                 local_tag: None,
                 releases: RefCell::new(Vec::new()),
                 created: RefCell::new(0),
@@ -1200,7 +1173,7 @@ mod tests {
                 release_assets::package_asset(&release_assets::PackageArguments {
                     version: "1.2.3".to_owned(),
                     tag: "v1.2.3".to_owned(),
-                    source_commit: SOURCE.to_owned(),
+                    source_commit: PROJECTION.to_owned(),
                     target: target.to_owned(),
                     binary: binary.clone(),
                     license: license.clone(),
@@ -1214,14 +1187,15 @@ mod tests {
             release_assets::collect_assets(&release_assets::CollectArguments {
                 version: "1.2.3".to_owned(),
                 tag: "v1.2.3".to_owned(),
-                source_commit: SOURCE.to_owned(),
+                source_commit: PROJECTION.to_owned(),
                 input_dir: incoming,
                 output_dir: output.clone(),
                 license,
             }),
             ExitCode::SUCCESS
         );
-        let names = release_assets::release_asset_names("1.2.3", "v1.2.3", SOURCE).expect("names");
+        let names =
+            release_assets::release_asset_names("1.2.3", "v1.2.3", PROJECTION).expect("names");
         let mut downloads = BTreeMap::new();
         let assets = names
             .iter()
@@ -1644,7 +1618,7 @@ mod tests {
             ..FakeServices::default()
         };
         assert!(
-            validate_candidate_with(&drift, "1.2.3", "character-ai/larch", "7", SOURCE, true)
+            validate_candidate_with(&drift, "1.2.3", "character-ai/larch", "7", PROJECTION, true,)
                 .unwrap_err()
                 .contains("merge commit changed")
         );
@@ -1659,15 +1633,15 @@ mod tests {
                 "1.2.3",
                 "character-ai/larch",
                 "7",
-                SOURCE,
+                PROJECTION,
                 true,
             )
             .unwrap_err()
             .contains("allowlist mismatch")
         );
 
-        let names =
-            release_assets::release_asset_names("1.2.3", "v1.2.3", SOURCE).expect("asset names");
+        let names = release_assets::release_asset_names("1.2.3", "v1.2.3", PROJECTION)
+            .expect("asset names");
         let assets: Vec<_> = names
             .iter()
             .enumerate()
@@ -1685,9 +1659,16 @@ mod tests {
             ..FakeServices::default()
         };
         assert!(
-            validate_candidate_with(&digest, "1.2.3", "character-ai/larch", "7", SOURCE, true,)
-                .unwrap_err()
-                .contains("digest mismatch")
+            validate_candidate_with(
+                &digest,
+                "1.2.3",
+                "character-ai/larch",
+                "7",
+                PROJECTION,
+                true,
+            )
+            .unwrap_err()
+            .contains("digest mismatch")
         );
 
         let (assets, downloads) = complete_assets();
@@ -1697,8 +1678,15 @@ mod tests {
             ..FakeServices::default()
         };
         assert!(
-            validate_candidate_with(&complete, "1.2.3", "character-ai/larch", "7", SOURCE, true,)
-                .is_ok()
+            validate_candidate_with(
+                &complete,
+                "1.2.3",
+                "character-ai/larch",
+                "7",
+                PROJECTION,
+                true,
+            )
+            .is_ok()
         );
     }
 
@@ -1810,7 +1798,7 @@ mod tests {
                 "1.2.3",
                 "character-ai/larch",
                 "7",
-                SOURCE,
+                PROJECTION,
                 true,
             ),
             Err("release v1.2.3 was not found".to_owned())

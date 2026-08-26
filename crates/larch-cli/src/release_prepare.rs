@@ -360,19 +360,18 @@ async fn reconcile_notes_with_service<S: ReleasePlanningService + ?Sized>(
             format!("source commit not resolvable: {}", arguments.source_commit),
         )
     })?;
-    if !repository
-        .is_ancestor(&baseline_id, &source_id)
-        .map_err(|error| PrepareError::new("baseline-not-on-main", error.to_string()))?
-    {
-        return Err(PrepareError::new(
-            "baseline-not-on-main",
-            format!("baseline tag {baseline} is not an ancestor of the source commit"),
-        ));
-    }
+    let window_base = release_window_base(repository, &baseline_id, &source_id)
+        .map_err(|error| PrepareError::new("baseline-not-on-main", error))?
+        .ok_or_else(|| {
+            PrepareError::new(
+                "baseline-not-on-main",
+                format!("baseline tag {baseline} is not an ancestor of the source commit"),
+            )
+        })?;
 
     let prepared = read_prepared_pr_numbers(&arguments.pr_list)?;
     let mut commits = repository
-        .walk_commits_range(&baseline_id, &source_id, MAX_RELEASE_COMMITS + 1)
+        .walk_commits_range(&window_base, &source_id, MAX_RELEASE_COMMITS + 1)
         .map_err(|error| PrepareError::new("release-history-failed", error.to_string()))?;
     if commits.len() > MAX_RELEASE_COMMITS {
         return Err(PrepareError::new(
@@ -562,15 +561,14 @@ async fn prepare_with_service<S: ReleasePlanningService + ?Sized>(
     let release_id = resolve(repository, "origin/main")
         .map_err(|_| PrepareError::new("origin-main-unresolvable", "origin/main not resolvable"))?;
     let release_sha = release_id.to_hex();
-    if !repository
-        .is_ancestor(&baseline_id, &release_id)
-        .map_err(|error| PrepareError::new("baseline-not-on-main", error.to_string()))?
-    {
-        return Err(PrepareError::new(
-            "baseline-not-on-main",
-            format!("baseline tag {baseline} is not an ancestor of origin/main"),
-        ));
-    }
+    let window_base = release_window_base(repository, &baseline_id, &release_id)
+        .map_err(|error| PrepareError::new("baseline-not-on-main", error))?
+        .ok_or_else(|| {
+            PrepareError::new(
+                "baseline-not-on-main",
+                format!("baseline tag {baseline} is not an ancestor of origin/main"),
+            )
+        })?;
 
     let open = retry_transient(|| service.list_open_pull_requests(cancellation, owner, name))
         .await
@@ -588,7 +586,7 @@ async fn prepare_with_service<S: ReleasePlanningService + ?Sized>(
     }
 
     let mut commits = repository
-        .walk_commits_range(&baseline_id, &release_id, MAX_RELEASE_COMMITS + 1)
+        .walk_commits_range(&window_base, &release_id, MAX_RELEASE_COMMITS + 1)
         .map_err(|error| PrepareError::new("release-history-failed", error.to_string()))?;
     if commits.len() > MAX_RELEASE_COMMITS {
         return Err(PrepareError::new(
@@ -608,8 +606,15 @@ async fn prepare_with_service<S: ReleasePlanningService + ?Sized>(
     selected.sort_by_key(|pull_request| pull_request.number);
     write_pr_list(out_dir, service, cancellation, owner, name, &selected).await?;
 
-    let classification = classify(root, repository, Some(&baseline), Some(&release_sha), false)
-        .map_err(|error| PrepareError::new("classify-bump-failed", error))?;
+    let window_base_hex = window_base.to_hex();
+    let classification = classify(
+        root,
+        repository,
+        Some(&window_base_hex),
+        Some(&release_sha),
+        false,
+    )
+    .map_err(|error| PrepareError::new("classify-bump-failed", error))?;
     let (bump, new_version) = match arguments.bump {
         Some(bump) => (
             bump,
@@ -1235,6 +1240,43 @@ fn apply_bump(version: &str, bump: BumpType) -> Result<String, String> {
 fn resolve(repository: &GixRepository, revision: &str) -> Result<ObjectId, String> {
     repository
         .resolve_revision(&Revision::new(revision))
+        .map_err(|error| error.to_string())
+}
+
+/// Resolve the commit that starts a release-history window.
+///
+/// Legacy release tags name a commit on `main` and remain their own window
+/// base. Projection tags name a two-parent child of `main`; their first parent
+/// is the merged release commit and becomes the window base. Requiring the
+/// two-parent shape keeps an arbitrary one-parent side-branch tag from being
+/// accepted as a release projection.
+fn release_window_base(
+    repository: &GixRepository,
+    baseline: &ObjectId,
+    source: &ObjectId,
+) -> Result<Option<ObjectId>, String> {
+    if repository
+        .is_ancestor(baseline, source)
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(Some(baseline.to_owned()));
+    }
+    let commit = repository
+        .walk_commits(baseline, 1)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .next()
+        .ok_or_else(|| "baseline tag commit is missing".to_owned())?;
+    if commit.parents.len() != 2 {
+        return Ok(None);
+    }
+    let first_parent = commit
+        .parents
+        .first()
+        .expect("two-parent projection commit has a first parent");
+    repository
+        .is_ancestor(first_parent, source)
+        .map(|is_ancestor| is_ancestor.then(|| first_parent.to_owned()))
         .map_err(|error| error.to_string())
 }
 

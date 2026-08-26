@@ -259,20 +259,63 @@ pub fn is_ancestor(
 }
 
 pub fn plugin_version_at(repository: &GixRepository, oid: &str) -> Result<String, String> {
+    plugin_version_at_path(
+        repository,
+        oid,
+        b".claude-plugin/plugin.json",
+        "plugin.json",
+    )
+}
+
+pub fn projected_plugin_version_at(
+    repository: &GixRepository,
+    oid: &str,
+) -> Result<String, String> {
+    plugin_version_at_path(
+        repository,
+        oid,
+        b"plugin/.claude-plugin/plugin.json",
+        "projected plugin.json",
+    )
+}
+
+fn plugin_version_at_path(
+    repository: &GixRepository,
+    oid: &str,
+    path: &[u8],
+    label: &str,
+) -> Result<String, String> {
     let id = repository
         .resolve_revision(&Revision::new(oid.as_bytes()))
         .map_err(|error| error.to_string())?;
     let bytes = repository
-        .blob_at_commit(&id, &GitPath::new(b".claude-plugin/plugin.json".to_vec()))
+        .blob_at_commit(&id, &GitPath::new(path))
         .map_err(|error| error.to_string())?
-        .ok_or_else(|| format!("plugin.json read at {oid} failed: file is missing"))?;
-    let value: serde_json::Value = serde_json::from_slice(&bytes)
-        .map_err(|_| format!("plugin.json at {oid} is invalid JSON"))?;
+        .ok_or_else(|| format!("{label} read at {oid} failed: file is missing"))?;
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|_| format!("{label} at {oid} is invalid JSON"))?;
     value
         .get("version")
         .and_then(serde_json::Value::as_str)
         .map(str::to_owned)
-        .ok_or_else(|| format!("plugin.json at {oid} has no version"))
+        .ok_or_else(|| format!("{label} at {oid} has no version"))
+}
+
+pub fn commit_parents_and_tree_at(
+    repository: &GixRepository,
+    oid: &str,
+) -> Result<(Vec<String>, String), String> {
+    let id = repository
+        .resolve_revision(&Revision::new(oid.as_bytes()))
+        .map_err(|error| error.to_string())?;
+    let commit = repository
+        .walk_commits(&id, 1)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .next()
+        .ok_or_else(|| format!("commit {oid} was not found"))?;
+    let parents = commit.parents.iter().map(ObjectId::to_hex).collect();
+    Ok((parents, commit.tree.to_hex()))
 }
 
 pub fn command<S, T>(

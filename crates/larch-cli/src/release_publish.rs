@@ -90,6 +90,8 @@ fn exit(result: Result<(), String>) -> ExitCode {
 }
 
 trait Services: release_common::PostMergeReleaseServices {
+    fn commit_parents(&self, commit: &str) -> Result<Vec<String>, String>;
+    fn projected_plugin_version_at(&self, commit: &str) -> Result<String, String>;
     fn release(&self, repo: &RepoSlug, tag: &str) -> Result<Option<ReleaseState>, String>;
     fn validate_assets(
         &self,
@@ -111,6 +113,15 @@ trait Services: release_common::PostMergeReleaseServices {
 type ProductionServices = release_common::ProductionReleaseServices;
 
 impl Services for ProductionServices {
+    fn commit_parents(&self, commit: &str) -> Result<Vec<String>, String> {
+        release_common::commit_parents_and_tree_at(&self.repository, commit)
+            .map(|(parents, _)| parents)
+    }
+
+    fn projected_plugin_version_at(&self, commit: &str) -> Result<String, String> {
+        release_common::projected_plugin_version_at(&self.repository, commit)
+    }
+
     fn release(&self, repo: &RepoSlug, tag: &str) -> Result<Option<ReleaseState>, String> {
         self.release_operations(
             |operations, repo| {
@@ -259,17 +270,19 @@ fn finish_with(
     }
     services.fetch_main()?;
     let pull_request = services.pull_request(&slug, pr_number)?;
-    if release_common::merged_release_commit(&pull_request)? != source_commit {
+    let merged_commit = release_common::merged_release_commit(&pull_request)?;
+    let parents = services.commit_parents(source_commit)?;
+    if parents.first().map(String::as_str) != Some(merged_commit) {
         return Err("release candidate PR is not merged at the tagged commit".to_owned());
     }
-    if !services.is_ancestor(source_commit, ORIGIN_MAIN)? {
+    if !services.is_ancestor(merged_commit, ORIGIN_MAIN)? {
         return Err("tagged release candidate is not an ancestor of origin/main".to_owned());
     }
-    if services.plugin_version_at(source_commit)? != version {
+    if services.plugin_version_at(merged_commit)? != version {
         return Err("plugin version at the release tag does not match".to_owned());
     }
-    if services.plugin_version_at(ORIGIN_MAIN)? != version {
-        return Err("plugin version on origin/main does not match the release tag".to_owned());
+    if services.projected_plugin_version_at(source_commit)? != version {
+        return Err("projected plugin version at the release tag does not match".to_owned());
     }
     let release = services
         .release(&slug, &tag)?
@@ -318,7 +331,15 @@ fn finish_with(
 /// failure here fails `release finish`, because a published release whose pin
 /// never advanced is invisible to every installer.
 fn advance_release_pin(services: &dyn Services, source_commit: &str) -> Result<(), String> {
-    if services.remote_branch_commit(RELEASE_PIN_REF)?.as_deref() != Some(source_commit) {
+    let current = services.remote_branch_commit(RELEASE_PIN_REF)?;
+    if current.as_deref() != Some(source_commit) {
+        if let Some(current) = current.as_deref()
+            && !services.is_ancestor(current, source_commit)?
+        {
+            return Err(format!(
+                "release pin refs/heads/{RELEASE_PIN_REF} cannot fast-forward from {current} to the tagged commit"
+            ));
+        }
         services.fast_forward_remote_branch(RELEASE_PIN_REF, source_commit)?;
     }
     let observed = services
@@ -472,13 +493,16 @@ mod tests {
     const OTHER: &str = "2222222222222222222222222222222222222222";
     const DIGEST: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
     const PRIOR_PIN: &str = "3333333333333333333333333333333333333333";
+    const MERGED: &str = "4444444444444444444444444444444444444444";
 
     struct FakeServices {
         origin: String,
         pr: ReleaseCandidatePullRequest,
+        tag_parents: Vec<String>,
         ancestor: bool,
-        source_version: String,
-        main_version: String,
+        pin_fast_forward: bool,
+        merged_version: String,
+        projected_version: String,
         release: RefCell<ReleaseState>,
         latest: RefCell<Option<ReleaseState>>,
         newest: Option<ReleaseState>,
@@ -496,11 +520,13 @@ mod tests {
                 pr: ReleaseCandidatePullRequest {
                     state: ReleaseCandidatePullRequestState::Merged,
                     head_oid: OTHER.to_owned(),
-                    merge_commit_oid: Some(SOURCE.to_owned()),
+                    merge_commit_oid: Some(MERGED.to_owned()),
                 },
+                tag_parents: vec![MERGED.to_owned(), PRIOR_PIN.to_owned()],
                 ancestor: true,
-                source_version: "1.2.3".to_owned(),
-                main_version: "1.2.3".to_owned(),
+                pin_fast_forward: true,
+                merged_version: "1.2.3".to_owned(),
+                projected_version: "1.2.3".to_owned(),
                 release: RefCell::new(release.clone()),
                 latest: RefCell::new(Some(state(6, false, true, false, "v1.2.2"))),
                 newest: Some(release),
@@ -527,19 +553,25 @@ mod tests {
         ) -> Result<ReleaseCandidatePullRequest, String> {
             Ok(self.pr.clone())
         }
-        fn is_ancestor(&self, _ancestor: &str, _descendant: &str) -> Result<bool, String> {
-            Ok(self.ancestor)
-        }
-        fn plugin_version_at(&self, revision: &str) -> Result<String, String> {
-            Ok(if revision == ORIGIN_MAIN {
-                self.main_version.clone()
+        fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, String> {
+            if ancestor == PRIOR_PIN && descendant == SOURCE {
+                Ok(self.pin_fast_forward)
             } else {
-                self.source_version.clone()
-            })
+                Ok(self.ancestor)
+            }
+        }
+        fn plugin_version_at(&self, _revision: &str) -> Result<String, String> {
+            Ok(self.merged_version.clone())
         }
     }
 
     impl Services for FakeServices {
+        fn commit_parents(&self, _commit: &str) -> Result<Vec<String>, String> {
+            Ok(self.tag_parents.clone())
+        }
+        fn projected_plugin_version_at(&self, _commit: &str) -> Result<String, String> {
+            Ok(self.projected_version.clone())
+        }
         fn release(&self, _repo: &RepoSlug, _tag: &str) -> Result<Option<ReleaseState>, String> {
             Ok((!self.release_missing).then(|| self.release.borrow().clone()))
         }
@@ -703,6 +735,17 @@ mod tests {
 
     #[test]
     fn pin_failures_fail_the_release_instead_of_reporting_a_pinned_install() {
+        let non_fast_forward = FakeServices {
+            pin_fast_forward: false,
+            ..FakeServices::default()
+        };
+        assert!(
+            finish(&non_fast_forward)
+                .unwrap_err()
+                .contains("cannot fast-forward")
+        );
+        assert!(!non_fast_forward.events.borrow().contains(&"advance-pin"));
+
         let rejected = FakeServices {
             failure: Some("pin-push"),
             ..FakeServices::default()
@@ -830,11 +873,25 @@ mod tests {
         };
         assert!(finish(&ancestry).unwrap_err().contains("not an ancestor"));
 
-        let version = FakeServices {
-            main_version: "1.2.4".to_owned(),
+        let merged_version = FakeServices {
+            merged_version: "1.2.4".to_owned(),
             ..FakeServices::default()
         };
-        assert!(finish(&version).unwrap_err().contains("origin/main"));
+        assert!(
+            finish(&merged_version)
+                .unwrap_err()
+                .contains("plugin version at the release tag")
+        );
+
+        let projected_version = FakeServices {
+            projected_version: "1.2.4".to_owned(),
+            ..FakeServices::default()
+        };
+        assert!(
+            finish(&projected_version)
+                .unwrap_err()
+                .contains("projected plugin version")
+        );
 
         let mutable = FakeServices {
             release: RefCell::new(state(7, false, false, false, "v1.2.3")),
@@ -902,6 +959,15 @@ mod tests {
             ..FakeServices::default()
         };
         assert!(finish(&open_pr).unwrap_err().contains("not merged"));
+        let wrong_first_parent = FakeServices {
+            tag_parents: vec![OTHER.to_owned(), PRIOR_PIN.to_owned()],
+            ..FakeServices::default()
+        };
+        assert!(
+            finish(&wrong_first_parent)
+                .unwrap_err()
+                .contains("not merged at the tagged commit")
+        );
         let missing = FakeServices {
             release_missing: true,
             ..FakeServices::default()
