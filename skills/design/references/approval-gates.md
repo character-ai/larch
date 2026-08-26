@@ -22,7 +22,7 @@ Run renderer commands as `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" design render
 
 1. **Latest plan to reviewers**: Step 3 always reads `$DESIGN_TMPDIR/plan.txt` from the latest Step 2b write, Gate B applied-set revision, or Gate A user-resolved discussion revision. No prior-version plan is submitted.
 
-2. **No preserved findings across manual review runs**: when Step 3 is re-entered from Gate C(c), prior review artifacts are overwritten. Gate B uses only the latest `accepted-plan-findings.md`. During automatic continuation before Gate C, `accepted-plan-findings-all.md` and `oos-accepted-design.md` accumulate for final reporting and terminal status mapping; see `plan-review-runtime.md` § Single-pass review.
+2. **No preserved findings across manual review runs**: when Step 3 is re-entered from Gate C(c), prior review artifacts are overwritten. Gate B uses only the latest `accepted-plan-findings.md`. During automatic continuation before Gate C, `accepted-plan-findings-all.md`, `rejected-findings-all.md`, and `oos-accepted-design.md` accumulate for final reporting and terminal status mapping; see `plan-review-runtime.md` § Single-pass review.
 
 3. **Discussion outputs accumulate**: Step 1d writes `discussion-round1.md`. Step 1d.7 writes `design-outline.md`. `discussion-round2.md` accumulates Gate A re-entries from Gate B(c) / Gate C(b). All three remain inputs to later plan revisions.
 

@@ -1834,7 +1834,7 @@ mod loop_implementation {
     fn clear_downstream(root:&Path){for rel in [".completed/step-3",".completed/step-3.5",".completed/step-3b",".completed/step-4",".completed/step-4b","bgjob/design-step3-review.result.env","bgjob/design-step4-tail.result.env"]{remove(&root.join(rel));}if let Ok(entries)=fs::read_dir(root){for entry in entries.flatten(){if entry.file_name().to_string_lossy().starts_with(".gate-b-postapply-ready-"){remove(&entry.path());}}}}
     fn cleanup_loop_state(root:&Path,max:u64){if let Ok(entries)=fs::read_dir(root){for entry in entries.flatten(){let name=entry.file_name().to_string_lossy().into_owned();let number=name.strip_prefix(".step3-round-").and_then(|v|v.strip_suffix(".phase")).or_else(||name.strip_prefix("plan-pre-apply-round-").and_then(|v|v.strip_suffix(".txt")));if number.and_then(|v|v.parse::<u64>().ok()).is_some_and(|n|n<=max)&&!entry.path().is_symlink(){remove(&entry.path());}}}}
     #[must_use] pub fn step3_state(arguments:&[OsString])->ExitCode{
-        let parsed=match parsed(arguments,"cli.py plan-review step3-state",STATE_USAGE,STATE_HELP,&["--design-tmpdir"],&["--direct-review-entry","--direct-review-pause-hygiene","--auto-continuation-entry","--gate-b-bypass"],&["--design-tmpdir"]){Ok(v)=>v,Err(c)=>return c};let root=match root(&text(&parsed,"--design-tmpdir"),"cli.py plan-review step3-state"){Ok(v)=>v,Err(c)=>return c};let _=fs::create_dir_all(root.join(".completed"));let count=read_count(&root);let state=if parsed.flag("--auto-continuation-entry"){clear_downstream(&root);cleanup_loop_state(&root,count);"auto-continuation-entry"}else if parsed.flag("--gate-b-bypass"){if root.join(".completed/step-3.5").exists(){"refused-partial-gate-b-bypass"}else if let Err(error)=completed(&root,true){eprintln!("cli.py plan-review step3-state: {error}");return ExitCode::FAILURE}else{"gate-b-bypass"}}else if parsed.flag("--direct-review-entry")||parsed.flag("--direct-review-pause-hygiene"){let action=if parsed.flag("--direct-review-entry"){"direct-review-entry"}else{"direct-review-pause-hygiene"};if !root.join(".step3-reentry").is_file(){"noop"}else{clear_downstream(&root);for name in ["step-1e","step-2a","step-2b","step-2b.5"]{let _=touch(&root.join(".completed").join(name));}if parsed.flag("--direct-review-entry"){cleanup_loop_state(&root,count);for rel in ["accepted-plan-findings-all.md",".accepted-plan-findings-all.prev.md",".step3-applied-finding-keys.tsv","oos-accepted-design.md",".oos-accepted-design.prev.md",".step3-reentry"]{remove(&root.join(rel));}}action}}else{"ok"};emit_kv("STEP3_STATE",state);emit_kv("REVIEW_ROUND_COUNT",&count.to_string());ExitCode::SUCCESS
+        let parsed=match parsed(arguments,"cli.py plan-review step3-state",STATE_USAGE,STATE_HELP,&["--design-tmpdir"],&["--direct-review-entry","--direct-review-pause-hygiene","--auto-continuation-entry","--gate-b-bypass"],&["--design-tmpdir"]){Ok(v)=>v,Err(c)=>return c};let root=match root(&text(&parsed,"--design-tmpdir"),"cli.py plan-review step3-state"){Ok(v)=>v,Err(c)=>return c};let _=fs::create_dir_all(root.join(".completed"));let count=read_count(&root);let state=if parsed.flag("--auto-continuation-entry"){clear_downstream(&root);cleanup_loop_state(&root,count);"auto-continuation-entry"}else if parsed.flag("--gate-b-bypass"){if root.join(".completed/step-3.5").exists(){"refused-partial-gate-b-bypass"}else if let Err(error)=completed(&root,true){eprintln!("cli.py plan-review step3-state: {error}");return ExitCode::FAILURE}else{"gate-b-bypass"}}else if parsed.flag("--direct-review-entry")||parsed.flag("--direct-review-pause-hygiene"){let action=if parsed.flag("--direct-review-entry"){"direct-review-entry"}else{"direct-review-pause-hygiene"};if !root.join(".step3-reentry").is_file(){"noop"}else{clear_downstream(&root);for name in ["step-1e","step-2a","step-2b","step-2b.5"]{let _=touch(&root.join(".completed").join(name));}if parsed.flag("--direct-review-entry"){cleanup_loop_state(&root,count);for rel in ["accepted-plan-findings-all.md",".accepted-plan-findings-all.prev.md","rejected-findings-all.md",".rejected-findings-all.prev.md",".step3-applied-finding-keys.tsv","oos-accepted-design.md",".oos-accepted-design.prev.md",".step3-reentry"]{remove(&root.join(rel));}}action}}else{"ok"};emit_kv("STEP3_STATE",state);emit_kv("REVIEW_ROUND_COUNT",&count.to_string());ExitCode::SUCCESS
     }
 
     fn session_values(arguments:&[OsString])->Result<(String,String,String),String>{
@@ -2381,15 +2381,36 @@ mod implementation {
         }
         Some(out)
     }
+    /// Prefer cumulative `rejected-findings-all.md` across automatic rounds, and
+    /// unique-merge the current-round `rejected-findings.md` so Gate B one-by-one
+    /// skips still surface when the final round rejected nothing.
+    fn rejected_report_text(root: &Path) -> Result<String, String> {
+        let cumulative = optional_text(&root.join("rejected-findings-all.md"))?;
+        let current = optional_text(&root.join("rejected-findings.md"))?;
+        if trim_python_whitespace(&cumulative).is_empty() {
+            return Ok(current);
+        }
+        if trim_python_whitespace(&current).is_empty() {
+            return Ok(cumulative);
+        }
+        let mut seen = artifact_blocks(&cumulative).into_iter().collect::<HashSet<_>>();
+        let mut out = cumulative;
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
+        for block in artifact_blocks(&current) {
+            if seen.insert(block.clone()) {
+                out.push_str(&block);
+            }
+        }
+        Ok(out)
+    }
+
     #[must_use]
     pub fn emit_rejected(arguments: &[OsString]) -> ExitCode {
         let parsed = match parsed(arguments, "cli.py plan-review emit-rejected", EMIT_REJECTED_USAGE, EMIT_REJECTED_HELP, &["--design-tmpdir"], &["--report-framing"], &["--design-tmpdir"]) { Ok(value) => value, Err(code) => return code };
         let root = match command_root(&option(&parsed, "--design-tmpdir"), "cli.py plan-review emit-rejected") { Ok(value) => value, Err(code) => return code };
-        let path = root.join("rejected-findings.md");
-        if !path.is_file() || path.is_symlink() {
-            return ExitCode::SUCCESS;
-        }
-        let text = match read_text(&path) {
+        let text = match rejected_report_text(&root) {
             Ok(value) => value,
             Err(error) => {
                 eprintln!("cli.py plan-review emit-rejected: {error}");
@@ -2412,7 +2433,7 @@ mod implementation {
         } else if let Some(body) = filter_wrapped(&text, &keys).or_else(|| filter_canonical(&text, &keys)) {
             body
         } else {
-            eprintln!("WARN=emit-rejected: applied-finding ledger present but rejected-findings.md has no recognizable blocks; emitting empty body");
+            eprintln!("WARN=emit-rejected: applied-finding ledger present but rejected corpus has no recognizable blocks; emitting empty body");
             String::new()
         };
         print!("{}", format_rejected(output, parsed.flag("--report-framing")));
@@ -3297,6 +3318,7 @@ mod implementation {
         append_chunks(&tally.root, &tally.root.join("accepted-plan-findings.md"), &accepted, false)?;
         append_chunks(&tally.root, &tally.root.join("accepted-plan-findings-all.md"), &accepted, true)?;
         append_chunks(&tally.root, &tally.root.join("rejected-findings.md"), &rejected, false)?;
+        append_chunks(&tally.root, &tally.root.join("rejected-findings-all.md"), &rejected, true)?;
         append_chunks(&tally.root, &tally.root.join("oos.md"), &oos, false)?;
         append_chunks(&tally.root, &tally.root.join("oos-accepted-design.md"), &oos_accepted, true)?;
         append_chunks(&tally.root, &tally.root.join("oos-aggregate-pool.md"), &oos_pool, true)?;

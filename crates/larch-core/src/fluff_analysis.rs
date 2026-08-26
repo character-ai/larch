@@ -1372,11 +1372,12 @@ fn file_mtime_seconds(path: &Path) -> Option<f64> {
     Some(elapsed.as_secs_f64())
 }
 
-const IN_PROGRESS_CONTENT_FILES: [&str; 6] = [
+const IN_PROGRESS_CONTENT_FILES: [&str; 7] = [
     "findings.md",
     "accepted-plan-findings.md",
     "accepted-plan-findings-all.md",
     "rejected-findings.md",
+    "rejected-findings-all.md",
     "findings-oos.md",
     "findings-in-scope.md",
 ];

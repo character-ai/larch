@@ -52,10 +52,35 @@ fn recorded_tally_round_matches_python_golden_bytes() {
     for (name, needle) in [("accepted-plan-findings.md", "Parser contract"), ("rejected-findings.md", "Naming cleanup"), ("oos-accepted-design.md", "Follow-up docs")] {
         assert!(text(design.join(name)).contains(needle));
     }
+    assert!(text(design.join("rejected-findings-all.md")).contains("Naming cleanup"));
     assert!(run(&design, "tally", &options).status.success());
     assert_eq!(text(design.join("accepted-plan-findings-all.md")).matches("### FINDING_1:").count(), 1);
     assert_eq!(text(design.join("oos-accepted-design.md")).matches("### OOS_1:").count(), 1);
+    assert_eq!(text(design.join("rejected-findings-all.md")).matches("### [Plan Review] FINDING_2").count(), 1);
     let bonus_design = sandbox.path().join("bonus"); fs::create_dir(&bonus_design).expect("bonus design"); let bonus = Command::new(env!("CARGO_BIN_EXE_larch")).args(["plan-review", "tally", "--design-tmpdir"]).arg(&bonus_design).args(&options).env("LARCH_QUIET_DISABLE", "1").env("LARCH_UNIQUE_FINDER_BONUS", "1_0").output().expect("bonus tally"); assert!(bonus.status.success()); let bonus_tally = text(bonus_design.join("voting-tally.md")); assert!(bonus_tally.contains("| Codex-Correctness | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 12 |")); assert!(bonus_tally.contains("received +10 each"));
+}
+
+#[test]
+fn rejected_findings_accumulate_across_tally_rounds() {
+    let sandbox = TempDir::new().expect("sandbox"); let design = sandbox.path().join("design"); fs::create_dir(&design).expect("design directory");
+    let mut round1 = vec!["--ballot-file".into(), fixture("ballot.md").display().to_string()];
+    for (slot, name) in [(1, "voter-1.txt"), (2, "voter-2.txt"), (3, "voter-3.txt")] {
+        round1.extend(["--voter".into(), format!("{slot}:codex-{}:{}", ["validity", "plan-fidelity", "pragmatism"][slot - 1], fixture(name).display())]);
+    }
+    assert!(run(&design, "tally", &round1).status.success());
+    assert!(text(design.join("rejected-findings.md")).contains("Naming cleanup"));
+    assert!(text(design.join("rejected-findings-all.md")).contains("Naming cleanup"));
+    // Round 2: accept-only ballot so current rejected is overwritten empty while cumulative retains round 1.
+    let ballot2 = design.join("ballot-round2.md");
+    let voter2 = design.join("voter-round2.txt");
+    fs::write(&ballot2, "### FINDING_1: Keep accepted\n- **Reviewer**: Codex-Correctness\n- **Severity**: major\n- **Concern**: Primary path.\n").expect("ballot2");
+    fs::write(&voter2, "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n").expect("voter2");
+    let round2 = vec!["--ballot-file".into(), ballot2.display().to_string(), "--voter".into(), format!("1:codex-validity:{}", voter2.display())];
+    assert!(run(&design, "tally", &round2).status.success());
+    assert!(text(design.join("rejected-findings.md")).trim().is_empty(), "current-round rejected should be empty");
+    assert!(text(design.join("rejected-findings-all.md")).contains("Naming cleanup"));
+    assert!(stdout(&run(&design, "emit-rejected", &[])).contains("Naming cleanup"));
+    assert!(stdout(&run(&design, "emit-rejected", &strings(&["--report-framing"]))).contains("## Considered Plan Review Suggestions (Not Adopted)"));
 }
 
 #[test]
@@ -153,7 +178,18 @@ fn emit_and_rejected_findings_bytes_are_frozen() {
     let covered = tagged.replace("[ALREADY_ADDRESSED] ", ""); fs::write(sandbox.path().join("rejected-findings.md"), &covered).expect("covered rejected"); fs::write(sandbox.path().join(".step3-already-addressed-finding-keys.tsv"), "\u{1f}already covered\u{1f}\n").expect("covered ledger"); assert!(stdout(&run(sandbox.path(), "emit-rejected", &[])).is_empty());
     fs::write(sandbox.path().join("rejected-findings.md"), fresh).expect("fresh rejected");
     assert_eq!(stdout(&run(sandbox.path(), "emit-rejected", &strings(&["--report-framing"]))), format!("## Considered Plan Review Suggestions (Not Adopted)\n\nThese reviewer suggestions were considered but not adopted. Some may already be addressed by the current plan; they are not automatically unimplemented gaps.\n\n{fresh}"));
+    // Cumulative corpus alone must survive an empty current-round rejected file.
+    fs::write(sandbox.path().join("rejected-findings.md"), "").expect("empty current rejected");
+    fs::write(sandbox.path().join("rejected-findings-all.md"), fresh).expect("cumulative rejected");
+    assert_eq!(stdout(&run(sandbox.path(), "emit-rejected", &[])), fresh);
+    // Gate B one-by-one skips in the current file unique-merge onto the cumulative corpus.
+    let skip = "### FINDING_3: Skipped\n- **Concern**: operator skip\n- **Reason**: rejected by user during one-by-one review\n\n";
+    fs::write(sandbox.path().join("rejected-findings.md"), skip).expect("gate-b skip");
+    let merged = stdout(&run(sandbox.path(), "emit-rejected", &[]));
+    assert!(merged.contains("FINDING_2: Fresh"));
+    assert!(merged.contains("FINDING_3: Skipped"));
     #[cfg(unix)] {
+        let _ = fs::remove_file(sandbox.path().join("rejected-findings-all.md"));
         let path = sandbox.path().join("rejected-findings.md"); let mut permissions = fs::metadata(&path).expect("metadata").permissions(); permissions.set_mode(0o000); fs::set_permissions(&path, permissions).expect("make unreadable");
         let unreadable = run(sandbox.path(), "emit-rejected", &[]); let mut permissions = fs::metadata(&path).expect("metadata").permissions(); permissions.set_mode(0o600); fs::set_permissions(&path, permissions).expect("restore permissions");
         assert_eq!(unreadable.status.code(), Some(1)); assert!(stdout(&unreadable).is_empty());
