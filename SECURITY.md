@@ -49,8 +49,8 @@ Larch-owned Claude, Codex, and Cursor binary children use one typed Rust process
 boundary. Ambient child environments are cleared, vendor credentials require
 explicit typed overrides, output and diagnostics are bounded and redacted, and
 timeouts or cancellation terminate and reap the owned process group, including
-descendants on Unix. Skills, hooks, scripts, and Python modules do not provide
-an alternate vendor-launch path.
+descendants on Unix. Skills, hooks, and scripts do not provide an alternate
+vendor-launch path.
 
 Session artifacts, operator diagnostics, remotely archived run logs, and public
 GitHub content have distinct confidentiality rules. The universal skill

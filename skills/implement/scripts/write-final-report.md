@@ -147,5 +147,5 @@ skip the tracking upsert and return `STATUS=ok` with an empty `COMMENT_URL`.
 
 ## Test authority
 
-- **Behavioral authority**: `crates/larch-cli/tests/final_report.rs` (`make test-write-final-report` → `write-final-report-py-harness`), covering outcome matrix, comment-only, manifest stamp/failure, cost unavailable variants, force flags, line-count cache, and review-phase injection.
+- **Behavioral authority**: `crates/larch-cli/tests/final_report.rs` (`make test-write-final-report` → `write-final-report-rust-harness`), covering outcome matrix, comment-only, manifest stamp/failure, cost unavailable variants, force flags, line-count cache, and review-phase injection.
 - **Delegation smoke**: `skills/implement/scripts/test-write-final-report.sh` (`write-final-report-bash-harness`) covers only thin-wrapper plugin-root selection, exact `final-report write` CLI routing, argv forwarding, exit-status forwarding, and stdout/stderr passthrough.
