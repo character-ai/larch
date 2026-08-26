@@ -1466,7 +1466,7 @@ mod tests {
         let repo = tempfile::tempdir().expect("repository directory");
         let root = repo.path();
         let git = |arguments: &[&str]| -> String {
-            let output = Command::new("git")
+            let output = Command::new("git") // lint-subprocess-via-runner: ok test-only Git fixture builds and inspects the projection commit
                 .arg("-C")
                 .arg(root)
                 .args(arguments)
