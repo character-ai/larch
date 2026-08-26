@@ -181,8 +181,9 @@ typed `CODEX_HOME` override reaches only the vendor child request.
 Rust owns the `agent launch-review` lifecycle for Codex and Cursor reviewers.
 It preserves cap, preflight, execution, retry, and postprocessing order while
 the shared process runner remains the only Rust product-spawn and live
-process-group owner. On cancellation or timeout, a final group kill follows a
-gracefully exited leader so a surviving descendant cannot escape cleanup.
+process-tree owner. On cancellation or timeout, it snapshots and validates
+separate descendant groups before signaling them, so reparenting cannot let a
+surviving descendant escape cleanup.
 Darwin startup locking uses a caller-selected temporary root, a bounded retry
 budget, a confined lock directory, and an owned delayed-release handle. Stall
 writers reuse `LauncherArtifactPaths` for the `.stall.json` path, bound and

@@ -315,7 +315,7 @@ pub trait ChildProcess: Send {
     /// The child's exit-status representation.
     type Exit: Send;
 
-    /// Ask the whole owned child group to stop gracefully.
+    /// Ask the whole owned child process tree to stop gracefully.
     ///
     /// # Errors
     ///
@@ -323,7 +323,7 @@ pub trait ChildProcess: Send {
     /// delivered.
     fn request_shutdown(&mut self) -> io::Result<()>;
 
-    /// Force the whole owned child group to stop.
+    /// Force the whole owned child process tree to stop.
     ///
     /// # Errors
     ///
@@ -336,9 +336,9 @@ pub trait ChildProcess: Send {
 
 /// Request graceful child-group shutdown, escalate after `grace`, and reap the leader.
 ///
-/// When the leader exits during grace, one final group force-kill removes a
+/// When the leader exits during grace, one final force-kill removes any
 /// descendant that ignored the graceful request. Process adapters must treat
-/// an already-empty group as a successful force-kill.
+/// an already-empty owned tree as a successful force-kill.
 ///
 /// # Errors
 ///

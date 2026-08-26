@@ -20,7 +20,7 @@ startup lock unless `CURSOR_API_KEY` is already usable.
 
 ## Trust boundary (filesystem access)
 
-Every external-reviewer command enters through `scripts/larch.sh` and is composed by the Rust CLI. Vendor argv is built from typed requests in `larch-core`; `TokioProcessRunner` in `larch-adapters` is the only production spawn owner. It clears ambient environment state, applies explicit credential overrides, bounds captured output, and terminates the child process group on cancellation or timeout. The removed Python agent package is not a fallback, and runtime skills, hooks, and scripts do not launch vendor binaries directly.
+Every external-reviewer command enters through `scripts/larch.sh` and is composed by the Rust CLI. Vendor argv is built from typed requests in `larch-core`; `TokioProcessRunner` in `larch-adapters` is the only production spawn owner. It clears ambient environment state, applies explicit credential overrides, bounds captured output, and terminates the child process tree across nested groups on cancellation or timeout. The removed Python agent package is not a fallback, and runtime skills, hooks, and scripts do not launch vendor binaries directly.
 
 That process boundary is not an operating-system sandbox. Each review command selects the vendor's reviewed read-only or plan-mode argv and retains dirty-tree backstops, but a delegated same-user process can still have workspace authority supplied by its platform. The canonical limits are documented in [Workflow Trust, Mutation, and Private Findings](security/workflow-trust-and-mutations.md#permissions-tools-and-delegated-processes).
 

@@ -5,11 +5,14 @@ use std::{
     io::{self, Read, Write},
     num::NonZeroUsize,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     sync::atomic::{AtomicUsize, Ordering},
     thread,
     time::Duration,
 };
+
+#[cfg(unix)]
+use std::os::unix::process::CommandExt as _;
 
 use larch_core::{
     ChildEnvironment, ExternalProgram, ProcessRequest, ProcessRequestError, VendorProgram,
@@ -626,6 +629,12 @@ fn replay_script(expected: VendorProgram) -> Result<i32, VendorFixtureError> {
             VENDOR_FIXTURE_DESCENDANT_DEPTH,
             (descendant_depth - 1).to_string(),
         );
+        child
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(unix)]
+        child.process_group(0);
         let _descendant = child.spawn()?;
     }
     let _stdin_bytes = io::copy(&mut io::stdin().lock(), &mut io::sink())?;
