@@ -193,6 +193,27 @@ pub fn shell_command_words(command: tree_sitter::Node<'_>, source: &str) -> Vec<
     words
 }
 
+/// Resolve the executable word index, skipping option/assignment words and the
+/// `command`/`env`/`exec`/`sudo` wrappers.
+#[must_use]
+pub fn executable_index(words: &[String]) -> Option<usize> {
+    let mut index = 0;
+    loop {
+        while words
+            .get(index)
+            .is_some_and(|word| word.starts_with('-') || word.contains('='))
+        {
+            index += 1;
+        }
+        let program = words.get(index)?;
+        if matches!(program.as_str(), "command" | "env" | "exec" | "sudo") {
+            index += 1;
+            continue;
+        }
+        return Some(index);
+    }
+}
+
 /// Normalize a statically recoverable shell word for command matching.
 #[must_use]
 pub fn normalize_shell_word(word: &str) -> String {
