@@ -935,9 +935,10 @@ conditional-sources = [
 ]
 # Issue #7942: current implement root content is smaller than the prior
 # reviewed cap. These values match the pinned v4.0.2 report exactly.
-root-max-lines = 880
-root-max-tokens = 35255
-root-max-content-tokens = 35173
+# Issue #8993 adds the Step 8 `governance-refresh` branch and its fence.
+root-max-lines = 886
+root-max-tokens = 35457
+root-max-content-tokens = 35374
 # Issue #7827 adds the mandatory universal skill lifecycle instruction.
 # Issues #7731/#7725/#7733/#7726/#7732/#7737 add focused trust boundaries;
 # issue #7753 moves upgrade-larch guidance to the Rust command surface;
@@ -959,9 +960,10 @@ root-max-content-tokens = 35173
 # private-finding and OOS routes.
 # Issue #7942: v4.0.2 applies the same filtered discovery semantics to the
 # implement closure, so it equals the root set.
-closure-max-lines = 880
-closure-max-tokens = 35255
-closure-max-content-tokens = 35173
+# Issue #8993 adds the Step 8 `governance-refresh` branch and its fence.
+closure-max-lines = 886
+closure-max-tokens = 35457
+closure-max-content-tokens = 35374
 # Issue #7942: remeasurement of the declared conditional sources removes the
 # v3.0.1 transitive-discovery slack and matches v4.0.2 exactly.
 conditional-max-lines = 622

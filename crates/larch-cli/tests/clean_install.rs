@@ -1964,6 +1964,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "resolve-trusted-design-env",
     ),
     CleanInstallCase::new(
+        "clean-install-ship-governance-refresh",
+        "ship",
+        "governance-refresh",
+    ),
+    CleanInstallCase::new(
         "clean-install-ship-normalize-assessment-handoff",
         "ship",
         "normalize-assessment-handoff",

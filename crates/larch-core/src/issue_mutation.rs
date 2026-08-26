@@ -539,6 +539,13 @@ fn validate_named_block_change(
     if has_managed_prefix(&before.title) && request.lease.is_none() {
         return Err(IssueMutationError::new("missing-lease"));
     }
+    if let (Some(lease), Some(owning_run)) = (
+        request.lease.as_ref(),
+        implementation_lease_run_id(&before.body),
+    ) && owning_run != lease.run_id
+    {
+        return Err(IssueMutationError::new("lease-run-mismatch"));
+    }
     Ok(())
 }
 
@@ -831,8 +838,8 @@ mod tests {
     use super::{
         IssueMutationField, IssueMutationRequest, IssueMutationSnapshot, mutation_postcondition,
         parse_plan_receipt_identity, redact_issue_text_outbound, same_mutation_identity,
-        snapshot_is_strictly_newer, validate_issue_mutation_request, verify_authorized_body_change,
-        verify_created_issue,
+        snapshot_is_strictly_newer, validate_issue_mutation_request, validate_named_block_change,
+        verify_authorized_body_change, verify_created_issue,
     };
     use crate::{GitHubIssue, GitHubIssueState, GitHubRepositoryRef};
     use std::collections::BTreeSet;
@@ -1031,6 +1038,41 @@ mod tests {
         assert_eq!(
             verify_authorized_body_change(&request, &redacted, &before)
                 .expect_err("foreign lease must fail")
+                .reason(),
+            "lease-run-mismatch"
+        );
+    }
+
+    #[test]
+    fn named_block_writes_under_a_managed_title_are_bound_to_the_owning_run() {
+        let mut before = snapshot();
+        before.title = String::from("[IMPLEMENTING] Protected");
+        before.body = format!(
+            "plan\n<!-- larch:implementation-lease v1 run_id=run-7 branch=feature/owner base={} plan={} updated_at=2026-07-19T00:00:00Z -->\n",
+            "a".repeat(40),
+            "b".repeat(64)
+        );
+        let mut request = title_request();
+        request.fields = BTreeSet::from([IssueMutationField::NamedBlock]);
+        request.title = None;
+        request.body = Some(before.body.clone());
+        request.marker = Some(String::from("plan"));
+        assert_eq!(
+            validate_named_block_change(&request, &before, &before.body)
+                .expect_err("managed title needs a lease")
+                .reason(),
+            "missing-lease"
+        );
+        request.lease = Some(super::IssueMutationLease {
+            run_id: String::from("run-7"),
+            marker: String::from("plan"),
+        });
+        validate_named_block_change(&request, &before, &before.body)
+            .expect("owning run may write the block");
+        request.lease.as_mut().expect("lease").run_id = String::from("other-run");
+        assert_eq!(
+            validate_named_block_change(&request, &before, &before.body)
+                .expect_err("foreign run must fail")
                 .reason(),
             "lease-run-mismatch"
         );

@@ -37,7 +37,7 @@ use std::{
 };
 
 const CONTRACT_FAILURE: u8 = 2;
-const RECEIPT_SCOPE_DRIFT_MAX_BYTES: usize = 64 * 1024;
+pub const RECEIPT_SCOPE_DRIFT_MAX_BYTES: usize = 64 * 1024;
 const RECEIPT_SCOPE_DRIFT_MAX_ROWS: usize = 128;
 
 /// Complete the public bootstrap command after its session infrastructure is ready.
@@ -802,7 +802,8 @@ fn append_receipt_scope_drift(state: &BootstrapState, options: &BootstrapOptions
     write_session_file(&state.implement_tmpdir, ".receipt-scope-drift-consumed", "").is_ok()
 }
 
-fn valid_receipt_scope_drift(entry: &str) -> bool {
+/// Return whether `entry` is one well-formed, bounded receipt scope-drift record.
+pub fn valid_receipt_scope_drift(entry: &str) -> bool {
     let lines: Vec<&str> = entry.lines().collect();
     if lines.len() < 7
         || lines.len() > RECEIPT_SCOPE_DRIFT_MAX_ROWS + 6

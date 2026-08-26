@@ -5053,6 +5053,15 @@ clean_install_test = "clean-install-session-write-run-params"
 
 [[commands]]
 domain = "ship"
+verb = "governance-refresh"
+machine_stdout = true
+owner = "rust"
+planning_issue = 8993
+migration_issue = 8993
+clean_install_test = "clean-install-ship-governance-refresh"
+
+[[commands]]
+domain = "ship"
 verb = "normalize-assessment-handoff"
 machine_stdout = true
 owner = "rust"
@@ -6532,7 +6541,7 @@ rust = ["fluff-analysis analyze"]
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos file", "plan-block read", "plan-receipt refresh", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
+rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos file", "plan-block read", "plan-receipt refresh", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship governance-refresh", "ship normalize-assessment-handoff", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -6612,7 +6621,7 @@ rust = ["bgjob wait", "review-and-fix write-self-review-tally", "timing telemetr
 [[callers]]
 path = "skills/implement/references/ship-pr-exit-matrix.md"
 kind = "skill"
-rust = ["execution-issues flush", "final-report write", "pr checks", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit"]
+rust = ["execution-issues flush", "final-report write", "pr checks", "ship governance-refresh", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit"]
 
 [[callers]]
 path = "skills/implement/references/ship-pr-oos-checkpoint-router.md"

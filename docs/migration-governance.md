@@ -137,15 +137,23 @@ The plan classifier owns `missing-plan-block`, so an absent plan and absent
 receipt do not also produce `stale-plan-body`. A valid plan without a receipt
 marker is likewise not an audit defect. If a receipt marker exists, a missing
 or malformed plan remains `stale-plan-body`. Receipt scope drift remains
-visible to audit; `/implement` may refresh it only at Preflight after an
-independent bounded semantic-materiality check. Malformed receipts, stale plan
+visible to audit; `/implement` may refresh it only after an independent
+bounded semantic-materiality check. Malformed receipts, stale plan
 bodies, snapshots, and unavailable base-scope evidence remain fail-closed.
+`/implement` may also refresh the receipt at the Step 8 ship gates through
+`scripts/larch.sh ship governance-refresh` after the same independent probe;
+`docs/issue-anchored-plan.md` owns that route.
 
 `scripts/larch.sh plan-receipt refresh` accepts only the exact Preflight plan,
 prior receipt base, and current target SHA. It rejects a moving base or any
 changed plan, receipt, blocker, or owner input before mutation. A successful
 read-back replaces Preflight's issue snapshot and produces one bounded,
-JSON-quoted path-only drift record for Step 0 to append once under `Warnings`.
+JSON-quoted path-only drift record for Step 0 (or the ship-gate refresh) to
+append once under `Warnings`. After Step 0 the managed `[IMPLEMENTING]` title
+accepts the mutation only under the implementation run lease: `--run-id`
+binds it when no `RUN_ID`, `LARCH_RUN_ID`, or `SESSION_ID` environment key
+names the run, and a refresh without either refuses with `missing-lease`
+guidance.
 
 Owner and lease findings use `missing-owner-block`,
 `owner-block-invalid defect=TOKEN`,

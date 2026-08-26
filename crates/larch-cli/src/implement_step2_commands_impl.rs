@@ -1268,28 +1268,19 @@ fn migration_governance_gate(state: &DispatchState) -> Option<String> {
         );
         return Some("migration-governance-read-failed".to_owned());
     };
-    let envelope = String::from_utf8_lossy(output.stdout()).into_owned();
     // Route on the published verdict, not on the exit code: a nonzero exit is
     // also how the gate reports a *refusal*, which is a different outcome from
     // a failed read.
-    match kv_value(&envelope, "GOVERNANCE_OK").as_str() {
-        "true" => None,
-        "false" => {
-            let reasons = kv_value(
-                &String::from_utf8_lossy(output.stderr()),
-                "GOVERNANCE_REASONS",
-            );
-            let tokens = if reasons.is_empty() {
-                "unknown".to_owned()
-            } else {
-                reasons
-            };
+    match parse_governance_gate_output(output.stdout(), output.stderr()) {
+        GovernanceGateOutcome::Passed => None,
+        GovernanceGateOutcome::Blocked(reasons) => {
+            let tokens = reasons.join(",");
             eprintln!(
                 "**❌ implement step2-dispatch: migration governance blocked: `{tokens}`.**"
             );
             Some("migration-governance-stale".to_owned())
         }
-        _absent => {
+        GovernanceGateOutcome::NoVerdict => {
             eprintln!(
                 "implement step2-dispatch: migration governance read failed: no verdict envelope"
             );

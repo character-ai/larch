@@ -420,8 +420,31 @@ approve its own refresh.
 
 The same verifier runs at `/implement` Preflight (before lifecycle adoption),
 Step 2 dispatch (before coder launch), after ship rebase, and before PR
-creation. Outside Preflight, `stale-plan-base-scope` remains a hard gate; a
-later base advance must not bypass semantic materiality. The effect adapter is
+creation. At Step 2 dispatch, `stale-plan-base-scope` remains a hard gate. At
+the two ship gates, the driver persists the gate's reason tokens and the
+receipt and target base SHAs (`GOVERNANCE_REASONS`,
+`GOVERNANCE_RECEIPT_BASE_SHA`, `GOVERNANCE_TARGET_BASE_SHA`) in
+`ship-pr-state.sh` and names the tokens in its stall detail
+(`migration governance blocked: <tokens>`). A sole `stale-plan-base-scope`
+there is the one refusal the run can repair: the branch already absorbed the
+base advance, so the driver exits with
+`needs_user_reason=migration-governance-stale-plan-base-scope`, which
+`ship route-exit` maps to `NEXT_ACTION=governance-refresh` (bounded at two
+attempts per run, then `operator-bail`). The orchestrator re-runs the same
+bounded semantic-materiality probe against the rebased branch and, only on a
+current result, invokes `scripts/larch.sh ship governance-refresh`, which binds
+the handoff SHAs, delegates `plan-receipt refresh --run-id <lease>`, appends the
+scope-drift record to the run `Warnings` ledger, and reships. A later base
+advance therefore never bypasses semantic materiality. Any other reason, a
+mixed reason set, or an unreadable gate remains a hard stop.
+
+After Step 0 the issue carries a managed `[IMPLEMENTING]` title, so
+`plan-receipt refresh` mutates the receipt only under the implementation run
+lease: pass `--run-id` (the `LARCH_RUN_ID` from `session-env.sh`) or export
+`LARCH_RUN_ID`; otherwise the refresh refuses with `missing-lease` guidance,
+and a run id that differs from the body's `larch:implementation-lease` is
+refused as `lease-run-mismatch`.
+The effect adapter is
 `crates/larch-cli/src/migration_governance_commands.rs`; effect-free policy is
 `larch_core::migration_governance`.
 

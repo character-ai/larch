@@ -1280,6 +1280,9 @@ enum ShipCommand {
     /// Route one completed ship-driver result to the next action.
     #[command(name = "route-exit", disable_help_flag = true)]
     RouteExit(RawCompatibilityArguments),
+    /// Refresh the plan receipt after a ship-gate stale-plan-base-scope.
+    #[command(name = "governance-refresh", disable_help_flag = true)]
+    GovernanceRefresh(RawCompatibilityArguments),
     /// Create the canonical first durable ship state.
     #[command(name = "seed-initial-state", disable_help_flag = true)]
     SeedInitialState(RawCompatibilityArguments),
@@ -3364,6 +3367,9 @@ fn run(
             }
             ShipCommand::RouteExit(arguments) => {
                 ship_pre_driver_commands::route_exit(&arguments.arguments)
+            }
+            ShipCommand::GovernanceRefresh(arguments) => {
+                ship_pre_driver_commands::governance_refresh(&arguments.arguments)
             }
             ShipCommand::SeedInitialState(arguments) => {
                 ship_commands::seed_initial_state(&arguments.arguments)

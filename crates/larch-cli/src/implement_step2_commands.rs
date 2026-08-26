@@ -53,7 +53,9 @@ use crate::{
         rehydrate_session, resolve_session_repo_root, run_verified_larch_env_in,
     },
     implement_launcher_commands::{CODEX_IMPLEMENT_MODEL, cursor_implement_model},
-    implement_preflight_commands::governance_gate_argv,
+    implement_preflight_commands::{
+        GovernanceGateOutcome, governance_gate_argv, parse_governance_gate_output,
+    },
     runtime_entrypoint::publish_session_environment,
 };
 
