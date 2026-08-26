@@ -61,6 +61,7 @@ crates/larch-cli/src/git_command_runtime.rs	git-cli	#7671	typed-cli
 crates/larch-cli/src/drafter_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/git_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/github_repository_resolution.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/hook_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/implement_bootstrap_continuation.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/implement_commit_route_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/implement_dispatch_commands.rs	gix-read	#7671	typed-read
@@ -108,7 +109,6 @@ crates/larch-cli/src/triage_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked-paths
 crates/larch-cli/src/agent_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/oos_commands.rs	gix-read	#7671	typed-read
-scripts/block-submodule-edit.sh	later-domain	#7677	rev-parse
 scripts/check-stale-plugin.sh	later-domain	#7674	rev-parse
 scripts/sessionstart-health.sh	later-domain	#7677	branch,rev-parse,sparse-checkout,stash,status
 skills/implement/references/checks-repair-loop.md	later-domain	#7681	rev-parse

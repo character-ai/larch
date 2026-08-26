@@ -500,7 +500,7 @@ mod tests {
         assert_eq!(
             find_entry_for_clone(&registry, &child)
                 .expect("scan")
-                .and_then(|path| path.file_name().map(|name| name.to_owned())),
+                .and_then(|path| path.file_name().map(ToOwned::to_owned)),
             Some("run.env".into())
         );
         assert!(

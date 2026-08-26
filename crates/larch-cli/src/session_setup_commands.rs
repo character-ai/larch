@@ -7,7 +7,9 @@
 use crate::{
     admission_commands, agent_commands,
     argparse_compat::{parse_with_flags, usage_error},
-    github_repository_resolution, session_env_commands,
+    github_repository_resolution,
+    hook_commands::DENY_EDIT_WRITE_TOKENS,
+    session_env_commands,
 };
 use larch_adapters::{
     PathSafetyError, PathSafetyErrorKind, SecureTempDir, SessionSetupOwner,
@@ -50,18 +52,6 @@ const SETUP_OPTIONS: &[&str] = &[
     "--write-session-env",
     "--caller-env",
     "--deny-edit-write",
-];
-/// The deny-edit-write activation tokens, duplicated from the hook allowlist
-/// in `scripts/deny-edit-write.sh` (a Bash `case` line Rust cannot import).
-/// `deny_edit_write_tokens_match_the_hook_allowlist` pins set equality.
-const DENY_EDIT_WRITE_TOKENS: &[&str] = &[
-    "research",
-    "audit-umbrella",
-    "file-bug",
-    "complete-umbrella",
-    "debate",
-    "triage",
-    "umbrella",
 ];
 const SETUP_FLAGS: &[&str] = &[
     "--skip-preflight",
@@ -1501,29 +1491,8 @@ fn text(value: Option<&std::ffi::OsStr>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{DENY_EDIT_WRITE_TOKENS, SetupResult, write_setup_envelope};
+    use super::{SetupResult, write_setup_envelope};
     use std::io::{self, Write};
-
-    /// G-Cfg-3 deviation guard: the token list lives in a Bash `case` line the
-    /// Rust binary cannot import, so pin set equality against the hook source.
-    #[test]
-    fn deny_edit_write_tokens_match_the_hook_allowlist() {
-        let hook = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../scripts/deny-edit-write.sh"),
-        )
-        .expect("read scripts/deny-edit-write.sh");
-        let case_line = hook
-            .lines()
-            .map(str::trim)
-            .find(|line| line.ends_with(") ;;") && line.contains('|'))
-            .expect("hook token case line");
-        let mut hook_tokens: Vec<&str> = case_line.trim_end_matches(") ;;").split('|').collect();
-        hook_tokens.sort_unstable();
-        let mut rust_tokens: Vec<&str> = DENY_EDIT_WRITE_TOKENS.to_vec();
-        rust_tokens.sort_unstable();
-        assert_eq!(rust_tokens, hook_tokens);
-    }
 
     fn result() -> SetupResult {
         SetupResult {

@@ -48,6 +48,15 @@ const MAX_STATE_BYTES: u64 = 512;
 const MAX_SYMLINK_HOPS: usize = 40;
 const ACTIVATION_TTL: Duration = Duration::from_secs(360 * 60);
 const ACTIVATION_SCAN_LIMIT: usize = 4_096;
+pub const DENY_EDIT_WRITE_TOKENS: &[&str] = &[
+    "research",
+    "audit-umbrella",
+    "file-bug",
+    "complete-umbrella",
+    "debate",
+    "triage",
+    "umbrella",
+];
 const DENY_EDIT_WRITE_REASON: &str = "The active skill is read-only-repo -- Edit/Write/NotebookEdit outside /tmp or the larch session cache is not permitted.";
 const BLOCK_READ_STDIN_REASON: &str =
     "submodule edit guard: failed to read stdin, blocking as precaution";
@@ -334,16 +343,7 @@ fn cache_root(xdg_cache_home: Option<&Path>, home: Option<&Path>) -> Option<Path
 }
 
 fn recognized_edit_token(token: &str) -> bool {
-    matches!(
-        token,
-        "research"
-            | "audit-umbrella"
-            | "file-bug"
-            | "complete-umbrella"
-            | "debate"
-            | "triage"
-            | "umbrella"
-    )
+    DENY_EDIT_WRITE_TOKENS.contains(&token)
 }
 
 fn activation_is_live(token: &str, cache_root: &Path, now: SystemTime) -> bool {
