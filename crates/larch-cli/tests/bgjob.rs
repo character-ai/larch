@@ -12,7 +12,7 @@ use larch_core::{
     ENV_TEST_BGJOB_PHASE_BARRIER_DIR, ENV_TEST_BGJOB_STARTUP_ACK_TIMEOUT_S, KvDocument,
     ParseOptions, ProcessBirthIdentity, ProcessIdentityHost, RecordedProcessIdentity,
     RegistryEntry, RenderOptions, collect_process_group_members_checked, identity_to_json,
-    read_entry, read_process_identity, write_entry_at,
+    read_entry, read_process_identity, result_env_path, write_entry_at,
 };
 use std::{
     fs,
@@ -199,6 +199,19 @@ fn wait_until_settled(sandbox: &Sandbox, step: &str, tmpdir: &Path) -> String {
         }
     }
     panic!("bgjob wait never settled for {step}: {last:?}");
+}
+
+/// Observe terminal publication without creating the foreground wait lease.
+fn wait_until_settled_without_lease(sandbox: &Sandbox, step: &str, tmpdir: &Path) -> String {
+    let result = result_env_path(tmpdir, step).expect("result path");
+    let deadline = Instant::now() + DEADLINE;
+    while Instant::now() < deadline {
+        if result.is_file() {
+            return wait_once(sandbox, step, tmpdir, "1");
+        }
+        sleep(POLL);
+    }
+    panic!("bgjob result never appeared for {step}");
 }
 
 fn registry_row(sandbox: &Sandbox, step: &str) -> PathBuf {
@@ -1370,9 +1383,9 @@ fn owner_death_reports_orphaned() {
     owner.kill().expect("kill owner");
     owner.wait().expect("reap owner");
 
-    // Let the daemon pass owner grace without an active wait lease (#8639).
-    sleep(Duration::from_secs(1));
-    let settled = wait_until_settled(&sandbox, "owner-death", &tmpdir);
+    // Observe publication directly so this test does not create the active
+    // foreground wait lease whose behavior the next test covers (#8639).
+    let settled = wait_until_settled_without_lease(&sandbox, "owner-death", &tmpdir);
     assert!(settled.contains("BGJOB_STATUS=DONE"), "{settled:?}");
     assert!(settled.contains("BGJOB_RC=orphaned"), "{settled:?}");
     assert_group_gone(started_pgid(&stdout, "owner-death"), "owner death");
