@@ -1,27 +1,15 @@
 #!/usr/bin/env bash
-# cleanup-sessionstart.sh — SessionStart hook: launches the larch temp cleanup as
-# a detached background process so age-based larch-* sweeps run automatically
-# without blocking session start. Always exits 0 (SessionStart is non-blocking).
+# Fail-open SessionStart shim for the Rust cleanup launcher.
 
-set -euo pipefail
+set -uo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd -P)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$SCRIPT_DIR/..}"
-LARCH="$PLUGIN_ROOT/scripts/larch.sh"
+SCRIPT_DIR="$(CDPATH='' cd -- "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd -P 2>/dev/null)" || exit 0
+PLUGIN_ROOT="$(CDPATH='' cd -- "$SCRIPT_DIR/.." 2>/dev/null && pwd -P 2>/dev/null)" || PLUGIN_ROOT=""
+if [ ! -x "$PLUGIN_ROOT/scripts/larch.sh" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT"
+fi
+[ -n "$PLUGIN_ROOT" ] && [ -x "$PLUGIN_ROOT/scripts/larch.sh" ] || exit 0
 
-# Skip silently when the verified runtime bootstrap is unavailable.
-[ -x "$LARCH" ] || exit 0
-
-# Redirect cleanup output to a per-invocation log; ignore write failures.
-CLEANUP_LOG="${TMPDIR:-/tmp}/larch-cleanup-sessionstart-$$.log"
-: >"$CLEANUP_LOG" 2>/dev/null || CLEANUP_LOG=/dev/null
-
-# Reap stale bgjob registry rows before the age-based cleanup daemon runs.
-CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$LARCH" bgjob reap >/dev/null 2>&1 || true
-
-# Launch cleanup as a detached subprocess so the hook exits immediately.
-# Output is captured to the temp log for post-hoc debugging.
-env -u LARCH_TEST_TMP_ROOT CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$LARCH" cleanup run >"$CLEANUP_LOG" 2>&1 &
-disown "$!" 2>/dev/null || true
-
+CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" LARCH_BOOTSTRAP_NO_INSTALL=1 \
+    "$PLUGIN_ROOT/scripts/larch.sh" hook cleanup-sessionstart >/dev/null 2>&1 || true
 exit 0

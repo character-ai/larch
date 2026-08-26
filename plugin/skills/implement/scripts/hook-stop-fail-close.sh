@@ -1,91 +1,22 @@
 #!/usr/bin/env bash
-# hook-stop-fail-close.sh — Stop hook for post-/review halt protection.
-#
-# set -e omitted: every probe must fail open; the hook must always exit 0.
-# Intentional per G-Bash-4: this hook must fail open and exit 0.
+# Fail-open Stop shim for the Rust post-review boundary guard.
+# set -e is omitted so a missing verified runtime stays silent.
 
 set -uo pipefail
 
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
-exec 3>&1
-hook_emit() { printf '%s
-' "$1" >&3; }
+hook_emit() { printf '%s\n' "$1"; }
 
-implement_session_dir_exists() {
-    [[ -n "$HOOK_CWD" ]] || return 1
-    local roots=(
-        "${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions"
-        "/tmp"
-        "/private/tmp"
-    )
-    local root dir
-    for root in "${roots[@]}"; do
-        [[ -d "$root" ]] || continue
-        for dir in "$root"/claude-implement-*; do
-            [[ -d "$dir" ]] && return 0
-        done
-    done
-    return 1
-}
-
-INPUT=$(cat 2>/dev/null) || exit 0
-
-STOP_ACTIVE=false
-if command -v jq >/dev/null 2>&1; then
-    SA=$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null) || SA=false
-    [[ "$SA" = "true" ]] && STOP_ACTIVE=true
+SCRIPT_DIR="$(CDPATH='' cd -- "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd -P 2>/dev/null)" || exit 0
+PLUGIN_ROOT="$(CDPATH='' cd -- "$SCRIPT_DIR/../../.." 2>/dev/null && pwd -P 2>/dev/null)" || PLUGIN_ROOT=""
+if [ ! -x "$PLUGIN_ROOT/scripts/larch.sh" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT"
 fi
-[[ "$STOP_ACTIVE" = "true" ]] && exit 0
+[ -n "$PLUGIN_ROOT" ] && [ -x "$PLUGIN_ROOT/scripts/larch.sh" ] || exit 0
 
-HOOK_CWD=""
-if command -v jq >/dev/null 2>&1; then
-    HOOK_CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || HOOK_CWD=""
+OUTPUT="$(CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" LARCH_BOOTSTRAP_NO_INSTALL=1 \
+    "$PLUGIN_ROOT/scripts/larch.sh" hook stop-fail-close 2>/dev/null)"
+RC=$?
+if [ "$RC" -eq 0 ] && [ -n "$OUTPUT" ]; then
+    hook_emit "$OUTPUT"
 fi
-
-# Surface the active Claude Code session_id from the Stop event payload
-# into LARCH_TOKEN_SESSION_ID so the resolver's session-id binding branch
-# is reachable in production. Empty, missing, or null session_id unsets any
-# inherited LARCH_TOKEN_SESSION_ID before the resolver falls through to TTL.
-# The Rust resolver consumes the `.larch-keepalive` `SESSION_ID=` slim
-# session-identity record this feeds.
-SID=""
-if command -v jq >/dev/null 2>&1; then
-    SID=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || SID=""
-fi
-if [[ -n "$SID" ]]; then
-    export LARCH_TOKEN_SESSION_ID="$SID"
-else
-    unset LARCH_TOKEN_SESSION_ID || true
-fi
-
-IMPLEMENT_TMPDIR=""
-if implement_session_dir_exists; then
-    IMPLEMENT_TMPDIR=$(CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" session resolve-implement-tmpdir --cwd "$HOOK_CWD" 2>/dev/null) || IMPLEMENT_TMPDIR=""
-fi
-[[ -n "$IMPLEMENT_TMPDIR" ]] || exit 0
-[[ ! -f "$IMPLEMENT_TMPDIR/.run-cleaned-up" ]] || exit 0
-
-TMPDIR_BASENAME=$(basename "$IMPLEMENT_TMPDIR" 2>/dev/null) \
-    || TMPDIR_BASENAME="<implement-tmpdir>"
-
-# Block on post-/review boundary halt: review ran but Step 6 sentinel not yet written.
-# review-round-summary.md is written by /review on completion; .review-boundary-passed
-# is written by the orchestrator at the start of Step 6 (issue #1862).
-if [[ -f "$IMPLEMENT_TMPDIR/review-round-summary.md" ]] && \
-   [[ ! -f "$IMPLEMENT_TMPDIR/.review-boundary-passed" ]]; then
-    REASON=$'You halted mid-Step-5 (post-/review boundary).\n\nNEXT REQUIRED: execute the Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order per skills/implement/SKILL.md Step 5 post-/review directives, then touch .review-boundary-passed inside the active /implement tmpdir ('"$TMPDIR_BASENAME"$') to release this guard.\n\nOperator escape: hard-quit the session, OR touch .run-cleaned-up inside the active /implement tmpdir to intentionally abandon the run.'
-    HOOK_OUT=""
-    if command -v jq >/dev/null 2>&1; then
-        HOOK_OUT=$(jq -cn --arg r "$REASON" '{decision:"block",reason:$r}' 2>/dev/null) || HOOK_OUT=""
-    fi
-    # Direct-stdout fallback for stripped PATH or jq failure. The fixed reason
-    # contains no runtime interpolation, so its JSON bytes need no encoder.
-    if [[ -z "$HOOK_OUT" ]]; then
-        HOOK_OUT='{"decision":"block","reason":"You halted mid-Step-5 (post-/review boundary). Execute Cross-Skill Presence Propagation + Step 6 breadcrumb, then touch .review-boundary-passed inside the active /implement tmpdir."}'
-    fi
-    hook_emit "$HOOK_OUT"
-    exit 0
-fi
-
 exit 0

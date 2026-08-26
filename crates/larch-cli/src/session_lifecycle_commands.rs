@@ -118,24 +118,32 @@ pub fn resolve_implement_tmpdir_command(arguments: &[OsString]) -> ExitCode {
         .to_string_lossy()
         .into_owned();
     let session_id = env::var("LARCH_TOKEN_SESSION_ID").unwrap_or_default();
-    let resolved = resolve_implement_tmpdir(&ImplementTmpdirQuery {
-        hook_cwd: &hook_cwd,
+    let resolved = resolve_implement_tmpdir_for_hook(&hook_cwd, &session_id);
+    if resolved.is_empty() {
+        return ExitCode::SUCCESS;
+    }
+    write_stdout(&resolved)
+}
+
+/// Resolve one active implementation temp directory for a hook payload.
+///
+/// Hook owners pass the payload session id directly so an inherited stale
+/// `LARCH_TOKEN_SESSION_ID` cannot influence routing.
+pub fn resolve_implement_tmpdir_for_hook(hook_cwd: &str, session_id: &str) -> String {
+    resolve_implement_tmpdir(&ImplementTmpdirQuery {
+        hook_cwd,
         roots: &implement_session_roots(
             env::var_os("XDG_CACHE_HOME").as_deref(),
             env::var_os("HOME").as_deref(),
         ),
-        session_id: &session_id,
+        session_id,
         ttl_seconds: implement_tmpdir_ttl(
             env::var("LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS")
                 .ok()
                 .as_deref(),
         ),
         now: unix_seconds(),
-    });
-    if resolved.is_empty() {
-        return ExitCode::SUCCESS;
-    }
-    write_stdout(&resolved)
+    })
 }
 
 /// Remove a session temp directory after recording the invocation.

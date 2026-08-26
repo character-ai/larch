@@ -2465,9 +2465,19 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "anti-read-poll",
     ),
     CleanInstallCase::new(
+        "clean-install-hook-audit-edit-write",
+        "hook",
+        "audit-edit-write",
+    ),
+    CleanInstallCase::new(
         "clean-install-hook-block-submodule-edit",
         "hook",
         "block-submodule-edit",
+    ),
+    CleanInstallCase::new(
+        "clean-install-hook-cleanup-sessionstart",
+        "hook",
+        "cleanup-sessionstart",
     ),
     CleanInstallCase::new(
         "clean-install-hook-deny-edit-write",
@@ -2478,6 +2488,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-hook-deny-run-in-background",
         "hook",
         "deny-run-in-background",
+    ),
+    CleanInstallCase::new(
+        "clean-install-hook-sessionstart-health",
+        "hook",
+        "sessionstart-health",
+    ),
+    CleanInstallCase::new(
+        "clean-install-hook-sessionstart-statusline",
+        "hook",
+        "sessionstart-statusline",
+    ),
+    CleanInstallCase::new(
+        "clean-install-hook-stop-fail-close",
+        "hook",
+        "stop-fail-close",
     ),
     CleanInstallCase::new(
         "clean-install-plugin-read-version",
@@ -3151,6 +3176,123 @@ fn hook_shims_emit_static_denies_when_no_verified_binary_is_available() {
         );
         assert!(!fixture.root.join("bin").exists(), "{script}");
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn advisory_hook_shims_fail_open_when_no_verified_binary_is_available() {
+    let fixture = clean_install_fixture();
+    for relative in [
+        "scripts/audit-edit-write.sh",
+        "scripts/cleanup-sessionstart.sh",
+        "scripts/sessionstart-statusline.sh",
+        "skills/implement/scripts/hook-stop-fail-close.sh",
+    ] {
+        let source = repo_root().join(relative);
+        let destination = fixture.root.join(relative);
+        fs::create_dir_all(destination.parent().expect("hook shim parent"))
+            .expect("create hook shim parent");
+        fs::copy(source, &destination).expect("copy advisory hook shim");
+        let mut permissions = fs::metadata(&destination)
+            .expect("advisory hook shim metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&destination, permissions)
+            .expect("make advisory hook shim executable");
+
+        let output = Command::new("/bin/bash")
+            .arg(&destination)
+            .env("HOME", &fixture.home)
+            .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
+            .env_remove("LARCH_BINARY")
+            .env_remove("CLAUDE_PLUGIN_DATA")
+            .stdin(Stdio::null())
+            .output()
+            .expect("run advisory hook shim without binary");
+        assert!(
+            output.status.success(),
+            "{relative}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.stdout.is_empty(), "{relative}");
+        assert!(output.stderr.is_empty(), "{relative}");
+        assert!(!fixture.root.join("bin").exists(), "{relative}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn sessionstart_health_shim_keeps_only_fixed_stripped_path_fallbacks() {
+    let fixture = clean_install_fixture();
+    let source = repo_root().join("scripts/sessionstart-health.sh");
+    let destination = fixture.root.join("scripts/sessionstart-health.sh");
+    fs::copy(source, &destination).expect("copy health hook shim");
+    let mut permissions = fs::metadata(&destination)
+        .expect("health hook shim metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&destination, permissions).expect("make health hook shim executable");
+
+    let both_missing = Command::new("/bin/bash")
+        .arg(&destination)
+        .env("PATH", "")
+        .env("HOME", &fixture.home)
+        .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
+        .env_remove("LARCH_BINARY")
+        .env_remove("CLAUDE_PLUGIN_DATA")
+        .stdin(Stdio::null())
+        .output()
+        .expect("run health hook with stripped PATH");
+    assert!(both_missing.status.success());
+    assert!(both_missing.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&both_missing.stdout),
+        "{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"larch hook preflight: jq not on PATH and git not on PATH; install jq and git for advisory hook output.\"}}\n"
+    );
+
+    let path = fixture.root.join("health-path");
+    fs::create_dir(&path).expect("create health PATH");
+    let git = path.join("git");
+    fs::write(&git, b"").expect("write git marker");
+    let mut permissions = fs::metadata(&git).expect("git marker metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&git, permissions).expect("make git marker executable");
+    let jq_missing = Command::new("/bin/bash")
+        .arg(&destination)
+        .env("PATH", &path)
+        .env("HOME", &fixture.home)
+        .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
+        .env_remove("LARCH_BINARY")
+        .env_remove("CLAUDE_PLUGIN_DATA")
+        .stdin(Stdio::null())
+        .output()
+        .expect("run health hook with only git on PATH");
+    assert!(jq_missing.status.success());
+    assert!(jq_missing.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&jq_missing.stdout),
+        "{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"larch hook preflight: jq not on PATH (install jq for advisory hook output).\"}}\n"
+    );
+
+    let jq = path.join("jq");
+    fs::write(&jq, b"").expect("write jq marker");
+    let mut permissions = fs::metadata(&jq).expect("jq marker metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&jq, permissions).expect("make jq marker executable");
+    let tools_present = Command::new("/bin/bash")
+        .arg(&destination)
+        .env("PATH", &path)
+        .env("HOME", &fixture.home)
+        .env("CLAUDE_PLUGIN_ROOT", &fixture.root)
+        .env_remove("LARCH_BINARY")
+        .env_remove("CLAUDE_PLUGIN_DATA")
+        .stdin(Stdio::null())
+        .output()
+        .expect("run unavailable health hook with tools on PATH");
+    assert!(tools_present.status.success());
+    assert!(tools_present.stdout.is_empty());
+    assert!(tools_present.stderr.is_empty());
+    assert!(!fixture.root.join("bin").exists());
 }
 
 #[cfg(unix)]

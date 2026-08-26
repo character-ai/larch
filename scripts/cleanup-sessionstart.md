@@ -1,18 +1,11 @@
-# scripts/cleanup-sessionstart.sh contract
+# scripts/cleanup-sessionstart.sh — contract
 
-`${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-sessionstart.sh` is the SessionStart hook that launches `scripts/larch.sh cleanup run` as a detached background process at session start. The cleanup command performs the age-based `larch-*` sweep, including `larch-report-tokens.*` roots preserved for advertised `/report-tokens` artifacts.
+`${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-sessionstart.sh` is the thin SessionStart shim for the Rust-owned `larch hook cleanup-sessionstart` verb. It is registered for `startup|resume|clear|compact` in `hooks/hooks.json`.
 
-**Primary caller:** `hooks/hooks.json` `SessionStart` hook (matcher `startup|resume|clear|compact`, timeout 10).
+The shim enters the verified `scripts/larch.sh` bootstrap with `LARCH_BOOTSTRAP_NO_INSTALL=1`. If that runtime is unavailable or the verb fails, the shim exits 0 with no stdout or stderr.
 
-**Invariants:**
+The Rust owner first runs `scripts/larch.sh bgjob reap` synchronously, then launches `scripts/larch.sh cleanup run` as a detached child. Both nested calls preserve `LARCH_BOOTSTRAP_NO_INSTALL=1`. The hook exits without waiting for the age-based cleanup sweep, which includes `larch-report-tokens.*` roots retained for advertised `/report-tokens` artifacts.
 
-- The hook MUST always exit 0. SessionStart maintenance is non-blocking.
-- The hook file MUST be executable (`100755`). Claude Code invokes it directly.
-- Cleanup runs as a detached background process (`&` + `disown`); the hook exits before cleanup finishes.
-- Output from cleanup is redirected to `${TMPDIR:-/tmp}/larch-cleanup-sessionstart-$$.log` for post-hoc debugging.
-- The hook emits no advisory JSON. Cleanup is silent background maintenance and requires no operator action.
-- When the verified `scripts/larch.sh` bootstrap is unavailable, the hook exits 0 silently.
+Cleanup output goes to a newly created, owner-only `${TMPDIR:-/tmp}/larch-cleanup-sessionstart-<pid>.log`. Existing files and symlinks are never reused. The hook emits no advisory JSON and removes the test-only `LARCH_TEST_TMP_ROOT` variable before launching cleanup.
 
-**Harness:** `make test-cleanup-sessionstart` runs `scripts/test-cleanup-sessionstart.sh`.
-
-**Edit-in-sync:** When changing the CLI verb path (`cleanup run`), update this doc and `scripts/test-cleanup-sessionstart.sh`. When changing the `hooks.json` `SessionStart` entry for this hook, update this doc and the harness registration assertion.
+Rust tests in `crates/larch-cli/src/hook_commands.rs` cover command ordering, detachment, log creation, and environment handling.

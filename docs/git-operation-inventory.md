@@ -110,7 +110,6 @@ crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked
 crates/larch-cli/src/agent_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/oos_commands.rs	gix-read	#7671	typed-read
 scripts/check-stale-plugin.sh	later-domain	#7674	rev-parse
-scripts/sessionstart-health.sh	later-domain	#7677	branch,rev-parse,sparse-checkout,stash,status
 skills/implement/references/checks-repair-loop.md	later-domain	#7681	rev-parse
 skills/implement/references/codex-manifest-schema.md	later-domain	#7681	commit
 skills/implement/references/step2-dispatch.md	later-domain	#7681	commit

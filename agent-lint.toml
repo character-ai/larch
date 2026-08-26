@@ -29,23 +29,15 @@ suppress = [
   "template-count-mismatch",
 ]
 
-# scripts/test-sessionstart-health.sh is the regression test for the
-# SessionStart hook (scripts/sessionstart-health.sh). It is a plugin-level
-# infrastructure test — not owned by any SKILL.md — and is invoked via
-# `make lint` (test-sessionstart target). Agent-lint's dead-script rule
-# only recognizes structured references from SKILL.md/hooks.json/ci.yaml,
-# so we exclude the test path explicitly.
-#
-# scripts/audit-edit-write.sh and scripts/test-audit-edit-write.sh are the
-# dev-only opt-in PostToolUse audit hook pair — structurally referenced from
-# Makefile (test target), docs/dev-hook-audit.md (enable snippet),
-# scripts/audit-edit-write.md (sibling contract), and
+# scripts/audit-edit-write.sh is the dev-only opt-in PostToolUse audit hook.
+# It is structurally referenced from docs/dev-hook-audit.md,
+# scripts/audit-edit-write.md, and
 # docs/security/artifacts-redaction-and-publication.md, but NOT
 # from hooks/hooks.json or .claude/settings.json by design (issue #155:
 # contributors opt in locally via gitignored .claude/settings.local.json).
 # agent-lint's G004/dead-script rule only scans SKILL.md / CLAUDE.md /
 # hooks.json / settings.json for invocation refs and does not follow CLAUDE.md
-# @-imports or Makefile targets, so these two scripts would be false-flagged.
+# @-imports, so this script would be false-flagged.
 # Excluded here rather than force-registered to preserve the dev-only opt-in
 # contract.
 #
@@ -289,14 +281,6 @@ exclude = [
   # Sibling contract:
   "scripts/pre-commit-bash-syntax.sh",
   "scripts/pre-commit-bash-syntax.md",
-  "scripts/test-sessionstart-health.sh",
-  # scripts/test-cleanup-sessionstart.sh is the regression harness for
-  # scripts/cleanup-sessionstart.sh (the SessionStart cleanup hook). Referenced
-  # only from Makefile (test-cleanup-sessionstart target, test-harnesses-2 shard)
-  # and scripts/test-cleanup-sessionstart.md (sibling contract), matching the
-  # Makefile-only pattern as scripts/test-sessionstart-health.sh above.
-  "scripts/test-cleanup-sessionstart.sh",
-  "scripts/test-cleanup-sessionstart.md",
   # scripts/test-effort-prose.sh is the regression harness for prompt-source
   # max-effort prose drift. Referenced only from Makefile (test-effort-prose
   # target), docs/linting.md, and scripts/test-effort-prose.md (sibling
@@ -325,13 +309,9 @@ exclude = [
   "scripts/test-check-stale-plugin.sh",
   "scripts/test-check-stale-plugin.md",
   "scripts/audit-edit-write.sh",
-  "scripts/test-audit-edit-write.sh",
-  # Relevant-checks helper and hook harnesses are Makefile-only regression
-  # tests for the script-first green path; the runtime scripts are referenced
-  # from SKILL.md or hooks.json, while these tests are not.
+  # The anti-read-poll harness is a Makefile-only regression test for the
+  # script-first green path; the runtime script is referenced from hooks.json.
   "scripts/test-hook-anti-read-poll.sh",
-  "scripts/test-sessionstart-statusline.sh",
-  "scripts/test-hook-stop-fail-close.sh",
   # scripts/test-bgjob.sh is the Makefile-only regression harness for bgjob
   # start/wait/reap coverage (make test-bgjob -> cargo integration bgjob::).
   # agent-lint's G004/dead-script rule does not follow Makefile targets.

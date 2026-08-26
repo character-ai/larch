@@ -171,7 +171,10 @@ occasional corrupted line.
 
 ## Testing
 
-`scripts/test-audit-edit-write.sh` is the regression harness. It uses
-`mktemp -d` plus `CLAUDE_PROJECT_DIR` override so the test never
-touches the repo's real `.claude/hook-audit.log`. Wired into
-`make lint` via the `test-audit-edit-write` target.
+The audit behavior is Rust-owned and covered by focused tests that use temporary
+repositories, so they never touch the repository's real
+`.claude/hook-audit.log`:
+
+```bash
+cargo test --locked --package larch-cli --bin larch hook_commands::tests::audit_
+```

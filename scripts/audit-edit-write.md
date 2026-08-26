@@ -1,5 +1,9 @@
 # scripts/audit-edit-write.sh — contract
 
-`scripts/audit-edit-write.sh` is a dev-only PostToolUse audit hook for `Edit`/`Write` tool use. It is shipped in the plugin install tree but is **not registered by default** in `hooks/hooks.json` or `.claude/settings.json`; contributors opt in locally by adding a `PostToolUse` entry to `.claude/settings.local.json` (gitignored). Appends one JSONL record per invocation to `.claude/hook-audit.log` (also gitignored). `scripts/test-audit-edit-write.sh` is its regression harness, wired into `make lint` via the `test-audit-edit-write` target. See `docs/dev-hook-audit.md` for enable/rotate/privacy details and `docs/security/workflow-trust-and-mutations.md` for the security posture.
+`${CLAUDE_PLUGIN_ROOT}/scripts/audit-edit-write.sh` is the thin PostToolUse shim for the Rust-owned `larch hook audit-edit-write` verb. This dev-only `Edit`/`Write` audit hook ships with the plugin but is not registered by default in `hooks/hooks.json` or `.claude/settings.json`.
 
-This hook has no contract stdout. It appends audit JSONL directly and ignores write failures so PostToolUse completion is never blocked.
+The shim enters the verified `scripts/larch.sh` bootstrap with `LARCH_BOOTSTRAP_NO_INSTALL=1`. It has no contract stdout and always exits 0, including when the runtime is unavailable or an append fails.
+
+The Rust owner accepts only a JSON object on stdin and appends its compact representation as one JSONL record to `${CLAUDE_PROJECT_DIR:-<cwd>}/.claude/hook-audit.log`. It refuses a symlinked `.claude` directory and a symlinked, multiply linked, or non-regular audit path. Malformed input and unsafe paths fail open without a write.
+
+See `docs/dev-hook-audit.md` for opt-in, rotation, and privacy guidance and `docs/security/artifacts-redaction-and-publication.md` for artifact classification. Rust tests in `crates/larch-cli/src/hook_commands.rs` cover append, invalid input, and unsafe paths.

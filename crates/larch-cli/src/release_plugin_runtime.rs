@@ -42,6 +42,7 @@ const DIRECT_FILES: &[&str] = &[
     "docs/skills.md",
     "docs/stall-recovery-report.md",
     "docs/stall-recovery-report-allowlists.tsv",
+    "scripts/audit-edit-write.sh",
     "scripts/block-submodule-edit.sh",
     "scripts/check-stale-plugin.sh",
     "scripts/cleanup-sessionstart.sh",
@@ -443,6 +444,7 @@ mod tests {
         assert!(paths.contains("docs/security/README.md"));
         assert!(paths.contains("docs/security/workflow.md"));
         assert!(paths.contains("hooks/hooks.json"));
+        assert!(paths.contains("scripts/audit-edit-write.sh"));
         assert!(paths.contains("skills/implement/SKILL.md"));
         assert!(!paths.contains("skills/implement/test-helper.md"));
         assert!(!paths.contains("skills/design/scripts/tool.py"));
