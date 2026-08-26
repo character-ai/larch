@@ -1258,7 +1258,7 @@ mod tests {
         assert!(drift.contains(&base_sha));
         assert!(drift.contains("no declared path changed"));
 
-        let mut ship_arguments = arguments.clone();
+        let mut ship_arguments = arguments;
         ship_arguments.extend(["--stage".into(), "ship".into()]);
         let ship_request = parse_refresh_arguments(&ship_arguments).expect("ship arguments");
         let git = GixRepository::open(repository.root()).expect("repository");
