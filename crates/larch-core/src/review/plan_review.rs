@@ -29,6 +29,12 @@ pub const NON_NIT_CONTINUE_THRESHOLD: usize = 5;
 pub const STRUCTURAL_MIN_REVIEW_ROUNDS: u64 = 2;
 /// Maximum OOS proposals retained for one reviewer slot.
 pub const PER_REVIEWER_OOS_PROPOSAL_CAP: usize = 3;
+/// Shared launcher-manifest basename at the design root and under `plan-review/round-N/`.
+pub const PLAN_REVIEW_SLOTS_MANIFEST: &str = "plan-review-slots.ndjson";
+/// Dynamic Cursor plan-review slot prefix (`dyn-cursor-plan-<slug>`).
+pub const DYN_CURSOR_PLAN_PREFIX: &str = "dyn-cursor-plan-";
+/// Dynamic Codex plan-review slot prefix (`dyn-codex-plan-<slug>`).
+pub const DYN_CODEX_PLAN_PREFIX: &str = "dyn-codex-plan-";
 
 /// Keys accepted while normalizing a Step 3 result environment.
 pub const STEP3_NORMALIZE_ALLOW_KEYS: [&str; 23] = [
@@ -202,7 +208,13 @@ impl PlanReviewRoundArtifacts {
     /// Return the shared slot manifest path.
     #[must_use]
     pub fn slots_manifest(&self) -> PathBuf {
-        self.root_file("plan-review-slots.ndjson")
+        self.root_file(PLAN_REVIEW_SLOTS_MANIFEST)
+    }
+
+    /// Return the round-local copy of the launched slot manifest.
+    #[must_use]
+    pub fn round_slots_manifest(&self) -> PathBuf {
+        self.round_file(PLAN_REVIEW_SLOTS_MANIFEST)
     }
 
     /// Return the shared collector result path.
@@ -627,12 +639,43 @@ fn render_blocks(blocks: &[&str]) -> String {
     }
 }
 
+/// Return the archetype slug from a dynamic plan-review slot name.
+#[must_use]
+pub fn dyn_plan_archetype_slug(slot: &str) -> Option<&str> {
+    [DYN_CURSOR_PLAN_PREFIX, DYN_CODEX_PLAN_PREFIX]
+        .into_iter()
+        .find_map(|prefix| slot.strip_prefix(prefix))
+        .filter(|slug| !slug.is_empty())
+}
+
+/// Render the `/design` summary body for launched dynamic archetypes.
+#[must_use]
+pub fn format_launched_dynamic_archetypes<I, S>(slugs: I) -> Option<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let unique: BTreeSet<String> = slugs
+        .into_iter()
+        .map(|slug| slug.as_ref().trim().to_owned())
+        .filter(|slug| !slug.is_empty())
+        .collect();
+    if unique.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{} ({})",
+        unique.len(),
+        unique.into_iter().collect::<Vec<_>>().join(", ")
+    ))
+}
+
 /// Render the human label for one plan-review slot.
 #[must_use]
 pub fn slot_human_label(slot: &str) -> String {
     for (prefix, label) in [
-        ("dyn-cursor-plan-", "Cursor-dyn-"),
-        ("dyn-codex-plan-", "Codex-dyn-"),
+        (DYN_CURSOR_PLAN_PREFIX, "Cursor-dyn-"),
+        (DYN_CODEX_PLAN_PREFIX, "Codex-dyn-"),
         ("cursor-plan-", "Cursor-"),
         ("codex-plan-", "Codex-"),
         ("codex-primary-plan-", "Codex-"),
@@ -663,8 +706,8 @@ fn title_slot_suffix(suffix: &str) -> String {
 
 fn nominal_vendor_from_slot(slot: &str) -> &str {
     for (prefix, vendor) in [
-        ("dyn-cursor-plan-", "cursor"),
-        ("dyn-codex-plan-", "codex"),
+        (DYN_CURSOR_PLAN_PREFIX, "cursor"),
+        (DYN_CODEX_PLAN_PREFIX, "codex"),
         ("cursor-plan-", "cursor"),
         ("codex-plan-", "codex"),
         ("codex-primary-plan-", "codex"),

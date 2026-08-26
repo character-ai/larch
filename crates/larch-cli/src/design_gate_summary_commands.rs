@@ -13,7 +13,7 @@
 //! grammar, then applies the enrichment and prefix passes.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
@@ -27,6 +27,9 @@ use larch_core::{
     report::{
         CODEX_MINI_MODELS, CURSOR_GROK_MODELS, LoadResult, build_issue_detail_section,
         count_load_result, load_issue_detail_groups, map_outcome_display,
+    },
+    review::{
+        PlanReviewRoundArtifacts, dyn_plan_archetype_slug, format_launched_dynamic_archetypes,
     },
     review_provenance,
 };
@@ -870,7 +873,17 @@ fn plan_review_line(design_tmpdir: &Path) -> String {
 }
 
 /// Port of `_dynamic_archetypes_line`.
+///
+/// Round-1 launched `dyn-*` slots win over the live scout manifest, which
+/// `clear_scout` removes before later revise attempts (#8969). `filter_failed`
+/// is reserved for a Step 2b `SCOUT_FAIL_REASON` recorded when the drafter
+/// did not publish a scout.
 fn dynamic_archetypes_line(design_tmpdir: &Path) -> String {
+    if let Some(line) =
+        format_launched_dynamic_archetypes(round1_dyn_archetype_slugs(design_tmpdir))
+    {
+        return line;
+    }
     let status_file = design_tmpdir.join("step2b-drafter-status.txt");
     if !status_file.is_file() {
         return "static-only, drafter absent".to_owned();
@@ -883,19 +896,80 @@ fn dynamic_archetypes_line(design_tmpdir: &Path) -> String {
         return format!("static-only, drafter {reason}");
     }
     let manifest = design_tmpdir.join("scout-plan-manifest.json");
-    let count =
-        match read_lossy(&manifest).and_then(|body| serde_json::from_str::<Value>(&body).ok()) {
-            Some(Value::Object(data)) => match data.get("archetypes") {
-                Some(Value::Array(items)) => items.len(),
-                _ => 0,
-            },
-            Some(_) => 0,
-            None => return "static-only, drafter filter_failed".to_owned(),
+    match live_scout_archetypes(&manifest) {
+        Some((count, names)) if count > 0 && names.len() == count => {
+            format_launched_dynamic_archetypes(names).unwrap_or_else(|| format!("ok ({count})"))
+        }
+        Some((count, _)) if count > 0 => format!("ok ({count})"),
+        Some(_) => "static-only, drafter empty".to_owned(),
+        None => "static-only".to_owned(),
+    }
+}
+
+/// Unique dynamic archetype slugs launched in round 1.
+fn round1_dyn_archetype_slugs(design_tmpdir: &Path) -> BTreeSet<String> {
+    let artifacts = PlanReviewRoundArtifacts::new(design_tmpdir, 1);
+    let round_manifest = artifacts.round_slots_manifest();
+    if is_regular_file(&round_manifest) {
+        return dyn_slugs_from_ndjson(&read_lossy(&round_manifest).unwrap_or_default());
+    }
+    dyn_slugs_from_round_dir(&artifacts.round_dir())
+}
+
+fn dyn_slugs_from_ndjson(text: &str) -> BTreeSet<String> {
+    let mut slugs = BTreeSet::new();
+    for line in text.lines() {
+        let Ok(Value::Object(row)) = serde_json::from_str::<Value>(line) else {
+            continue;
         };
-    if count > 0 {
-        format!("ok ({count})")
-    } else {
-        "static-only, drafter empty".to_owned()
+        let Some(slot) = row.get("slot").and_then(Value::as_str) else {
+            continue;
+        };
+        if let Some(slug) = dyn_plan_archetype_slug(slot) {
+            slugs.insert(slug.to_owned());
+        }
+    }
+    slugs
+}
+
+fn dyn_slugs_from_round_dir(round_dir: &Path) -> BTreeSet<String> {
+    let mut slugs = BTreeSet::new();
+    let Ok(entries) = fs::read_dir(round_dir) else {
+        return slugs;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        let stem = name.split('.').next().unwrap_or(name);
+        if let Some(slug) = dyn_plan_archetype_slug(stem) {
+            slugs.insert(slug.to_owned());
+        }
+    }
+    slugs
+}
+
+fn live_scout_archetypes(manifest: &Path) -> Option<(usize, Vec<String>)> {
+    let body = read_lossy(manifest)?;
+    match serde_json::from_str::<Value>(&body).ok()? {
+        Value::Object(data) => match data.get("archetypes") {
+            Some(Value::Array(items)) => {
+                let names = items
+                    .iter()
+                    .filter_map(|item| {
+                        item.get("name")
+                            .and_then(Value::as_str)
+                            .map(str::trim)
+                            .filter(|name| !name.is_empty())
+                            .map(str::to_owned)
+                    })
+                    .collect();
+                Some((items.len(), names))
+            }
+            _other => Some((0, Vec::new())),
+        },
+        _other => Some((0, Vec::new())),
     }
 }
 
@@ -2071,11 +2145,17 @@ mod tests {
             dynamic_archetypes_line(dir.path()),
             "static-only, drafter timeout"
         );
-        fs::write(&status, "SCOUT_WRITTEN=true\n").expect("write");
+        fs::write(
+            &status,
+            "SCOUT_WRITTEN=false\nSCOUT_FAIL_REASON=filter_failed\n",
+        )
+        .expect("write");
         assert_eq!(
             dynamic_archetypes_line(dir.path()),
             "static-only, drafter filter_failed"
         );
+        fs::write(&status, "SCOUT_WRITTEN=true\n").expect("write");
+        assert_eq!(dynamic_archetypes_line(dir.path()), "static-only");
         let manifest = dir.path().join("scout-plan-manifest.json");
         fs::write(&manifest, r#"{"archetypes": [1, 2]}"#).expect("write");
         assert_eq!(dynamic_archetypes_line(dir.path()), "ok (2)");
@@ -2084,6 +2164,81 @@ mod tests {
             dynamic_archetypes_line(dir.path()),
             "static-only, drafter empty"
         );
+        fs::write(
+            &manifest,
+            r#"{"archetypes": [{"name": "proposal-grammar-migration"}]}"#,
+        )
+        .expect("write");
+        assert_eq!(
+            dynamic_archetypes_line(dir.path()),
+            "1 (proposal-grammar-migration)"
+        );
+    }
+
+    #[test]
+    fn dynamic_archetypes_line_prefers_round1_slots_after_scout_clear() {
+        let dir = tempfile::tempdir().expect("tmp");
+        fs::write(
+            dir.path().join("step2b-drafter-status.txt"),
+            "SCOUT_WRITTEN=true\n",
+        )
+        .expect("write");
+        let round1 = dir.path().join("plan-review/round-1");
+        fs::create_dir_all(&round1).expect("round-1");
+        fs::write(
+            round1.join("plan-review-slots.ndjson"),
+            "{\"slot\":\"dyn-cursor-plan-proposal-grammar-migration\",\"tool\":\"cursor\"}\n{\"slot\":\"dyn-codex-plan-proposal-grammar-migration\",\"tool\":\"codex\"}\n{\"slot\":\"cursor-plan-arch\",\"tool\":\"cursor\"}\n",
+        )
+        .expect("write");
+        assert_eq!(
+            dynamic_archetypes_line(dir.path()),
+            "1 (proposal-grammar-migration)"
+        );
+    }
+
+    #[test]
+    fn dynamic_archetypes_line_falls_back_to_round1_dyn_filenames() {
+        let dir = tempfile::tempdir().expect("tmp");
+        fs::write(
+            dir.path().join("step2b-drafter-status.txt"),
+            "SCOUT_WRITTEN=true\n",
+        )
+        .expect("write");
+        let round1 = dir.path().join("plan-review/round-1");
+        fs::create_dir_all(&round1).expect("round-1");
+        fs::write(
+            round1.join("dyn-cursor-plan-proposal-grammar-migration.txt"),
+            "",
+        )
+        .expect("write");
+        fs::write(
+            round1.join("dyn-codex-plan-proposal-grammar-migration.txt.done"),
+            "",
+        )
+        .expect("write");
+        assert_eq!(
+            dynamic_archetypes_line(dir.path()),
+            "1 (proposal-grammar-migration)"
+        );
+    }
+
+    #[test]
+    fn dynamic_archetypes_line_round1_ndjson_is_authoritative_when_empty() {
+        let dir = tempfile::tempdir().expect("tmp");
+        fs::write(
+            dir.path().join("step2b-drafter-status.txt"),
+            "SCOUT_WRITTEN=true\n",
+        )
+        .expect("write");
+        let round1 = dir.path().join("plan-review/round-1");
+        fs::create_dir_all(&round1).expect("round-1");
+        fs::write(
+            round1.join("plan-review-slots.ndjson"),
+            "{\"slot\":\"cursor-plan-arch\",\"tool\":\"cursor\"}\n",
+        )
+        .expect("write");
+        fs::write(round1.join("dyn-cursor-plan-stale.txt"), "").expect("write");
+        assert_eq!(dynamic_archetypes_line(dir.path()), "static-only");
     }
 
     #[test]
