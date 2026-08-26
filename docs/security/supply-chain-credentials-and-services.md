@@ -48,7 +48,7 @@ any event or ref other than `push` or `workflow_dispatch` on
 
 The publisher has only `actions: read` and `contents: read` permissions and a
 newest-wins `main-cache-publication` concurrency group. Lightweight classes
-(pre-commit and harness packages, agent tools, and gitleaks) are populated
+(pre-commit packages, agent tools, and gitleaks) are populated
 directly on exact misses. Those jobs install or verify their pinned inputs and
 save the matching cache, but deliberately do not run a lint, test, or secret
 scan.

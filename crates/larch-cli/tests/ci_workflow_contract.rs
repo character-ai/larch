@@ -95,12 +95,25 @@ fn retired_python_ci_assets_stay_absent() {
         (".github/workflows/main-cache-publication.yaml", "main-cache-python"),
         (".github/actions/main-cache-keys/action.yaml", "pip-python"),
         (".github/main-cache-inventory.json", "site-python"),
+        (
+            ".github/workflows/main-cache-publication.yaml",
+            "main-cache-test-harnesses",
+        ),
+        (".github/actions/main-cache-keys/action.yaml", "pip-test-harnesses"),
+        (".github/main-cache-inventory.json", "site-test-harnesses"),
     ] {
         let source = fs::read_to_string(root.join(path)).unwrap_or_else(|error| {
             panic!("cannot read {path}: {error}");
         });
         assert!(!source.contains(retired), "{path} retains {retired:?}");
     }
+
+    assert!(
+        !root
+            .join(".github/workflows/requirements-test-harnesses.txt")
+            .exists(),
+        "retains requirements-test-harnesses.txt"
+    );
 }
 
 #[test]

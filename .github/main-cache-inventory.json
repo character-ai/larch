@@ -28,24 +28,6 @@
       "publication_event": "trusted-main"
     },
     {
-      "id": "pip-test-harnesses",
-      "key_output": "pip-test-harnesses",
-      "key_inputs": ["runner OS", "runner architecture", "Python 3.11", ".github/workflows/requirements-test-harnesses.txt"],
-      "producer": "main-cache-test-harnesses",
-      "validation": "pinned requirements install",
-      "maximum_bytes": null,
-      "publication_event": "trusted-main"
-    },
-    {
-      "id": "site-test-harnesses",
-      "key_output": "site-test-harnesses",
-      "key_inputs": ["ubuntu-24.04", "Python 3.11", ".github/workflows/requirements-test-harnesses.txt"],
-      "producer": "main-cache-test-harnesses",
-      "validation": "fresh interpreter site-packages install",
-      "maximum_bytes": null,
-      "publication_event": "trusted-main"
-    },
-    {
       "id": "pip-agent-linters",
       "key_output": "pip-agent-linters",
       "key_inputs": ["runner OS", "runner architecture", "Python 3.11", ".github/workflows/requirements-agent-linters.txt"],
