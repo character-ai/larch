@@ -1667,6 +1667,7 @@ mod loop_implementation {
 
     use crate::{
         argparse_compat::{ParsedCommandLine, missing, parse_required_with_help as parsed, parse_required_with_help_allow_unknown as parsed_known, parse_with_flags, python_repr, usage_error},
+        plan_quality_commands::clear_oversize_override_authority,
         runtime_entrypoint::{
             plugin_root, run_verified_larch, run_verified_larch_with_environment,
             run_verified_larch_with_timeout,
@@ -1679,7 +1680,8 @@ mod loop_implementation {
         FLOOR_MANIFEST_RELPATH, KvDocument, ParseOptions, WhitespacePolicy, blank_merge_explicit,
         build_record, cleanup_cache_sessions_root, emit_kv, load_floor_manifest, load_record_data,
         merge_existing_record_fields, parse_allowlisted_env_line, parse_single_kv_row, python_bigint,
-        read_rating_file, resolve_panel_tier, validate_progress_run_id, write_record_map,
+        parse_plan_size_trigger_reason_set, read_rating_file, resolve_panel_tier,
+        validate_progress_run_id, write_record_map,
         private_atomic_write, redact_secrets_only, terminal_plan_trailer_value,
         review::{BoundaryMode, MERGE_KEYS, PlanReviewAggregationOutcome, PlanReviewBallotOutcome, PlanReviewCollectorRecord, PlanReviewManifestSlot, PlanReviewReviewerStatus, PlanReviewRoundArtifacts, PlanReviewRoundInput, PlanReviewRoundState, PlanReviewStructuredFinding, PlanReviewTallyOutcome, PlanReviewVoterOutcome, STEP3_NORMALIZE_ALLOW_KEYS, applied_finding_keys_before, ballot_blocks, finding_dedup_key, merge_already_addressed_finding_keys, normalize_collected_findings, parse_blocks, parse_plan_review_accepted_findings, render_reviewer_status_table, render_reviewer_status_tsv, replace_applied_finding_keys, reviewer_status_rows, run_plan_review_round, step3_loop_status_to_loop_status, step3_next_action, step3_status_from_loop_status},
     };
@@ -1834,7 +1836,28 @@ mod loop_implementation {
     fn clear_downstream(root:&Path){for rel in [".completed/step-3",".completed/step-3.5",".completed/step-3b",".completed/step-4",".completed/step-4b","bgjob/design-step3-review.result.env","bgjob/design-step4-tail.result.env"]{remove(&root.join(rel));}if let Ok(entries)=fs::read_dir(root){for entry in entries.flatten(){if entry.file_name().to_string_lossy().starts_with(".gate-b-postapply-ready-"){remove(&entry.path());}}}}
     fn cleanup_loop_state(root:&Path,max:u64){if let Ok(entries)=fs::read_dir(root){for entry in entries.flatten(){let name=entry.file_name().to_string_lossy().into_owned();let number=name.strip_prefix(".step3-round-").and_then(|v|v.strip_suffix(".phase")).or_else(||name.strip_prefix("plan-pre-apply-round-").and_then(|v|v.strip_suffix(".txt")));if number.and_then(|v|v.parse::<u64>().ok()).is_some_and(|n|n<=max)&&!entry.path().is_symlink(){remove(&entry.path());}}}}
     #[must_use] pub fn step3_state(arguments:&[OsString])->ExitCode{
-        let parsed=match parsed(arguments,"cli.py plan-review step3-state",STATE_USAGE,STATE_HELP,&["--design-tmpdir"],&["--direct-review-entry","--direct-review-pause-hygiene","--auto-continuation-entry","--gate-b-bypass"],&["--design-tmpdir"]){Ok(v)=>v,Err(c)=>return c};let root=match root(&text(&parsed,"--design-tmpdir"),"cli.py plan-review step3-state"){Ok(v)=>v,Err(c)=>return c};let _=fs::create_dir_all(root.join(".completed"));let count=read_count(&root);let state=if parsed.flag("--auto-continuation-entry"){clear_downstream(&root);cleanup_loop_state(&root,count);"auto-continuation-entry"}else if parsed.flag("--gate-b-bypass"){if root.join(".completed/step-3.5").exists(){"refused-partial-gate-b-bypass"}else if let Err(error)=completed(&root,true){eprintln!("cli.py plan-review step3-state: {error}");return ExitCode::FAILURE}else{"gate-b-bypass"}}else if parsed.flag("--direct-review-entry")||parsed.flag("--direct-review-pause-hygiene"){let action=if parsed.flag("--direct-review-entry"){"direct-review-entry"}else{"direct-review-pause-hygiene"};if !root.join(".step3-reentry").is_file(){"noop"}else{clear_downstream(&root);for name in ["step-1e","step-2a","step-2b","step-2b.5"]{let _=touch(&root.join(".completed").join(name));}if parsed.flag("--direct-review-entry"){cleanup_loop_state(&root,count);for rel in ["accepted-plan-findings-all.md",".accepted-plan-findings-all.prev.md","rejected-findings-all.md",".rejected-findings-all.prev.md",".step3-applied-finding-keys.tsv","oos-accepted-design.md",".oos-accepted-design.prev.md",".step3-reentry"]{remove(&root.join(rel));}}action}}else{"ok"};emit_kv("STEP3_STATE",state);emit_kv("REVIEW_ROUND_COUNT",&count.to_string());ExitCode::SUCCESS
+        let parsed=match parsed(arguments,"cli.py plan-review step3-state",STATE_USAGE,STATE_HELP,&["--design-tmpdir"],&["--direct-review-entry","--direct-review-pause-hygiene","--auto-continuation-entry","--gate-b-bypass"],&["--design-tmpdir"]){Ok(v)=>v,Err(c)=>return c};
+        let root=match root(&text(&parsed,"--design-tmpdir"),"cli.py plan-review step3-state"){Ok(v)=>v,Err(c)=>return c};
+        let _=fs::create_dir_all(root.join(".completed"));
+        let count=read_count(&root);
+        let state=if parsed.flag("--auto-continuation-entry"){
+            clear_downstream(&root);cleanup_loop_state(&root,count);"auto-continuation-entry"
+        }else if parsed.flag("--gate-b-bypass"){
+            if root.join(".completed/step-3.5").exists(){"refused-partial-gate-b-bypass"}else if let Err(error)=completed(&root,true){eprintln!("cli.py plan-review step3-state: {error}");return ExitCode::FAILURE}else{"gate-b-bypass"}
+        }else if parsed.flag("--direct-review-entry")||parsed.flag("--direct-review-pause-hygiene"){
+            let direct=parsed.flag("--direct-review-entry");
+            let action=if direct{"direct-review-entry"}else{"direct-review-pause-hygiene"};
+            if !root.join(".step3-reentry").is_file(){
+                "noop"
+            }else{
+                if direct&&let Err(error)=clear_oversize_override_authority(&root){eprintln!("cli.py plan-review step3-state: failed to revoke oversize override authority: {error}");return ExitCode::FAILURE;}
+                clear_downstream(&root);
+                for name in ["step-1e","step-2a","step-2b","step-2b.5"]{let _=touch(&root.join(".completed").join(name));}
+                if direct{cleanup_loop_state(&root,count);for rel in ["accepted-plan-findings-all.md",".accepted-plan-findings-all.prev.md","rejected-findings-all.md",".rejected-findings-all.prev.md",".step3-applied-finding-keys.tsv","oos-accepted-design.md",".oos-accepted-design.prev.md",".step3-reentry"]{remove(&root.join(rel));}}
+                action
+            }
+        }else{"ok"};
+        emit_kv("STEP3_STATE",state);emit_kv("REVIEW_ROUND_COUNT",&count.to_string());ExitCode::SUCCESS
     }
 
     fn session_values(arguments:&[OsString])->Result<(String,String,String),String>{
@@ -2044,7 +2067,29 @@ mod loop_implementation {
             .args(args).env("DESIGN_TMPDIR",root).env("CLAUDE_PLUGIN_ROOT",plugin_root().unwrap_or_default()).env("PLUGIN_ROOT",plugin_root().unwrap_or_default()).output();match output{Ok(v)=>(v.status.code().unwrap_or(1),String::from_utf8_lossy(&v.stdout).into_owned(),String::from_utf8_lossy(&v.stderr).into_owned()),Err(error)=>(1,String::new(),error.to_string())}}
     fn run_round_body(root:&Path,round:u64)->(i32,BTreeMap<String,String>){progress_note(root,&format!("round {round} launched"));round_start(root,round);clean_round(root,round);let(rc,mut values)=if let Some(path)=env::var_os("RUN_STEP3_PLAN_REVIEW_LOOP_SH").map(PathBuf::from).filter(|p|!p.as_os_str().is_empty()){let args=[OsString::from("--design-tmpdir"),root.as_os_str().into(),"--round-num".into(),round.to_string().into(),"--prune-round-num".into(),round.to_string().into()];let(rc,out,err)=run_override(&path,&args,root);let all=format!("{out}{err}");print!("{all}");let parsed=kv_text(&all);let artifacts=PlanReviewRoundArtifacts::new(root,round);if artifacts.reviewer_status_tsv().is_file()&&!artifacts.reviewer_status_tsv().is_symlink(){materialize_existing_status(root,round,true);}else{remove(&artifacts.reviewer_status_tsv());let terminal=parsed.get("LOOP_STATUS").map(String::as_str)==Some("zero-findings-degraded-panel")||parsed.get("LOOP_STATUS").map(String::as_str)==Some("panel-failed")&&matches!(parsed.get("AGGREGATOR_STATUS").map(String::as_str),Some("skipped"|"skipped-pruned-empty"));if terminal{let _=write(root,&root.join("collector-results.env"),"");materialize_status(root,round,Some(""),true);}else{materialize_status(root,round,None,true);}}(rc,parsed)}else{round_once(root,round)};if !values.contains_key("REASON"){if let Some(reason)=env_rows(&root.join(".step3-review-result.env")).get("REASON"){values.insert("REASON".into(),reason.clone());}}let mut status=values.get("LOOP_STATUS").cloned().unwrap_or_else(||if rc==0{"complete".into()}else{"panel-failed".into()});if rc!=0&&!["tally-error","degraded-empty-collector","panel-failed"].contains(&status.as_str()){status=if values.get("TALLY_PLAN_REVIEW_STATUS").map(String::as_str)==Some("tally-error"){"tally-error".into()}else{"panel-failed".into()};}if values.contains_key("STEP3_REVIEW_LOOP_STATUS"){status=values.get("LOOP_STATUS").cloned().unwrap_or(status);}if matches!(status.as_str(),"complete"|"zero-findings-degraded-panel"){let accepted=parse_plan_review_accepted_findings(&read(&root.join("accepted-plan-findings.md"))).len().max(values.get("ACCEPTED_COUNT").and_then(|v|v.parse().ok()).unwrap_or(0));progress_note(root,&format!("round {round} complete with {accepted} accepted"));}values.insert("LOOP_STATUS".into(),status);materialize_existing_status(root,round,false);(rc,values)}
     fn snapshot(root:&Path,round:u64)->PathBuf{let path=root.join(format!("plan-pre-apply-round-{round}.txt"));if !path.exists(){let _=fs::copy(root.join("plan.txt"),&path);}path}
-    fn dedup(root:&Path,round:u64,values:&mut BTreeMap<String,String>)->i32{let before=snapshot(root,round);let args1=[OsString::from("--design-tmpdir"),root.as_os_str().into(),"--snapshot-trailers".into()];let args2=[OsString::from("--design-tmpdir"),root.as_os_str().into(),"--dedup".into()];let invoke=|args:&[OsString]|->i32{if let Some(path)=env::var_os("RUN_STEP3_DEDUP_PLAN_SH").map(PathBuf::from).filter(|p|!p.as_os_str().is_empty()){run_override(&path,args,root).0}else{child_owned(std::iter::once(OsString::from("plan-review")).chain(std::iter::once(OsString::from("gate-b-dedup"))).chain(args.iter().cloned()).collect()).map_or(1,|out|code(&out))}};progress_note(root,&format!("round {round}: plan-review dedup running"));let mut rc=invoke(&args1);if rc==0{rc=invoke(&args2);}if rc!=0{values.insert("DEDUP_RC".into(),rc.to_string());if before.is_file(){let _=fs::copy(before,root.join("plan.txt"));}write_phase(root,round,"awaiting-apply");return 22;}if let Ok(out)=child_owned(vec!["design".into(),"dialectic-clear-stale".into(),"--design-tmpdir".into(),root.as_os_str().into(),"--reason".into(),"plan-rewrite".into()]){if !out.status().success(){eprintln!("**⚠ plan-review: dialectic-clear-stale failed after dedup; stale clarifier artifacts may linger (Gate C fingerprint binding still gates debate).**");}}let _=touch(&root.join(format!(".gate-b-postapply-ready-{round}")));remove(&root.join(format!(".gate-b-per-round-approval-round-{round}.env")));0}
+    fn dedup(root:&Path,round:u64,values:&mut BTreeMap<String,String>)->i32{
+        let before=snapshot(root,round);
+        let args1=[OsString::from("--design-tmpdir"),root.as_os_str().into(),"--snapshot-trailers".into()];
+        let args2=[OsString::from("--design-tmpdir"),root.as_os_str().into(),"--dedup".into()];
+        let invoke=|args:&[OsString]|->(i32,String){
+            if let Some(path)=env::var_os("RUN_STEP3_DEDUP_PLAN_SH").map(PathBuf::from).filter(|p|!p.as_os_str().is_empty()){
+                let(rc,stdout,_)=run_override(&path,args,root);(rc,stdout)
+            }else{
+                child_owned(std::iter::once(OsString::from("plan-review")).chain(std::iter::once(OsString::from("gate-b-dedup"))).chain(args.iter().cloned()).collect()).map_or_else(|_|(1,String::new()),|out|(code(&out),String::from_utf8_lossy(out.stdout()).into_owned()))
+            }
+        };
+        progress_note(root,&format!("round {round}: plan-review dedup running"));
+        let(mut rc,_)=invoke(&args1);
+        let mut dedup_stdout=String::new();
+        if rc==0{(rc,dedup_stdout)=invoke(&args2);}
+        if rc!=0{values.insert("DEDUP_RC".into(),rc.to_string());if before.is_file(){let _=fs::copy(before,root.join("plan.txt"));}write_phase(root,round,"awaiting-apply");return 22;}
+        let notice_prefix="ℹ oversize override carried forward (reasons: ";
+        if let Some(notice)=dedup_stdout.lines().find(|line|line.strip_prefix(notice_prefix).and_then(|value|value.strip_suffix(')')).is_some_and(|reasons|!reasons.is_empty()&&parse_plan_size_trigger_reason_set(reasons).is_some())){println!("{notice}");}
+        if let Ok(out)=child_owned(vec!["design".into(),"dialectic-clear-stale".into(),"--design-tmpdir".into(),root.as_os_str().into(),"--reason".into(),"plan-rewrite".into()]){if !out.status().success(){eprintln!("**⚠ plan-review: dialectic-clear-stale failed after dedup; stale clarifier artifacts may linger (Gate C fingerprint binding still gates debate).**");}}
+        let _=touch(&root.join(format!(".gate-b-postapply-ready-{round}")));
+        remove(&root.join(format!(".gate-b-per-round-approval-round-{round}.env")));
+        0
+    }
     fn gate_b_start(root:&Path,round_start:u64,end:u64,output:&str)->Option<u64>{let mut latest=None;for line in read(&root.join("timing-ledger.tsv")).lines(){let cols=line.split('\t').collect::<Vec<_>>();if cols.len()<13||cols[0]!="v1"||cols[1]!="vendor"{continue;}if cols[6]=="gate-b-apply"&&Path::new(cols[10]).file_name().and_then(|v|v.to_str())==Some(output){return None;}if cols[6]=="gate-b-apply"{continue;}let Ok(start)=cols[7].parse::<u64>()else{continue;};let Ok(row_end)=cols[8].parse::<u64>()else{continue;};if row_end<=round_start||start>=end{continue;}latest=Some(latest.map_or(row_end,|value:u64|value.max(row_end)));}latest.filter(|value|*value<end)}
     fn write_round_meta(root:&Path,round:u64){let _=child_owned(vec!["progress".into(),"write-design-round-meta".into(),"--round-dir".into(),root.join(format!("plan-review/round-{round}")).into_os_string()]);let start=read(&root.join(format!("plan-review/round-{round}/round-start-s"))).trim().parse::<u64>().ok();if let Some(start)=start.filter(|v|*v>0){let end=now_s();let ledger=root.join("timing-ledger.tsv");let timing_env=[(ChildEnvironment::LarchTimingSkill,OsString::from("design")),(ChildEnvironment::LarchTimingLedger,ledger.clone().into_os_string()),(ChildEnvironment::DesignTmpdir,root.as_os_str().into())];if root.join(format!(".gate-b-postapply-ready-{round}")).is_file(){let output=format!("gate-b-apply-round-{round}.out");if let Some(gate_start)=gate_b_start(root,start,end,&output){let args=vec!["timing".into(),"record-vendor-task".into(),"--ledger".into(),ledger.clone().into_os_string(),"--vendor".into(),"claude".into(),"--task-kind".into(),"gate-b-apply".into(),"--start-s".into(),gate_start.to_string().into(),"--end-s".into(),end.to_string().into(),"--output".into(),output.into(),"--exit-code".into(),"0".into(),"--status".into(),"complete".into()];let _=run_verified_larch_with_environment(&args,&timing_env);}}let args=super::step3_round_timing_arguments(root,round,start,end);let _=run_verified_larch_with_environment(&args,&timing_env);}}
     fn clear_scout(root:&Path){if let Ok(entries)=fs::read_dir(root){for entry in entries.flatten(){let name=entry.file_name().to_string_lossy().into_owned();if name=="scout-plan-manifest.json"||name.starts_with("scout-plan-manifest.json.candidate.")||name.starts_with("scout-plan-manifest.json.filtered."){remove(&entry.path());}}}}
@@ -2214,8 +2259,8 @@ mod loop_implementation {
 mod implementation {
     #![allow(clippy::cast_precision_loss, clippy::format_collect, clippy::format_push_string, clippy::if_not_else, clippy::option_if_let_else, clippy::struct_field_names, clippy::suboptimal_flops, clippy::too_many_lines)] // Frozen scoring arithmetic, table rendering, and transaction order intentionally mirror Python.
 
-    use crate::argparse_compat::{ParsedCommandLine, parse_required_with_help as parsed, parse_with_flags, usage_error};
-    use larch_adapters::{TemporaryRoot, atomic_write_utf8_in, ensure_directory_chain, remove_file_if_present, validate_design_tmpdir};
+    use crate::{argparse_compat::{ParsedCommandLine, parse_required_with_help as parsed, parse_with_flags, usage_error}, plan_quality_commands::reconcile_gate_b_oversize_override};
+    use larch_adapters::{TemporaryRoot, atomic_write_utf8_in, ensure_directory_chain, validate_design_tmpdir};
     use larch_core::review::{
         BoundaryMode, FINDINGS_CLASSIFICATION_HEADER, ItemAdjudicationResult, ItemContext, ItemKind, LedgerRow, adjudicate_item, alias_ballot_id, ballot_blocks, classify_plan_review_gate_b, filter_plan_review_gate_b_skipped, finding_dedup_key, is_security_block_text, parse_blocks, parse_judge_vote_text, parse_plan_review_accepted_findings, plan_review_gate_b_display_rows, reviewer_for_block_text,
         grow_reviewer_labels, proposer_map_item_mismatch, slot_human_label, split_classification_attribution, vote_for_id_text, write_round,
@@ -2280,9 +2325,6 @@ mod implementation {
     }
     fn optional_text(path: &Path) -> Result<String, String> {
         if path.is_file() && !path.is_symlink() { read_text(path) } else { Ok(String::new()) }
-    }
-    fn best_effort_text(path: &Path) -> String {
-        read_text(path).unwrap_or_default()
     }
     fn accepted(root: &Path) -> Result<Vec<larch_core::review::PlanReviewAcceptedFinding>, String> {
         optional_text(&root.join("accepted-plan-findings.md")).map(|text| parse_plan_review_accepted_findings(&text))
@@ -2586,16 +2628,15 @@ mod implementation {
         if write(&root, &plan, &output).is_err() {
             return ExitCode::FAILURE;
         }
-        let authority = root.join(".gate-b-oversize-override.sha256");
-        let trusted = authority.is_file() && !authority.is_symlink() && trim_python_whitespace(&best_effort_text(&authority)) == sha256(&original);
-        let authority_result = if terminal_plan_trailer_value(&output, "oversize_override") == Some("operator") && trusted {
-            write(&root, &authority, &format!("{}\n", sha256(&output)))
-        } else {
-            remove_file_if_present(&authority)
+        let carried_reasons = match reconcile_gate_b_oversize_override(&root, &original, &output) {
+            Ok(value) => value,
+            Err(error) => {
+                eprintln!("cli.py plan-review gate-b-dedup: {error}");
+                return ExitCode::FAILURE;
+            }
         };
-        if let Err(error) = authority_result {
-            eprintln!("cli.py plan-review gate-b-dedup: {error}");
-            return ExitCode::FAILURE;
+        if let Some(reasons) = carried_reasons {
+            println!("ℹ oversize override carried forward (reasons: {reasons})");
         }
         println!("dedup-sweep: removed {removed} duplicate line(s) from plan.txt\nGATE_B_DEDUP_STATUS=ok");
         ExitCode::SUCCESS

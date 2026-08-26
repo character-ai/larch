@@ -63,11 +63,12 @@ pub use plan_grammar::{
 pub use plan_quality::{
     HEADER as PLAN_COMMAND_TSV_HEADER, OVERSIZE_OVERRIDE_OPERATOR, OptionalMetadata,
     PLAN_SIZE_MAX_DIFF_ADDED, PLAN_SIZE_MAX_DIFF_LINES, PLAN_SIZE_MAX_FIRM_HEADINGS,
-    PLAN_SIZE_MAX_PLAN_BODY_LINES, PLAN_SIZE_MAX_SURFACES, PlanCommandRow, PlanSizeAssessment,
-    ValidationSummary, assess_plan_size, compose_plan_goals_test, drift_exceeds, drift_ratio_token,
+    PLAN_SIZE_MAX_PLAN_BODY_LINES, PLAN_SIZE_MAX_SURFACES, PLAN_SIZE_TRIGGER_REASONS,
+    PlanCommandRow, PlanSizeAssessment, ValidationSummary, assess_plan_size,
+    compose_plan_goals_test, covered_plan_size_trigger_reasons, drift_exceeds, drift_ratio_token,
     firm_heading_count, firm_heading_paths, parse_optional_metadata, parse_plan_commands,
-    plan_surfaces, render_plan_command_tsv, set_oversize_override_text,
-    validate_difficulty_metadata,
+    parse_plan_size_trigger_reason_set, plan_size_trigger_reasons, plan_surfaces,
+    render_plan_command_tsv, set_oversize_override_text, validate_difficulty_metadata,
 };
 pub use publish::{
     AssessmentCompleteness, BLOCKED_REVIEW_STATUSES, PUBLISH_RESULT_ENV_ALLOW, ReviewProvenance,

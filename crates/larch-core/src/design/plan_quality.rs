@@ -18,7 +18,7 @@ use crate::design::plan_grammar::{
 use crate::{balanced_fence_line_indices, difficulty};
 use regex::Regex;
 use std::{
-    collections::HashSet,
+    collections::{BTreeSet, HashSet},
     path::{Path, PathBuf},
     sync::LazyLock,
 };
@@ -35,6 +35,19 @@ pub const PLAN_SIZE_MAX_FIRM_HEADINGS: usize = 25;
 pub const PLAN_SIZE_MAX_SURFACES: usize = 4;
 /// Trusted oversize override trailer value.
 pub const OVERSIZE_OVERRIDE_OPERATOR: &str = "operator";
+const PLAN_SIZE_REASON_PLAN_BODY_LINES: &str = "plan-body-lines";
+const PLAN_SIZE_REASON_DIFF_ADDED: &str = "diff-added";
+const PLAN_SIZE_REASON_DIFF_LINES: &str = "diff-lines";
+const PLAN_SIZE_REASON_FIRM_HEADINGS: &str = "firm-headings";
+const PLAN_SIZE_REASON_SURFACES: &str = "surfaces";
+/// Stable plan-size trigger reason tokens in emission order.
+pub const PLAN_SIZE_TRIGGER_REASONS: [&str; 5] = [
+    PLAN_SIZE_REASON_PLAN_BODY_LINES,
+    PLAN_SIZE_REASON_DIFF_ADDED,
+    PLAN_SIZE_REASON_DIFF_LINES,
+    PLAN_SIZE_REASON_FIRM_HEADINGS,
+    PLAN_SIZE_REASON_SURFACES,
+];
 
 /// TSV header for parsed plan-command rows.
 pub const HEADER: &str = "row_type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid";
@@ -324,7 +337,7 @@ pub fn assess_plan_size(
     let surfaces = plan_surfaces(text).len();
     let mut reasons = Vec::new();
     if plan_lines > PLAN_SIZE_MAX_PLAN_BODY_LINES {
-        reasons.push("plan-body-lines");
+        reasons.push(PLAN_SIZE_REASON_PLAN_BODY_LINES);
     }
     let size_diff_added = meta
         .diff_added
@@ -335,16 +348,16 @@ pub fn assess_plan_size(
     let size_diff_raw = size_diff_added || size_diff_lines;
     let soft = meta.mechanical_churn == "true" && size_diff_raw;
     if size_diff_added {
-        reasons.push("diff-added");
+        reasons.push(PLAN_SIZE_REASON_DIFF_ADDED);
     }
     if size_diff_lines {
-        reasons.push("diff-lines");
+        reasons.push(PLAN_SIZE_REASON_DIFF_LINES);
     }
     if firm_headings > PLAN_SIZE_MAX_FIRM_HEADINGS {
-        reasons.push("firm-headings");
+        reasons.push(PLAN_SIZE_REASON_FIRM_HEADINGS);
     }
     if surfaces > PLAN_SIZE_MAX_SURFACES {
-        reasons.push("surfaces");
+        reasons.push(PLAN_SIZE_REASON_SURFACES);
     }
     let override_suppressed =
         !reasons.is_empty() && oversize_override == Some(OVERSIZE_OVERRIDE_OPERATOR);
@@ -355,6 +368,54 @@ pub fn assess_plan_size(
         soft,
         override_suppressed,
     }
+}
+
+/// Independently compute the stable size-trigger reasons for one plan.
+#[must_use]
+pub fn plan_size_trigger_reasons(plan_text: &str) -> Option<Vec<&'static str>> {
+    let trailers = parse_final_trailers(plan_text, true);
+    let diff_lines = trailers.diff_lines()?;
+    let meta = parse_optional_metadata(plan_text);
+    Some(
+        assess_plan_size(
+            &meta,
+            plan_text,
+            trailers.start_line.saturating_sub(1),
+            diff_lines,
+            None,
+        )
+        .reasons,
+    )
+}
+
+/// Parse one canonical comma-separated trigger-reason set.
+#[must_use]
+pub fn parse_plan_size_trigger_reason_set(raw: &str) -> Option<BTreeSet<String>> {
+    let reasons = if raw.is_empty() {
+        BTreeSet::new()
+    } else {
+        raw.split(',').map(str::to_owned).collect::<BTreeSet<_>>()
+    };
+    let canonical = PLAN_SIZE_TRIGGER_REASONS
+        .into_iter()
+        .filter(|reason| reasons.contains(*reason))
+        .collect::<Vec<_>>()
+        .join(",");
+    (canonical == raw && reasons.len() == raw.split(',').filter(|value| !value.is_empty()).count())
+        .then_some(reasons)
+}
+
+/// Return live reasons only when the recorded operator decision covers them.
+#[must_use]
+pub fn covered_plan_size_trigger_reasons(
+    recorded: &BTreeSet<String>,
+    plan_text: &str,
+) -> Option<Vec<&'static str>> {
+    let current = plan_size_trigger_reasons(plan_text)?;
+    current
+        .iter()
+        .all(|reason| recorded.contains(*reason))
+        .then_some(current)
 }
 
 /// Render plan-command rows as TSV matching the Python owner.
@@ -1190,7 +1251,8 @@ pub fn drift_ratio_token(current: i64, baseline: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        OVERSIZE_OVERRIDE_OPERATOR, assess_plan_size, parse_optional_metadata, parse_plan_commands,
+        OVERSIZE_OVERRIDE_OPERATOR, assess_plan_size, covered_plan_size_trigger_reasons,
+        parse_optional_metadata, parse_plan_commands, parse_plan_size_trigger_reason_set,
         render_plan_command_tsv, validate_difficulty_metadata,
     };
     use std::{fs, path::PathBuf};
@@ -1261,6 +1323,25 @@ mod tests {
         );
         assert!(!assessment.soft);
         assert!(!assessment.override_suppressed);
+    }
+
+    #[test]
+    fn trigger_reason_state_is_canonical_and_covers_only_subsets() {
+        let with_diff = "### UPDATED: crates/a.rs\n### UPDATED: skills/a.md\n### UPDATED: docs/a.md\n### UPDATED: scripts/a.sh\n### UPDATED: README.md\n\ndifficulty: HARD\ndiff_added: 2001\ndiff_lines: 1\n";
+        let recorded =
+            parse_plan_size_trigger_reason_set("diff-added,surfaces").expect("canonical reasons");
+        assert_eq!(
+            covered_plan_size_trigger_reasons(&recorded, with_diff),
+            Some(vec!["diff-added", "surfaces"])
+        );
+        let without_diff = with_diff.replace("diff_added: 2001\n", "");
+        assert_eq!(
+            covered_plan_size_trigger_reasons(&recorded, &without_diff),
+            Some(vec!["surfaces"])
+        );
+        assert!(parse_plan_size_trigger_reason_set("surfaces,diff-added").is_none());
+        assert!(parse_plan_size_trigger_reason_set("surfaces,surfaces").is_none());
+        assert!(parse_plan_size_trigger_reason_set("unknown").is_none());
     }
 
     #[test]
