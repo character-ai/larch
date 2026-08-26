@@ -14,6 +14,8 @@ use crate::{
 
 use super::larch_runtime_entrypoint::is_production_surface;
 
+pub(super) use crate::syntax::executable_index;
+
 const NAME: &str = "production-cargo-run";
 const DESCRIPTION: &str = "Reject production Cargo and target-directory larch execution";
 const MESSAGE: &str =
@@ -104,24 +106,6 @@ fn prohibited_argv(words: &[String]) -> bool {
     }
     is_cargo(program)
         && cargo_subcommand(words, index).is_some_and(|word| matches!(word, "run" | "install"))
-}
-
-pub(super) fn executable_index(words: &[String]) -> Option<usize> {
-    let mut index = 0;
-    loop {
-        while words
-            .get(index)
-            .is_some_and(|word| word.starts_with('-') || word.contains('='))
-        {
-            index += 1;
-        }
-        let program = words.get(index)?;
-        if matches!(program.as_str(), "command" | "env" | "exec" | "sudo") {
-            index += 1;
-            continue;
-        }
-        return Some(index);
-    }
 }
 
 fn cargo_subcommand(words: &[String], cargo_index: usize) -> Option<&str> {

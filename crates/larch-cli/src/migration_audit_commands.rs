@@ -631,7 +631,7 @@ fn launcher_escape_hatch_findings(launcher: &str) -> Vec<String> {
         .into_iter()
         .filter_map(|command| {
             let words = larch_lint::syntax::shell_command_words(command, launcher);
-            let index = launcher_executable_index(&words)?;
+            let index = larch_lint::syntax::executable_index(&words)?;
             let program = words.get(index)?;
             let basename = program.rsplit('/').next().unwrap_or(program);
             matches!(basename, "python" | "python3").then(|| {
@@ -639,28 +639,6 @@ fn launcher_escape_hatch_findings(launcher: &str) -> Vec<String> {
             })
         })
         .collect()
-}
-
-/// Resolve the executable word index, skipping option/assignment words and the
-/// `command`/`env`/`exec`/`sudo` wrappers. Mirrors
-/// `larch_lint::rules::production_cargo_run::executable_index`, which is private
-/// to that rule.
-fn launcher_executable_index(words: &[String]) -> Option<usize> {
-    let mut index = 0;
-    loop {
-        while words
-            .get(index)
-            .is_some_and(|word| word.starts_with('-') || word.contains('='))
-        {
-            index += 1;
-        }
-        let program = words.get(index)?;
-        if matches!(program.as_str(), "command" | "env" | "exec" | "sudo") {
-            index += 1;
-            continue;
-        }
-        return Some(index);
-    }
 }
 
 fn lint_rule_findings(

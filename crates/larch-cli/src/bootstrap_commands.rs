@@ -832,7 +832,7 @@ fn refresh_reviewer_state(
     write_base_session_env(state, options)
 }
 
-pub(crate) const LARCH_RUN_SH: &str = r#"#!/usr/bin/env bash
+pub const LARCH_RUN_SH: &str = r#"#!/usr/bin/env bash
 set -uo pipefail
 
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)}"
