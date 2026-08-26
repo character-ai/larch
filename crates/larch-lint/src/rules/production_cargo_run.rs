@@ -76,7 +76,7 @@ fn extension(path: &str) -> Option<&str> {
     Path::new(path).extension()?.to_str()
 }
 
-fn is_fixture_surface(path: &str) -> bool {
+pub(super) fn is_fixture_surface(path: &str) -> bool {
     path.split('/').any(|part| part == "fixtures")
         || path
             .rsplit('/')

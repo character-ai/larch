@@ -25,11 +25,11 @@ This is **mutating**. It files by default after verification.
 - Reject missing, non-integer, zero, negative, or extra arguments.
 - No other public flags exist.
 
-## Wrapper KV binding contract
+## Command KV binding contract
 
 Claude Code Bash fences do **not** preserve shell state.
 
-After **every** `${CLAUDE_PLUGIN_ROOT}/skills/rejected-analysis/scripts/rejected-analysis.sh` fence, parse whole-line `KEY=value` rows from stdout before any later Bash, Agent, or Skill step.
+After **every** `scripts/larch.sh rejected-analysis` fence, parse whole-line `KEY=value` rows from stdout before any later Bash, Agent, or Skill step.
 
 Required bindings after **prepare**:
 
@@ -84,8 +84,8 @@ Synchronize immutable inputs once, parse one whole-line `CORPUS_ROOT`, then run:
 
 ```bash
 SYNC_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" run-log sync)
-"${CLAUDE_PLUGIN_ROOT}/skills/rejected-analysis/scripts/rejected-analysis.sh" prepare \
-  --n "$DAYS" --log-root "<parsed CORPUS_ROOT>"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" rejected-analysis prepare \
+  --days "$DAYS" --log-root "<parsed CORPUS_ROOT>"
 ```
 
 Parse and retain `WORK_DIR`, `VERIFY_COUNT`, `VERDICTS_FILE`, `INGEST_STATUS_FILE`, `LEDGER_PENDING_FILE`, `ISSUE_SENTINEL`, `REPO_ROOT`, and every `VERIFY_PROMPT_<candidate-id>=<path>` row.
@@ -131,10 +131,10 @@ When `LAUNCHER_EXIT=0`, read `${OUTPUT}.dirty-tree`. If that sidecar has `STATUS
 
 ### Step 5: Ingest each launch attempt
 
-For every launch attempt, call the wrapper. Do not prompt-side parse JSON from the launcher output file.
+For every launch attempt, call the Rust command. Do not prompt-side parse JSON from the launcher output file.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/rejected-analysis/scripts/rejected-analysis.sh" ingest-verdict \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" rejected-analysis ingest-verdict \
   --work-dir "<parsed WORK_DIR>" \
   --candidate-id "<candidate-id>" \
   --output "<parsed OUTPUT>" \
@@ -160,7 +160,7 @@ If `LAUNCH_FAILURES>0`, still continue through `finalize` and `record`. Exit non
 Run:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/rejected-analysis/scripts/rejected-analysis.sh" finalize --work-dir "<parsed WORK_DIR>"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" rejected-analysis finalize --work-dir "<parsed WORK_DIR>"
 ```
 
 Parse `CONFIRMED_COUNT`, `ISSUE_BATCH_FILE`, `ISSUE_CLUSTER_MAP_FILE`, `ISSUE_SENTINEL`, `LEDGER_PENDING_FILE`, `INGEST_STATUS_FILE`, `ISSUE_OUTPUT_STUB`, and `LAUNCH_FAILURES`.
@@ -215,7 +215,7 @@ When Step 7 ran, pass `--issue-verified true` only after sentinel verification s
 Always invoke `record` after `finalize`:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/rejected-analysis/scripts/rejected-analysis.sh" record \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" rejected-analysis record \
   --work-dir "<parsed WORK_DIR>" \
   [--issue-output "<parsed WORK_DIR>/issue.stdout.txt"] \
   [--issue-verified true|false] \
@@ -240,7 +240,6 @@ Report success counters only when all conditions are clear and `record` reports 
 
 ## Implementation files
 
-- `scripts/rejected-analysis.sh` (contract: `scripts/rejected-analysis.md`) is the thin runtime wrapper. Rust owns every `rejected-analysis` verb.
 - `scripts/test-rejected-analysis.sh` (contract: `scripts/test-rejected-analysis.md`) is the offline structural harness for this skill.
 
 ## NEVER

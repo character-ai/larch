@@ -18,6 +18,7 @@ Larch uses [pre-commit](https://pre-commit.com/) as the source of truth for lint
 | Agent tool contract | `agents/*.md`, `.claude/agents/*.md` | The pinned `agent-lint` rules A012 and A013 run two independent checks: (1) rejects agent frontmatter that explicitly restricts tools without `Read` while the prompt body instructs the agent to read files, bundles, paths, diffs, artifacts, markdown, or logs; (2) rejects prompts that pair read intent with a machine-parsed-only JSON or JSONL output mandate but carry no fail-closed instruction for unreadable evidence. |
 | Tier-1 instruction import size | `AGENTS.md`, `KARPATHY_CLAUDE.md`, `BASH_AUTHORING.md` | Agent-lint D004 enforces the distinct path-specific caps in `agent-lint.toml` for the root imports loaded by `CLAUDE.md`. |
 | Shell contract rules | runtime `.sh` and shell test harnesses | Rust `larch-lint` rules reject post-`larch_quiet_init` `echo`/`printf`/`cat >&2` and require harnesses to clear inherited session state or carry a reason-bearing suppression. They run through `make rust-lint` in CI and the explicit manual pre-commit stage. |
+| Residual Bash shim boundary | Tracked production `.sh` files | `larch lint rule residual-bash-shim` requires each production shell script to be listed in `scripts/residual-bash-paths.txt` or be an at-most-25-line shim whose only operational command is an `exec` of `scripts/larch.sh`. Fixtures, `test-*.sh` harnesses, and the generated `plugin/` projection are excluded. The rule has no baseline or suppression. Distributed rule registration includes it in `make rust-lint`, local `make lint`, and each CI `lint all` policy lane. Focused coverage lives in `crates/larch-lint/tests/residual_bash_shim.rs`. |
 | Inline `gh --body` / `--notes` | `.sh`, `.py` | The pinned `agent-lint` rule G008 rejects inline `--body` / `--notes` argv in shell and Python argv-list forms; use `--body-file` / `--notes-file`. This is the backstop for GitHub CLI body-like payloads; see `BASH_AUTHORING.md` §4 for authoring guidance. |
 | Dead path pointers in Tier-1 docs | `AGENTS.md`, `SECURITY.md` | The pinned `agent-lint` rule D005 rejects fence-outside inline-backtick tokens that start with an approved repo prefix (`python/`, `skills/`, `scripts/`, `docs/`, `hooks/`, `agents/`, `.claude/`, `.claude-plugin/`, `.github/`), contain `/`, and contain none of the placeholder characters `< > * $ { } ?` or whitespace, when the stripped file path does not exist under the repository root. The approved prefix set is configured in `agent-lint.toml` under `inline-path-prefixes`. Fenced code is skipped. There is no baseline; existing violations must be fixed. Run explicitly with `make agent-lint` or the manual pre-commit stage; CI runs `agent-lint`. |
 | Security reference packaging | Root `SECURITY.md`, `ARCHITECTURE.md`, `docs/security/*.md`, linked service inventories, shipped `skills/**/*.md`, generated `plugin/` copies | `cargo run --quiet --locked --package larch-cli -- release plugin-runtime --check` requires the root policy, security index, linked architecture and service-owner references, and every tracked focused security reference. It rejects a shipped skill reference to an absent `docs/security/*.md` target and checks the projection byte for byte. Focused Rust unit coverage lives in `crates/larch-cli/src/release_plugin_runtime.rs`. |
@@ -547,11 +548,12 @@ fixture harnesses pass `--root` so they read the fixture manifest. CI
 shellcheck compiles the dependency-free `larch-residual-bash-paths` binary from
 the same canonical Rust module and enables existence checks unconditionally.
 
-The residual manifest covers kept hooks, thin wrappers, the approved
+The residual manifest covers kept hooks, non-shim wrappers, the approved
 `scripts/larch.sh` clean-install bootstrap, `scripts/sleep-seconds.sh`,
-residual harnesses, and any standalone source `.awk` helper. Terminal shared
-libraries, retired non-thin helpers, and
-verified-zero-consumer includes are absent.
+residual harnesses, and any standalone source `.awk` helper. Pure production
+shims may stay outside the manifest only when `residual-bash-shim` verifies
+their line bound and sole `scripts/larch.sh` exec. Terminal shared libraries,
+retired non-thin helpers, and verified-zero-consumer includes are absent.
 
 Agent-lint G010/G011 treat `scripts/agent-lint-script-inventory.txt` as their authoritative explicit scope, even if another rule excludes one of its paths. Add standalone awk helpers to that inventory in the same change; its test enforces complete residual-Bash coverage. CI shellcheck continues to read `scripts/residual-bash-paths.txt`. Test shard rebalance is deferred to `/rebalance-tests`.
 

@@ -7,7 +7,6 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 SKILL="$ROOT/skills/rejected-analysis/SKILL.md"
-WRAPPER="$ROOT/skills/rejected-analysis/scripts/rejected-analysis.sh"
 RUST_CORE="$ROOT/crates/larch-core/src/rejected_analysis.rs"
 
 PASS=0
@@ -38,7 +37,7 @@ not_contains_file() {
 printf '== skill contract ==\n'
 contains_file "$SKILL" 'argument-hint: "--n DAYS"' 'frontmatter exposes --n DAYS'
 contains_file "$SKILL" 'Accept exactly two tokens: `--n` and a positive integer day count.' 'skill accepts no extra public flags'
-contains_file "$SKILL" 'After **every** `${CLAUDE_PLUGIN_ROOT}/skills/rejected-analysis/scripts/rejected-analysis.sh` fence, parse whole-line `KEY=value` rows from stdout before any later Bash, Agent, or Skill step.' 'wrapper KV parsing mandated after every fence'
+contains_file "$SKILL" 'After **every** `scripts/larch.sh rejected-analysis` fence, parse whole-line `KEY=value` rows from stdout before any later Bash, Agent, or Skill step.' 'command KV parsing mandated after every fence'
 contains_file "$SKILL" '`WORK_DIR`' 'WORK_DIR binding listed'
 contains_file "$SKILL" '`VERDICTS_FILE`' 'VERDICTS_FILE binding listed'
 contains_file "$SKILL" '`INGEST_STATUS_FILE`' 'INGEST_STATUS_FILE binding listed'
@@ -68,12 +67,12 @@ contains_file "$SKILL" '--timing-task-kind rejected-analysis-verify' 'timing tas
 contains_file "$SKILL" '--prompt-file "<parsed prompt path>"' 'prompt-file flag documented'
 not_contains_file "$SKILL" '--implement-tmpdir' 'dirty-tree sidecar does not use implement tmpdir'
 
-printf '== wrapper and cli ==\n'
-contains_file "$WRAPPER" 'args+=(--days "$2")' 'wrapper translates --n to --days'
-contains_file "$WRAPPER" 'exec "$ROOT/scripts/larch.sh" rejected-analysis prepare' 'wrapper delegates prepare to Rust'
-contains_file "$WRAPPER" 'exec "$ROOT/scripts/larch.sh" rejected-analysis ingest-verdict' 'wrapper delegates ingest to Rust'
-contains_file "$WRAPPER" 'exec "$ROOT/scripts/larch.sh" rejected-analysis finalize' 'wrapper delegates finalize to Rust'
-contains_file "$WRAPPER" 'exec "$ROOT/scripts/larch.sh" rejected-analysis record' 'wrapper delegates record to Rust'
+printf '== direct Rust commands ==\n'
+contains_file "$SKILL" '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" rejected-analysis prepare' 'skill calls prepare directly'
+contains_file "$SKILL" '--days "$DAYS"' 'skill translates public --n to Rust --days'
+contains_file "$SKILL" '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" rejected-analysis ingest-verdict' 'skill calls ingest directly'
+contains_file "$SKILL" '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" rejected-analysis finalize' 'skill calls finalize directly'
+contains_file "$SKILL" '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" rejected-analysis record' 'skill calls record directly'
 contains_file "$RUST_CORE" 'fn finding_hash' 'Rust core owns the frozen finding hash'
 contains_file "$RUST_CORE" 'pub fn prepare_artifacts' 'Rust core owns preparation artifacts'
 contains_file "$RUST_CORE" 'pub fn ingest_artifact' 'Rust core owns verdict ingestion'
@@ -85,15 +84,6 @@ if [ -z "$(git -C "$ROOT" ls-files 'python/**')" ]; then
 else
     FAIL=$((FAIL + 1))
     printf '  FAIL: superseded Python runtime still present\n' >&2
-fi
-
-printf '== wrapper behavior ==\n'
-if "$WRAPPER" prepare --days 1 >/tmp/rejected-analysis-wrapper.out 2>/tmp/rejected-analysis-wrapper.err; then
-    FAIL=$((FAIL + 1))
-    printf '  FAIL: wrapper rejects public --days\n' >&2
-else
-    PASS=$((PASS + 1))
-    printf '  ok: wrapper rejects public --days\n'
 fi
 
 if (( FAIL > 0 )); then

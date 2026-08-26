@@ -56,7 +56,7 @@ Use `scripts/larch.sh ship pr` for the live driver and `scripts/larch.sh report-
 ## Conventions
 
 - Follow recent commit history style.
-- New larch command logic is Rust by default and public callers route through `scripts/larch.sh`. Keep residual Bash limited to `scripts/residual-bash-paths.txt`: hooks, bash-targeting linters, thin delegation wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when needed, and harnesses.
+- New larch command logic is Rust by default and public callers route through `scripts/larch.sh`. Keep residual Bash limited to `scripts/residual-bash-paths.txt`: hooks, bash-targeting linters, thin delegation wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when needed, and harnesses. `larch lint rule residual-bash-shim` enforces that each tracked production `.sh` file is either inventoried there or an at-most-25-line exec-only `scripts/larch.sh` shim.
 - Local Rust validation is changed-path targeted Clippy through `make rust-check` or the pre-commit hook. It uses default features with incremental compilation and dev/test debug information disabled. CI, not normal implementation work, owns all-target/all-feature builds, tests, policy, and coverage.
 - Single-runner invariant: run only one `/implement` per repo. Dirty-tree guards in `scripts/larch.sh agent launch-review --tool cursor` and `scripts/larch.sh agent launch-review --tool codex` detect pollution but do not serialize runners.
 - Single-`/design` invariant: one `/design` per repo for workflow/`gh` hygiene. PID-keyed symlinks isolate per Claude PID, not per repo.

@@ -8,14 +8,12 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::lifecycle_prefix::PREFIXES;
-use crate::{Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, RuleOutput};
+use super::{lifecycle_prefix::PREFIXES, residual_bash_manifest};
+use crate::{Finding, LintError, PathSelector, Repository, Rule, RuleMetadata, RuleOutput};
 
 const NAME: &str = "prefix-case-variant";
 const DESCRIPTION: &str = "Reject case-variant lifecycle and bug title-prefix tokens";
-const MANIFEST_PATH: &str = "scripts/residual-bash-paths.txt";
 const MARKDOWN_ROOTS: [&str; 3] = ["skills/", ".claude/skills/", "agents/"];
-const EXCLUDED_PREFIXES: [&str; 2] = ["larch-logs/", "node_modules/"];
 
 static BRACKET_TOKEN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\[[^\[\]]+\]").expect("bracket token expression is valid")
@@ -75,54 +73,11 @@ impl Rule for PrefixCaseVariantRule {
                 findings.extend(scan_source(path.as_str(), &repository.read_utf8(path)?, Surface::Markdown)?);
             }
         }
-        for path in residual_bash_paths(repository)? {
+        for path in residual_bash_manifest::required_paths(repository)? {
             findings.extend(scan_source(path.as_str(), &repository.read_utf8(&path)?, Surface::Bash)?);
         }
         Ok(RuleOutput::from_findings(findings))
     }
-}
-
-fn residual_bash_paths(repository: &Repository) -> Result<Vec<RepoPath>, LintError> {
-    let manifest = RepoPath::from_trusted(MANIFEST_PATH);
-    let source = repository.read_required_utf8(
-        &manifest,
-        format!("could not read residual bash manifest: {MANIFEST_PATH}"),
-    )?;
-    let mut paths = Vec::new();
-    for (index, line) in source.lines().enumerate() {
-        let raw = line.trim();
-        if raw.is_empty() || raw.starts_with('#') {
-            continue;
-        }
-        validate_residual_path(raw, index + 1)?;
-        if paths.iter().any(|path: &RepoPath| path.as_str() == raw) {
-            return Err(LintError::new(format!(
-                "duplicate residual bash path at {MANIFEST_PATH}:{}: {raw}",
-                index + 1
-            )));
-        }
-        let path = RepoPath::from_trusted(raw);
-        if repository.paths().binary_search(&path).is_err() {
-            return Err(LintError::new(format!("missing residual bash path: {raw}")));
-        }
-        paths.push(path);
-    }
-    Ok(paths)
-}
-
-fn validate_residual_path(raw: &str, line: usize) -> Result<(), LintError> {
-    if raw.starts_with('/') || raw.contains('\0') || raw.split('/').any(|part| part == "..") {
-        return Err(LintError::new(format!("invalid residual bash path: {raw:?}")));
-    }
-    if EXCLUDED_PREFIXES.iter().any(|prefix| raw.starts_with(prefix)) {
-        return Err(LintError::new(format!("excluded residual bash path: {raw:?}")));
-    }
-    if raw.strip_suffix(".sh").is_none() && raw.strip_suffix(".inc.bash").is_none() {
-        return Err(LintError::new(format!(
-            "{MANIFEST_PATH}:{line}: residual bash path must end with .sh or .inc.bash: {raw:?}",
-        )));
-    }
-    Ok(())
 }
 
 fn scan_source(path: &str, source: &str, surface: Surface) -> Result<Vec<Finding>, LintError> {
