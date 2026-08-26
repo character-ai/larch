@@ -837,11 +837,11 @@ conditional-sources = [
   "skills/design/references/dialectic-clarifier.md",
   "skills/design/references/validator-failure.md",
 ]
-# Issue #7942: current design root content is smaller than the prior reviewed
-# cap. These values match the pinned agent-lint v4.0.2 report exactly.
+# Issue #9013 replaces wrapper basenames with explicit verified-entrypoint and
+# PID-keyed session invocations. These values match the reviewed v4.0.2 report.
 root-max-lines = 694
-root-max-tokens = 26357
-root-max-content-tokens = 26303
+root-max-tokens = 26588
+root-max-content-tokens = 26534
 # Issue #7827 adds the mandatory universal skill lifecycle instruction.
 # I-Runtime-1 specifies the mechanically enforced Rust entrypoint boundary.
 # Issue #7780 documents the executable-plan / force-admission contract in
@@ -852,8 +852,8 @@ root-max-content-tokens = 26303
 # references from discovery through its `$`/`{` path filter, so the eager
 # closure equals the root set.
 closure-max-lines = 694
-closure-max-tokens = 26357
-closure-max-content-tokens = 26303
+closure-max-tokens = 26588
+closure-max-content-tokens = 26534
 # Issue #7936: the prior 661/18524/18465 conditional caps carried an
 # agent-lint v3.0.1 measurement artifact, not smaller reviewed content:
 # brainstorm.md and dialectic-clarifier.md (both branch-gated loads) were
@@ -887,9 +887,11 @@ closure-max-content-tokens = 26303
 # estimated tokens and three content tokens.
 # Issue #8581 retargets the design render-gate approval-gates citations to
 # scripts/larch.sh, adding one estimated and two content conditional tokens.
+# Issue #9013 routes Step 5c recovery references through the same explicit
+# verified entrypoint and PID-keyed session pair.
 conditional-max-lines = 779
-conditional-max-tokens = 19704
-conditional-max-content-tokens = 19634
+conditional-max-tokens = 19797
+conditional-max-content-tokens = 19729
 
 [[lint.prompt-source-budgets]]
 name = "implement"
