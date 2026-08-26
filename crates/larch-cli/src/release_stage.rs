@@ -46,18 +46,38 @@ pub fn ensure_policy(repo: &str) -> ExitCode {
     )
 }
 
-pub fn stage(version: &str, notes_file: &Path, repo: &str, pr: &str) -> ExitCode {
+pub fn stage(
+    version: &str,
+    notes_file: Option<&Path>,
+    repo: &str,
+    pr: &str,
+    dry_run: bool,
+) -> ExitCode {
     release_common::command(
         ProductionServices::new(),
-        |services| stage_with(services, version, notes_file, repo, pr),
+        |services| stage_with(services, version, notes_file, repo, pr, dry_run),
         |staged| {
-            emit_kv("TAG", &format!("v{version}"));
-            emit_kv("SOURCE_COMMIT", &staged.source_commit);
-            emit_kv("RELEASE_COMMIT", &staged.release_commit);
-            emit_kv("RELEASE_SOURCE_COMMIT", &staged.source_commit);
-            emit_kv("DRAFT_READY", "true");
+            for (key, value) in staged_kv(version, &staged) {
+                emit_kv(key, &value);
+            }
         },
     )
+}
+
+/// The `release stage` stdout rows, in emission order. The release skill reads
+/// `SOURCE_COMMIT` and `RELEASE_COMMIT`; the first-release runbook gates its
+/// rehearsal on `DRY_RUN` and `DRAFT_READY` and inspects `PROJECTION_PARENTS`.
+fn staged_kv(version: &str, staged: &StagedRelease) -> Vec<(&'static str, String)> {
+    let flag = |value: bool| if value { "true" } else { "false" }.to_owned();
+    vec![
+        ("TAG", format!("v{version}")),
+        ("SOURCE_COMMIT", staged.source_commit.clone()),
+        ("RELEASE_COMMIT", staged.release_commit.clone()),
+        ("RELEASE_SOURCE_COMMIT", staged.source_commit.clone()),
+        ("PROJECTION_PARENTS", staged.parents.join(" ")),
+        ("DRY_RUN", flag(staged.dry_run)),
+        ("DRAFT_READY", flag(!staged.dry_run)),
+    ]
 }
 
 pub fn asset_run(repo: &str, tag: &str, source_commit: &str) -> ExitCode {
@@ -412,19 +432,31 @@ fn ensure_policy_with(services: &dyn Services, repo: &str) -> Result<(), String>
 struct StagedRelease {
     source_commit: String,
     release_commit: String,
+    /// Parents of `release_commit`: the merged commit first, then the previous
+    /// `stable` tip when that tip was not already reachable from the merged
+    /// commit.
+    parents: Vec<String>,
+    /// `true` when the projection was built and verified in a rehearsal that
+    /// created no tag and no draft.
+    dry_run: bool,
 }
 
 fn stage_with(
     services: &dyn Services,
     version: &str,
-    notes_file: &Path,
+    notes_file: Option<&Path>,
     repo: &str,
     pr: &str,
+    dry_run: bool,
 ) -> Result<StagedRelease, String> {
     let tag = release_tag(version)?;
     let pr = parse_pr(pr)?;
     let (repository, slug) = repositories(repo)?;
-    require_safe_file(notes_file, "notes file is missing or unsafe")?;
+    if let Some(notes_file) = notes_file {
+        require_safe_file(notes_file, "notes file is missing or unsafe")?;
+    } else if !dry_run {
+        return Err("notes file is required unless --dry-run is set".to_owned());
+    }
     require_origin(services, &repository)?;
     require_policy(services, &slug)?;
     let pull_request = services.pull_request(&slug, pr)?;
@@ -458,7 +490,26 @@ fn stage_with(
             "projected plugin.json version does not match the requested version".to_owned(),
         );
     }
+    if dry_run {
+        // Rehearsal: the projection is built and proved but never tagged,
+        // pushed, or drafted. The unreferenced commit stays inspectable in
+        // the local object store until Git prunes it.
+        return Ok(StagedRelease {
+            source_commit,
+            release_commit: projection,
+            parents,
+            dry_run: true,
+        });
+    }
+    let notes_file = notes_file.ok_or_else(|| "notes file is required".to_owned())?;
     let release_commit = stage_projection_tag(services, &slug, &tag, &source_commit, &projection)?;
+    // An idempotent re-run may accept an existing structurally matching tag
+    // whose commit is not the freshly built projection.
+    let parents = if release_commit == projection {
+        parents
+    } else {
+        services.commit_parents_and_tree(&release_commit)?.0
+    };
     let notes = fs::read_to_string(notes_file).map_err(|error| error.to_string())?;
     let input = DraftReleaseInput {
         tag: tag.clone(),
@@ -478,6 +529,8 @@ fn stage_with(
     Ok(StagedRelease {
         source_commit,
         release_commit,
+        parents,
+        dry_run: false,
     })
 }
 
@@ -502,8 +555,9 @@ fn stage_projection_tag(
         return Ok(remote);
     }
     // The tag names an existing structurally matching local commit (whose OID
-    // differs from a freshly rebuilt projection on any retry, since `commit
-    // --amend` restamps the committer time), or the newly created projection.
+    // differs from a freshly rebuilt projection on any retry, since Git
+    // restamps the committer time on every rebuild), or the newly created
+    // projection.
     // The pushed ref, postcondition, and return value must all name that commit.
     let tagged = if let Some(local) = services.local_tag(tag)? {
         if !structurally_matches(services, &local, source_commit, &projection_tree)? {
@@ -540,8 +594,12 @@ fn structurally_matches(
 /// Checks out `source_commit` in a detached temporary worktree, records
 /// `stable_oid` as a second parent with a `-s ours` merge (keeping the merged
 /// tree), regenerates `plugin/` into the worktree, and amends the commit with
-/// the projection message. The temporary worktree is always removed. Returns the
-/// projection commit OID.
+/// the projection message. When `stable_oid` is already reachable from
+/// `source_commit` (the first release after the projection cutover, whose
+/// previous `stable` tip is still a `main` commit), the merge would be a no-op,
+/// so the projection is a plain child of `source_commit` instead; the merged
+/// commit alone keeps `stable` fast-forwardable. The temporary worktree is
+/// always removed. Returns the projection commit OID.
 ///
 /// # Errors
 /// Returns a message when any Git operation, projection generation, or cleanup
@@ -621,17 +679,24 @@ fn build_projection_commit_in_worktree(
     let policy =
         GitCliPolicy::new(worktree_path.to_path_buf()).map_err(|error| error.to_string())?;
     let git = GitCli::new(runner, policy);
+    let repository = GixRepository::open(worktree_path).map_err(|error| error.to_string())?;
 
-    runtime
-        .block_on(git.merge(
-            MergeRequest::Commit {
-                theirs: GitRef::new(stable_oid).map_err(|error| error.to_string())?,
-                no_edit: true,
-                strategy_ours: true,
-            },
-            cancellation,
-        ))
-        .map_err(|error| error.to_string())?;
+    // `git merge -s ours <ancestor>` reports "Already up to date" and creates
+    // nothing, so amending afterwards would rewrite the merged commit itself
+    // and the projection's first parent would no longer be the merged commit.
+    let stable_reachable = release_common::is_ancestor(&repository, stable_oid, "HEAD")?;
+    if !stable_reachable {
+        runtime
+            .block_on(git.merge(
+                MergeRequest::Commit {
+                    theirs: GitRef::new(stable_oid).map_err(|error| error.to_string())?,
+                    no_edit: true,
+                    strategy_ours: true,
+                },
+                cancellation,
+            ))
+            .map_err(|error| error.to_string())?;
+    }
 
     let root = RepositoryRoot::resolve(Some(worktree_path)).map_err(|error| error.to_string())?;
     release_plugin_runtime::generate_projection(&root, &worktree_path.join("plugin"))?;
@@ -657,7 +722,7 @@ fn build_projection_commit_in_worktree(
                 message: Some(CommitMessage::Literal(
                     format!("Release v{version} plugin projection").into(),
                 )),
-                amend: true,
+                amend: !stable_reachable,
                 no_edit: false,
                 allow_empty: false,
                 only: false,
@@ -669,7 +734,6 @@ fn build_projection_commit_in_worktree(
         ))
         .map_err(|error| error.to_string())?;
 
-    let repository = GixRepository::open(worktree_path).map_err(|error| error.to_string())?;
     repository
         .resolve_revision(&Revision::new(b"HEAD".to_vec()))
         .map(|oid| oid.to_hex())
@@ -1221,10 +1285,19 @@ mod tests {
             releases: RefCell::new(vec![None]),
             ..FakeServices::default()
         };
-        let staged = stage_with(&create, "1.2.3", notes.path(), "character-ai/larch", "7")
-            .expect("stage creates a draft");
+        let staged = stage_with(
+            &create,
+            "1.2.3",
+            Some(notes.path()),
+            "character-ai/larch",
+            "7",
+            false,
+        )
+        .expect("stage creates a draft");
         assert_eq!(staged.source_commit, SOURCE);
         assert_eq!(staged.release_commit, PROJECTION);
+        assert_eq!(staged.parents, vec![SOURCE.to_owned()]);
+        assert!(!staged.dry_run);
         assert_eq!(*create.created.borrow(), 1);
         assert_eq!(create.fetches.get(), 1);
         assert_eq!(create.create_local_tag_calls.get(), 1);
@@ -1234,8 +1307,105 @@ mod tests {
             releases: RefCell::new(vec![Some(draft(Vec::new()))]),
             ..FakeServices::default()
         };
-        assert!(stage_with(&resume, "1.2.3", notes.path(), "character-ai/larch", "7").is_ok());
+        assert!(
+            stage_with(
+                &resume,
+                "1.2.3",
+                Some(notes.path()),
+                "character-ai/larch",
+                "7",
+                false
+            )
+            .is_ok()
+        );
         assert_eq!(*resume.updated.borrow(), 1);
+    }
+
+    #[test]
+    fn stage_dry_run_proves_the_projection_without_tag_push_or_draft() {
+        let rehearsal = FakeServices {
+            remote_tag: RefCell::new(None),
+            releases: RefCell::new(vec![None]),
+            ..FakeServices::default()
+        };
+        let staged = stage_with(&rehearsal, "1.2.3", None, "character-ai/larch", "7", true)
+            .expect("dry run builds the projection");
+        assert_eq!(
+            staged,
+            StagedRelease {
+                source_commit: SOURCE.to_owned(),
+                release_commit: PROJECTION.to_owned(),
+                parents: vec![SOURCE.to_owned()],
+                dry_run: true,
+            }
+        );
+        assert_eq!(rehearsal.build_calls.get(), 1);
+        assert_eq!(rehearsal.create_local_tag_calls.get(), 0);
+        assert_eq!(rehearsal.tag_pushes.get(), 0);
+        assert_eq!(*rehearsal.created.borrow(), 0);
+        assert_eq!(*rehearsal.updated.borrow(), 0);
+
+        // The runbook gates on these rows; pin the mapping for both modes.
+        let rows = |staged: &StagedRelease| {
+            staged_kv("1.2.3", staged)
+                .into_iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            rows(&staged),
+            vec![
+                "TAG=v1.2.3".to_owned(),
+                format!("SOURCE_COMMIT={SOURCE}"),
+                format!("RELEASE_COMMIT={PROJECTION}"),
+                format!("RELEASE_SOURCE_COMMIT={SOURCE}"),
+                format!("PROJECTION_PARENTS={SOURCE}"),
+                "DRY_RUN=true".to_owned(),
+                "DRAFT_READY=false".to_owned(),
+            ]
+        );
+        let real = StagedRelease {
+            parents: vec![SOURCE.to_owned(), STABLE.to_owned()],
+            dry_run: false,
+            ..staged
+        };
+        assert_eq!(
+            rows(&real)[4..],
+            [
+                format!("PROJECTION_PARENTS={SOURCE} {STABLE}"),
+                "DRY_RUN=false".to_owned(),
+                "DRAFT_READY=true".to_owned(),
+            ]
+        );
+
+        // The dry run still fails closed on every structural proof.
+        let drift = FakeServices {
+            changed: vec!["README.md".to_owned()],
+            ..FakeServices::default()
+        };
+        assert_eq!(
+            stage_with(&drift, "1.2.3", None, "character-ai/larch", "7", true),
+            Err("projection commit changed paths outside plugin/".to_owned())
+        );
+
+        // A real run without notes stops before any mutation.
+        let missing_notes = FakeServices {
+            remote_tag: RefCell::new(None),
+            ..FakeServices::default()
+        };
+        assert_eq!(
+            stage_with(
+                &missing_notes,
+                "1.2.3",
+                None,
+                "character-ai/larch",
+                "7",
+                false
+            ),
+            Err("notes file is required unless --dry-run is set".to_owned())
+        );
+        assert_eq!(missing_notes.build_calls.get(), 0);
+        assert_eq!(missing_notes.tag_pushes.get(), 0);
     }
 
     #[test]
@@ -1250,9 +1420,16 @@ mod tests {
             ..FakeServices::default()
         };
         assert!(
-            stage_with(&mismatch, "1.2.3", notes.path(), "character-ai/larch", "7")
-                .unwrap_err()
-                .contains("not a projection of")
+            stage_with(
+                &mismatch,
+                "1.2.3",
+                Some(notes.path()),
+                "character-ai/larch",
+                "7",
+                false
+            )
+            .unwrap_err()
+            .contains("not a projection of")
         );
         assert_eq!(mismatch.tag_pushes.get(), 0);
         let published = ReleaseState::new(42, "v1.2.3", false, true, Vec::new()).expect("release");
@@ -1264,9 +1441,10 @@ mod tests {
             stage_with(
                 &unsafe_resume,
                 "1.2.3",
-                notes.path(),
+                Some(notes.path()),
                 "character-ai/larch",
-                "7"
+                "7",
+                false
             ),
             Err("staged release is not a mutable draft".to_owned())
         );
@@ -1289,9 +1467,10 @@ mod tests {
             stage_with(
                 &missing_merge_commit,
                 "1.2.3",
-                notes.path(),
+                Some(notes.path()),
                 "character-ai/larch",
-                "7"
+                "7",
+                false
             )
             .unwrap_err()
             .contains("has no merge commit")
@@ -1309,9 +1488,16 @@ mod tests {
         };
 
         assert!(
-            stage_with(&stale, "1.2.3", notes.path(), "character-ai/larch", "7")
-                .unwrap_err()
-                .contains("not an ancestor")
+            stage_with(
+                &stale,
+                "1.2.3",
+                Some(notes.path()),
+                "character-ai/larch",
+                "7",
+                false
+            )
+            .unwrap_err()
+            .contains("not an ancestor")
         );
         assert_eq!(stale.fetches.get(), 1);
         assert_eq!(stale.tag_pushes.get(), 0);
@@ -1332,9 +1518,10 @@ mod tests {
         let staged = stage_with(
             &idempotent,
             "1.2.3",
-            notes.path(),
+            Some(notes.path()),
             "character-ai/larch",
             "7",
+            false,
         )
         .expect("idempotent stage");
         assert_eq!(staged.source_commit, SOURCE);
@@ -1356,8 +1543,15 @@ mod tests {
             releases: RefCell::new(vec![None]),
             ..FakeServices::default()
         };
-        let staged = stage_with(&resumed, "1.2.3", notes.path(), "character-ai/larch", "7")
-            .expect("resumed stage");
+        let staged = stage_with(
+            &resumed,
+            "1.2.3",
+            Some(notes.path()),
+            "character-ai/larch",
+            "7",
+            false,
+        )
+        .expect("resumed stage");
         assert_eq!(staged.release_commit, REMOTE_MATCH);
         assert_eq!(resumed.tag_pushes.get(), 1);
         assert_eq!(resumed.create_local_tag_calls.get(), 0);
@@ -1375,9 +1569,10 @@ mod tests {
             stage_with(
                 &missing_stable,
                 "1.2.3",
-                notes.path(),
+                Some(notes.path()),
                 "character-ai/larch",
-                "7"
+                "7",
+                false
             ),
             Err("origin/stable is not resolvable".to_owned())
         );
@@ -1394,7 +1589,14 @@ mod tests {
             ..FakeServices::default()
         };
         assert_eq!(
-            stage_with(&drift, "1.2.3", notes.path(), "character-ai/larch", "7"),
+            stage_with(
+                &drift,
+                "1.2.3",
+                Some(notes.path()),
+                "character-ai/larch",
+                "7",
+                false
+            ),
             Err("projection commit changed paths outside plugin/".to_owned())
         );
         assert_eq!(drift.tag_pushes.get(), 0);
@@ -1409,7 +1611,14 @@ mod tests {
             ..FakeServices::default()
         };
         assert_eq!(
-            stage_with(&mismatch, "1.2.3", notes.path(), "character-ai/larch", "7"),
+            stage_with(
+                &mismatch,
+                "1.2.3",
+                Some(notes.path()),
+                "character-ai/larch",
+                "7",
+                false
+            ),
             Err("projected plugin.json version does not match the requested version".to_owned())
         );
         assert_eq!(mismatch.tag_pushes.get(), 0);
@@ -1427,22 +1636,44 @@ mod tests {
             ..FakeServices::default()
         };
         assert_eq!(
-            stage_with(&mismatch, "1.2.3", notes.path(), "character-ai/larch", "7"),
+            stage_with(
+                &mismatch,
+                "1.2.3",
+                Some(notes.path()),
+                "character-ai/larch",
+                "7",
+                false
+            ),
             Err("projection commit first parent is not the merged release commit".to_owned())
         );
         assert_eq!(mismatch.tag_pushes.get(), 0);
     }
 
-    #[test]
-    fn build_projection_commit_with_git_shapes_the_commit_and_cleans_up() {
+    /// How the previous `stable` tip relates to the merged release commit.
+    #[derive(Clone, Copy)]
+    enum StableShape {
+        /// A prior projection commit: off `main`, sharing only the root.
+        Diverged,
+        /// The pre-cutover pin: an older `main` commit behind the merged one.
+        AncestorOfSource,
+        /// The rehearsal against the last shipped release: `stable` names the
+        /// merged commit itself.
+        EqualToSource,
+    }
+
+    /// Build a fixture repository, run the projection builder against it, and
+    /// return `(git, source_oid, stable_oid, projection_oid)`.
+    fn build_projection_fixture(
+        root: &Path,
+        shape: StableShape,
+    ) -> (impl Fn(&[&str]) -> String, String, String, String) {
         use std::process::Command;
 
-        let repo = tempfile::tempdir().expect("repository directory");
-        let root = repo.path();
-        let git = |arguments: &[&str]| -> String {
+        let root_path = root.to_path_buf();
+        let git = move |arguments: &[&str]| -> String {
             let output = Command::new("git") // lint-subprocess-via-runner: ok test-only Git fixture builds and inspects the projection commit
                 .arg("-C")
-                .arg(root)
+                .arg(&root_path)
                 .args(arguments)
                 .output()
                 .expect("run git");
@@ -1460,19 +1691,25 @@ mod tests {
         git(&["add", "--all"]);
         git(&["commit", "--quiet", "-m", "root"]);
 
-        // `stable` diverges from the shared root commit.
-        git(&["checkout", "--quiet", "-b", "stable"]);
-        fs::write(root.join("stable-only.txt"), "stable\n").expect("stable file");
-        git(&["add", "--all"]);
-        git(&["commit", "--quiet", "-m", "stable change"]);
-        let stable_oid = git(&["rev-parse", "stable"]);
+        let mut stable_oid = git(&["rev-parse", "main"]);
+        if matches!(shape, StableShape::Diverged) {
+            // `stable` diverges from the shared root commit.
+            git(&["checkout", "--quiet", "-b", "stable"]);
+            fs::write(root.join("stable-only.txt"), "stable\n").expect("stable file");
+            git(&["add", "--all"]);
+            git(&["commit", "--quiet", "-m", "stable change"]);
+            stable_oid = git(&["rev-parse", "stable"]);
+            git(&["checkout", "--quiet", "main"]);
+        }
 
         // `main` carries the runtime projection inputs (the merged release commit).
-        git(&["checkout", "--quiet", "main"]);
         crate::release_plugin_runtime::write_runtime_inputs(root);
         git(&["add", "--all"]);
         git(&["commit", "--quiet", "-m", "runtime inputs"]);
         let source_oid = git(&["rev-parse", "main"]);
+        if matches!(shape, StableShape::EqualToSource) {
+            stable_oid = source_oid.clone();
+        }
 
         let runtime = LarchRuntime::new().expect("runtime");
         let cancellation = Cancellation::new();
@@ -1487,24 +1724,24 @@ mod tests {
             "1.2.3",
         )
         .expect("projection commit");
+        (git, source_oid, stable_oid, projection)
+    }
 
-        // Parents are exactly [merged commit, stable tip].
-        let parents = git(&["rev-list", "--parents", "-n", "1", &projection]);
-        let mut fields = parents.split_whitespace();
-        assert_eq!(fields.next(), Some(projection.as_str()));
-        assert_eq!(fields.next(), Some(source_oid.as_str()));
-        assert_eq!(fields.next(), Some(stable_oid.as_str()));
-        assert_eq!(fields.next(), None);
-
-        // The tree differs from the merged tree only under plugin/.
-        let changed = git(&["diff", "--name-only", &source_oid, &projection]);
+    /// The invariants every projection shape shares: the tree differs from the
+    /// merged tree only under `plugin/`, the generated `plugin.json` is present,
+    /// and the temporary worktree is gone.
+    fn assert_projection_shape(
+        git: &dyn Fn(&[&str]) -> String,
+        source_oid: &str,
+        projection: &str,
+    ) {
+        let changed = git(&["diff", "--name-only", source_oid, projection]);
         assert!(!changed.is_empty(), "expected a generated plugin/ tree");
         assert!(
             changed.lines().all(|line| line.starts_with("plugin/")),
             "projection changed paths outside plugin/: {changed}"
         );
 
-        // The generated plugin.json is present in the projection tree.
         let plugin_json = git(&[
             "show",
             &format!("{projection}:plugin/.claude-plugin/plugin.json"),
@@ -1514,13 +1751,53 @@ mod tests {
             "unexpected plugin.json: {plugin_json}"
         );
 
-        // The temporary worktree was removed on the success path.
         let worktrees = git(&["worktree", "list", "--porcelain"]);
         assert_eq!(
             worktrees.matches("worktree ").count(),
             1,
             "temporary worktree was not removed: {worktrees}"
         );
+    }
+
+    fn parents_of(git: &dyn Fn(&[&str]) -> String, commit: &str) -> Vec<String> {
+        let line = git(&["rev-list", "--parents", "-n", "1", commit]);
+        let mut fields = line.split_whitespace();
+        assert_eq!(fields.next(), Some(commit));
+        fields.map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn build_projection_commit_with_git_shapes_the_commit_and_cleans_up() {
+        let repo = tempfile::tempdir().expect("repository directory");
+        let (git, source_oid, stable_oid, projection) =
+            build_projection_fixture(repo.path(), StableShape::Diverged);
+
+        // Parents are exactly [merged commit, stable tip].
+        assert_eq!(
+            parents_of(&git, &projection),
+            vec![source_oid.clone(), stable_oid.clone()]
+        );
+        assert_projection_shape(&git, &source_oid, &projection);
+        // The prior `stable` tip can still fast-forward to the projection.
+        git(&["merge-base", "--is-ancestor", &stable_oid, &projection]);
+    }
+
+    /// The first release after the cutover: `origin/stable` is still a `main`
+    /// commit, so `git merge -s ours` has nothing to merge. The projection must
+    /// stay a child of the merged commit rather than an amended copy of it.
+    #[test]
+    fn build_projection_commit_with_git_handles_a_stable_tip_already_on_main() {
+        for shape in [StableShape::AncestorOfSource, StableShape::EqualToSource] {
+            let repo = tempfile::tempdir().expect("repository directory");
+            let (git, source_oid, stable_oid, projection) =
+                build_projection_fixture(repo.path(), shape);
+
+            assert_ne!(projection, source_oid, "projection must be a new commit");
+            assert_eq!(parents_of(&git, &projection), vec![source_oid.clone()]);
+            assert_projection_shape(&git, &source_oid, &projection);
+            git(&["merge-base", "--is-ancestor", &stable_oid, &projection]);
+            git(&["merge-base", "--is-ancestor", &source_oid, &projection]);
+        }
     }
 
     #[test]
@@ -1730,9 +2007,16 @@ mod tests {
             ..FakeServices::default()
         };
         assert!(
-            stage_with(&closed, "1.2.3", notes.path(), "character-ai/larch", "7")
-                .expect_err("closed PR")
-                .contains("not merged")
+            stage_with(
+                &closed,
+                "1.2.3",
+                Some(notes.path()),
+                "character-ai/larch",
+                "7",
+                false
+            )
+            .expect_err("closed PR")
+            .contains("not merged")
         );
 
         let wrong_version = FakeServices {
@@ -1743,9 +2027,10 @@ mod tests {
             stage_with(
                 &wrong_version,
                 "1.2.3",
-                notes.path(),
+                Some(notes.path()),
                 "character-ai/larch",
-                "7"
+                "7",
+                false
             )
             .expect_err("version drift")
             .contains("does not match")
@@ -1764,9 +2049,10 @@ mod tests {
             stage_with(
                 &local_mismatch,
                 "1.2.3",
-                notes.path(),
+                Some(notes.path()),
                 "character-ai/larch",
-                "7"
+                "7",
+                false
             )
             .expect_err("local tag mismatch")
             .contains("different commit")

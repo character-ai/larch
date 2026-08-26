@@ -13,6 +13,14 @@ disable-model-invocation: true
 
 Operator-run release cut for `character-ai/larch`. It merges the candidate through the normal queue, then gates publication and Latest promotion on the complete asset and immutable-release verification for the resulting `main` commit. This dev-only skill lives under `.claude/skills/release/` and is not exported in the plugin package. All runtime script paths use `$PWD/.claude/skills/release/scripts/...` from the larch repo root.
 
+## First release after the projection cutover
+
+Before cutting the first release whose `origin/stable` tip is still a `main`
+commit, and after any release recovery, follow
+`$PWD/.claude/skills/release/references/first-projection-release-runbook.md`.
+It rehearses `release stage --dry-run` without a tag or draft, proves the
+cached pin check against the projection commit, and holds the rollback plan.
+
 ## Flags
 
 Parse from `$ARGUMENTS` before any Bash helper runs. All boolean flags default to `false`.
@@ -406,7 +414,10 @@ asset workflow or draft validation fails after merge, keep the merged PR, tag,
 and mutable draft for repair. A failed asset workflow may be rerun for the same
 tag and draft; never cut a second version. Repeat the stage verb, the asset
 workflow wait, and validate-draft for recovery. Asset replacement is
-allowed only while the Release remains a draft.
+allowed only while the Release remains a draft. To discard a bad draft and
+tag before publication, or to repair a `stable` tip that disagrees with the
+tag, follow the rollback sections of
+`$PWD/.claude/skills/release/references/first-projection-release-runbook.md`.
 
 ## Step 6 — Publish the immutable Release, promote Latest, and advance the content pin
 
@@ -593,7 +604,7 @@ Runtime helpers:
 - `"$PWD/scripts/larch.sh" release prepare`: fetch once, pin `RELEASE_SHA`, write PR list (larch-logs housekeeping PRs excluded; count reported as `IGNORED_LARCHLOG_PR_COUNT`), aggregate bump KV
 - `"$PWD/scripts/larch.sh" release set-version`: synchronized plugin, Cargo workspace, internal path dependency, and lockfile version write
 - `"$PWD/scripts/larch.sh" release ensure-policy`: read and verify immutable-release policy without mutating repository configuration
-- `"$PWD/scripts/larch.sh" release stage`: resolve the merged PR commit, build and tag its projection commit, and create or verify its draft Release
+- `"$PWD/scripts/larch.sh" release stage`: resolve the merged PR commit, build and tag its projection commit, and create or verify its draft Release; `--dry-run` builds and proves the projection only, with no tag, push, or draft
 - `"$PWD/scripts/larch.sh" release reconcile-notes`: recompute `baseline..SOURCE_COMMIT` PRs, write additions vs prepare's list, and surface `ADDED_PR_COUNT`
 - `"$PWD/scripts/larch.sh" release asset-run`: resolve the exact tag-triggered asset workflow run
 - `"$PWD/scripts/larch.sh" release validate-draft`: verify the projection-tag-bound draft and complete asset set before publication
