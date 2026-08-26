@@ -475,12 +475,12 @@ sends SIGTERM from the deepest descendant group through the direct child's
 group, waits the configured grace period, then refreshes the tree and
 revalidates a saved member before each SIGKILL. A live group with no valid
 ownership anchor fails cleanup instead of receiving a signal through a bare
-PGID. The adapter
-then reaps the direct child. This reaches nested groups after their parents are
-reparented without signaling an unverified PID. Other platforms use Tokio's
-safest direct-child kill and reap path; the released runtime is Apple Silicon
-macOS. This lifecycle is shared by reviewer, implementer, drafter, probe,
-debate, and CI launches rather than reimplemented per command.
+PGID. The adapter then reaps the direct child. This reaches nested groups after
+their parents are reparented without signaling an unverified PID. Other
+platforms use Tokio's safest direct-child kill and reap path; the released
+runtime is Apple Silicon macOS. This lifecycle is shared by reviewer,
+implementer, drafter, probe, debate, and CI launches rather than reimplemented
+per command.
 
 ### Vendor credential preflight and the reviewer-probe cache
 
