@@ -1057,7 +1057,7 @@ fn plan_review_round_runner_matches_python_terminal_transitions() {
 fn plan_review_normalization_helpers_preserve_python_wire_rules() {
     use larch_core::review::{
         aggregation_ok_for_voting, aggregator_status, all_applied_finding_keys,
-        applied_finding_keys_before, merge_already_addressed_finding_keys,
+        applied_finding_keys_before,         merge_already_addressed_finding_keys,
         merge_step3_round_carry_warnings, replace_applied_finding_keys,
         step3_loop_status_to_loop_status, step3_next_action, step3_round_carry_values,
         step3_status_from_loop_status, strip_crlf,
@@ -1178,4 +1178,43 @@ fn dyn_plan_slot_slugs_and_summary_line_are_stable() {
         Some("2 (proposal-grammar-migration, reuse)".to_owned())
     );
     assert_eq!(format_launched_dynamic_archetypes(["", "  "]), None);
+}
+
+#[test]
+fn merge_step3_round_tally_fills_default_zeros_without_overwriting_counts() {
+    use larch_core::review::merge_step3_round_tally;
+
+    let empty_envelope = BTreeMap::from([
+        ("ACCEPTED_COUNT".to_owned(), "0".to_owned()),
+        ("IMPORTANT_ACCEPTED_COUNT".to_owned(), "0".to_owned()),
+    ]);
+    let round_tally = BTreeMap::from([
+        ("ACCEPTED_COUNT".to_owned(), "5".to_owned()),
+        ("IMPORTANT_ACCEPTED_COUNT".to_owned(), "2".to_owned()),
+        ("TALLY_PLAN_REVIEW_STATUS".to_owned(), "ok".to_owned()),
+        ("AGGREGATOR_STATUS".to_owned(), "ok".to_owned()),
+        (
+            "VOTING_TALLY_FILE".to_owned(),
+            "/tmp/voting-tally.md".to_owned(),
+        ),
+        ("UNRELATED".to_owned(), "ignored".to_owned()),
+    ]);
+    assert_eq!(
+        merge_step3_round_tally(&empty_envelope, &round_tally),
+        BTreeMap::from([
+            ("ACCEPTED_COUNT".to_owned(), "5".to_owned()),
+            ("IMPORTANT_ACCEPTED_COUNT".to_owned(), "2".to_owned()),
+            ("TALLY_PLAN_REVIEW_STATUS".to_owned(), "ok".to_owned()),
+            ("AGGREGATOR_STATUS".to_owned(), "ok".to_owned()),
+            (
+                "VOTING_TALLY_FILE".to_owned(),
+                "/tmp/voting-tally.md".to_owned()
+            ),
+        ])
+    );
+    let present = BTreeMap::from([("ACCEPTED_COUNT".to_owned(), "3".to_owned())]);
+    assert_eq!(
+        merge_step3_round_tally(&present, &round_tally).get("ACCEPTED_COUNT"),
+        Some(&"3".to_owned())
+    );
 }
