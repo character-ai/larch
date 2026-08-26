@@ -525,6 +525,13 @@ manifest non-terminal, so a corrected terminal outcome can replace only the
 owner-generated provisional final report. Terminal-summary wrappers retain raw
 child stderr locally and expose at most one bounded, redacted diagnostic.
 
+A retryable `/design` Step 5c plan-block or receipt-write failure passes its
+selected artifacts through the same copy-time tmpdir-path redaction and secret
+scrub as terminal publication. The sanitized snapshot stays in local lifecycle
+staging. This path leaves the manifest in progress, creates no remote object or
+cache entry, and records no terminal outcome. A later successful tail performs
+the single create-only publication for that run ID.
+
 Disabled storage skips provider construction, archive creation, upload,
 verification, cache promotion, and pending state. Local staging and
 bookkeeping remain active until terminalization, which writes universal

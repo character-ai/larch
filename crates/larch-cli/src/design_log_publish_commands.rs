@@ -35,6 +35,8 @@ use crate::{
 
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(300);
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(600);
+/// Internal reason for a retryable Step 5c failure snapshot.
+pub const RETRYABLE_FAILURE_REASON: &str = "retryable-failure";
 
 /// Result of one log-publish attempt; callers emit the KV grammar once.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -167,6 +169,12 @@ fn failed(exit_code: u8, scrub: Option<&str>) -> LogPublishResult {
     }
 }
 
+/// Accept only terminal reasons or the one retryable failure pairing.
+fn valid_reason_outcome(reason: &str, outcome: &str) -> bool {
+    matches!(reason, "final" | "pause")
+        || (reason == RETRYABLE_FAILURE_REASON && outcome == "failed-plan-write")
+}
+
 fn run_log_publish(request: &LogPublishRequest) -> LogPublishResult {
     if !request.design_tmpdir.is_dir() {
         return failed(0, None);
@@ -174,13 +182,13 @@ fn run_log_publish(request: &LogPublishRequest) -> LogPublishResult {
     if !validate_issue(&request.issue) || !validate_design_log_slug(&request.run_id) {
         return failed(0, None);
     }
-    if request.reason != "final" && request.reason != "pause" {
+    if !valid_reason_outcome(&request.reason, &request.outcome) {
         return failed(0, None);
     }
-    let warning_step_label = if request.reason == "final" {
-        "5c"
-    } else {
+    let warning_step_label = if request.reason == "pause" {
         "pause"
+    } else {
+        "5c"
     };
     let outcome = if request.outcome.is_empty() {
         default_outcome_for_reason(&request.reason).to_owned()
@@ -207,11 +215,12 @@ fn run_log_publish(request: &LogPublishRequest) -> LogPublishResult {
         );
     }
 
-    if let Ok((publish_ok, remote_key, cache_dir, scrub)) = publish_design_logs(request, &outcome) {
+    if let Ok((status, remote_key, cache_dir, scrub)) = publish_design_logs(request, &outcome) {
+        let publish_ok = status == PublicationStatus::Complete;
         persist_metadata(&request.design_tmpdir, &remote_key, &cache_dir);
         LogPublishResult {
             publish_ok,
-            exit_code: u8::from(!publish_ok),
+            exit_code: u8::from(status == PublicationStatus::Failed),
             remote_key,
             cache_dir,
             secret_scrub_violations: Some(scrub),
@@ -237,7 +246,7 @@ fn dry_run_publish(request: &LogPublishRequest, outcome: &str) -> LogPublishResu
     }
     persist_metadata(&request.design_tmpdir, "", "");
     LogPublishResult {
-        publish_ok: true,
+        publish_ok: request.reason != RETRYABLE_FAILURE_REASON,
         exit_code: 0,
         ..LogPublishResult::default()
     }
@@ -246,13 +255,41 @@ fn dry_run_publish(request: &LogPublishRequest, outcome: &str) -> LogPublishResu
 #[derive(Debug)]
 struct SecretScrubFailure;
 
+/// Whether design-log staging failed, remains retryable, or terminalized.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PublicationStatus {
+    Failed,
+    Provisional,
+    Complete,
+}
+
+type Publication = (PublicationStatus, String, String, String);
+
+/// Build a publication result with no remote or cache identity.
+fn local_publication(status: PublicationStatus, scrub: impl Into<String>) -> Publication {
+    (status, String::new(), String::new(), scrub.into())
+}
+
+/// Select the terminal lifecycle action, or keep a retryable snapshot open.
+fn lifecycle_action(reason: &str, outcome: &str) -> Option<&'static str> {
+    if reason == RETRYABLE_FAILURE_REASON {
+        return None;
+    }
+    Some(match lifecycle_outcome(reason, outcome) {
+        "cancelled" => "lifecycle-cancel",
+        "failure" => "lifecycle-failure",
+        "early-return" => "lifecycle-early-return",
+        _ => "lifecycle-finalize",
+    })
+}
+
 #[allow(clippy::too_many_lines)] // One verb, one Python main ported branch for branch.
 fn publish_design_logs(
     request: &LogPublishRequest,
     outcome: &str,
-) -> Result<(bool, String, String, String), SecretScrubFailure> {
+) -> Result<Publication, SecretScrubFailure> {
     let Some(repo_root) = discover_repo_root() else {
-        return Ok((false, String::new(), String::new(), "0".to_owned()));
+        return Ok(local_publication(PublicationStatus::Failed, "0"));
     };
     let lifecycle = if let Ok(output) = run_verified_larch_with_timeout(
         &[
@@ -272,18 +309,18 @@ fn publish_design_logs(
         let (code, stdout, _) = output_streams(&output);
         if code != 0 {
             eprintln!("design log-publish: lifecycle context unavailable");
-            return Ok((false, String::new(), String::new(), "0".to_owned()));
+            return Ok(local_publication(PublicationStatus::Failed, "0"));
         }
         stdout
     } else {
         eprintln!("design log-publish: lifecycle context unavailable");
-        return Ok((false, String::new(), String::new(), "0".to_owned()));
+        return Ok(local_publication(PublicationStatus::Failed, "0"));
     };
     let run_dir = kv_last(&lifecycle, "RUN_DIR");
     let log_root = kv_last(&lifecycle, "LOG_ROOT");
     if run_dir.is_empty() || log_root.is_empty() {
         eprintln!("design log-publish: lifecycle context unavailable: missing RUN_DIR/LOG_ROOT");
-        return Ok((false, String::new(), String::new(), "0".to_owned()));
+        return Ok(local_publication(PublicationStatus::Failed, "0"));
     }
     let run_dest = PathBuf::from(&run_dir);
 
@@ -317,12 +354,12 @@ fn publish_design_logs(
                         detail
                     }
                 );
-                return Ok((false, String::new(), String::new(), "0".to_owned()));
+                return Ok(local_publication(PublicationStatus::Failed, "0"));
             }
         }
         Err(error) => {
             eprintln!("design log-publish: lifecycle issue binding failed: {error}");
-            return Ok((false, String::new(), String::new(), "0".to_owned()));
+            return Ok(local_publication(PublicationStatus::Failed, "0"));
         }
     }
 
@@ -333,7 +370,7 @@ fn publish_design_logs(
 
     let mut pre_scrub_violations = 0_u64;
     let Ok(entries) = fs::read_dir(&request.design_tmpdir) else {
-        return Ok((false, String::new(), String::new(), "0".to_owned()));
+        return Ok(local_publication(PublicationStatus::Failed, "0"));
     };
     for entry in entries.flatten() {
         let name = entry.file_name();
@@ -357,16 +394,16 @@ fn publish_design_logs(
         }
         let (ok, count) = copy_tree_redacted(&path, &run_dest.join(name.as_ref()))?;
         if !ok {
-            return Ok((false, String::new(), String::new(), "0".to_owned()));
+            return Ok(local_publication(PublicationStatus::Failed, "0"));
         }
         pre_scrub_violations = pre_scrub_violations.saturating_add(count);
     }
 
-    let lifecycle_action = match lifecycle_outcome(&request.reason, outcome) {
-        "cancelled" => "lifecycle-cancel",
-        "failure" => "lifecycle-failure",
-        "early-return" => "lifecycle-early-return",
-        _ => "lifecycle-finalize",
+    let Some(lifecycle_action) = lifecycle_action(&request.reason, outcome) else {
+        return Ok(local_publication(
+            PublicationStatus::Provisional,
+            pre_scrub_violations.to_string(),
+        ));
     };
     let terminal = match run_verified_larch_with_timeout(
         &[
@@ -395,10 +432,8 @@ fn publish_design_logs(
                         detail
                     }
                 );
-                return Ok((
-                    false,
-                    String::new(),
-                    String::new(),
+                return Ok(local_publication(
+                    PublicationStatus::Failed,
                     pre_scrub_violations.to_string(),
                 ));
             }
@@ -413,10 +448,8 @@ fn publish_design_logs(
         }
         Err(error) => {
             eprintln!("design log-publish: archive publication failed: {error}");
-            return Ok((
-                false,
-                String::new(),
-                String::new(),
+            return Ok(local_publication(
+                PublicationStatus::Failed,
                 pre_scrub_violations.to_string(),
             ));
         }
@@ -433,14 +466,14 @@ fn publish_design_logs(
         eprintln!(
             "**⚠ Run-log publication skipped because storage was disabled at lifecycle start ({reason}).**"
         );
-        return Ok((true, String::new(), String::new(), scrub));
+        return Ok(local_publication(PublicationStatus::Complete, scrub));
     }
     if kv_last(&terminal, "RUN_LOG_PUBLICATION") != "published" {
         eprintln!("design log-publish: archive publication failed: invalid publication state");
-        return Ok((false, String::new(), String::new(), scrub));
+        return Ok(local_publication(PublicationStatus::Failed, scrub));
     }
     Ok((
-        true,
+        PublicationStatus::Complete,
         kv_last(&terminal, "REMOTE_KEY"),
         kv_last(&terminal, "CACHE_DIR"),
         scrub,
@@ -986,6 +1019,46 @@ mod tests {
     }
 
     #[test]
+    fn parse_accepts_retryable_failure_reason() {
+        let mut args = base_args(Path::new("/tmp/design"));
+        args.extend([
+            OsString::from("--reason"),
+            OsString::from(RETRYABLE_FAILURE_REASON),
+            OsString::from("--outcome"),
+            OsString::from("failed-plan-write"),
+        ]);
+
+        let parsed = parse_arguments(&args).expect("retryable failure parses");
+
+        assert_eq!(parsed.reason, RETRYABLE_FAILURE_REASON);
+        assert_eq!(parsed.outcome, "failed-plan-write");
+    }
+
+    #[test]
+    fn retryable_failure_has_no_terminal_lifecycle_action() {
+        assert_eq!(
+            lifecycle_action(RETRYABLE_FAILURE_REASON, "failed-plan-write"),
+            None
+        );
+        assert_eq!(
+            lifecycle_action("final", "failed-plan-write"),
+            Some("lifecycle-failure")
+        );
+    }
+
+    #[test]
+    fn retryable_failure_reason_is_bound_to_plan_write_outcome() {
+        assert!(valid_reason_outcome(
+            RETRYABLE_FAILURE_REASON,
+            "failed-plan-write"
+        ));
+        assert!(!valid_reason_outcome(RETRYABLE_FAILURE_REASON, "approved"));
+        assert!(!valid_reason_outcome(RETRYABLE_FAILURE_REASON, ""));
+        assert!(valid_reason_outcome("final", "approved"));
+        assert!(valid_reason_outcome("pause", ""));
+    }
+
+    #[test]
     fn parse_rejects_invalid_repo() {
         assert!(
             parse_arguments(&[
@@ -1380,6 +1453,6 @@ mod tests {
         fs::write(dir.path().join("plan.txt"), "plan\n").unwrap();
         let request = sample_request(dir.path(), false);
         let result = publish_design_logs(&request, "approved").expect("no scrub failure");
-        assert!(!result.0);
+        assert_eq!(result.0, PublicationStatus::Failed);
     }
 }

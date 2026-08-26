@@ -38,6 +38,7 @@ use crate::clarify_orchestrator::{
     plan_named_block_child_environment, publish_artifact_ok as nonempty_file,
     resolve_publish_difficulty_rating, write_result_env,
 };
+use crate::design_log_publish_commands::RETRYABLE_FAILURE_REASON;
 use crate::design_step0_commands::{exit_from_i32, stage_terminal_state_bridge};
 use crate::design_step1_commands::consumer_repo_root;
 use crate::design_terminal_commands::STAGE_EXTRA_FLAGS;
@@ -888,6 +889,7 @@ fn run_log_publish(
     rows: &mut Rows,
     result_env: &Path,
     outcome: &str,
+    reason: Option<&str>,
     write_result_env_on_failure: bool,
 ) -> Option<i32> {
     let mut args = vec![
@@ -902,6 +904,9 @@ fn run_log_publish(
         "--outcome".to_owned(),
         outcome.to_owned(),
     ];
+    if let Some(reason) = reason {
+        args.splice(2..2, ["--reason".to_owned(), reason.to_owned()]);
+    }
     if !context.repo.is_empty() {
         args.push("--repo".to_owned());
         args.push(context.repo.to_owned());
@@ -971,7 +976,7 @@ fn run_log_publish(
     None
 }
 
-/// Stage, report, and finalize a failed plan write; returns its exit code.
+/// Stage and report a failed plan-write attempt without terminalizing its run.
 fn finalize_failed_plan_write(
     runner: &dyn SiblingRunner,
     context: Option<&LogPublishContext<'_>>,
@@ -987,6 +992,7 @@ fn finalize_failed_plan_write(
             rows,
             result_env,
             "failed-plan-write",
+            Some(RETRYABLE_FAILURE_REASON),
             false,
         );
     }
@@ -1445,6 +1451,7 @@ fn publish_core(
             &mut rows,
             &paths.result_env,
             "approved",
+            None,
             true,
         ) {
             return code;

@@ -84,6 +84,13 @@ and either canonical storage identity or a repository-root-derived local
 namespace digest. Design, implement, and review use this adoption path and keep
 their rich artifacts in the one lifecycle-owned tree.
 
+A retryable `/design` Step 5c plan-block or receipt-write failure uses the same
+design-log selection and redaction owner to refresh the local lifecycle staging
+tree. It does not invoke a lifecycle terminal verb or create a remote archive.
+`PUBLISH_OK=false` keeps cleanup disabled. A later `--fresh-attempt` reuses the
+open run, and only the successful or truly terminal tail records the write-once
+lifecycle outcome.
+
 The inventory includes public skills, shipped aliases, internal child skills,
 and dev-only skills. An alias owns a run under the alias name, then passes its
 identity to the target as parent metadata. Nested review owns a separate child

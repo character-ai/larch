@@ -95,6 +95,8 @@ When `_publish_rc=3`, the publish tail may have completed but `.design-publish-r
 
 When `_publish_rc` is in `{0, 1, 3, 4}`, parse through `scripts/larch.sh design read-result-env --input "$DESIGN_TMPDIR/.design-step5c-status.env"` after bgjob `DONE`; the helper prefers `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` and falls back to the legacy status env only when absent. Gate success on `BGJOB_RC=0`. Exit 1 is the normal plan-block-write failure path. Do not abort solely because `_publish_rc=1`.
 
+On a failed plan-block or receipt write, `design log-publish --reason retryable-failure` redacts and stages the attempt's artifacts without running a lifecycle terminal verb. It leaves `PUBLISH_OK=false`. A later `design-step5c.sh --fresh-attempt` reuses the open run and may terminalize it as success. Cleanup remains ineligible until the plan write and terminal log publish both succeed.
+
 **Driver WARN replay (top chat):** After the Bash block, when `_publish_rc` ∈ {0, 1, 3} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat before terminal final-summary emission. Do not leave them only as `WARN=` machine lines inside Bash output.
 
 Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed from file and/or stdout: on `PLAN_WRITE_OK=true`, print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`. The `scripts/larch.sh design step5c` fence already wrote `step-5c` under the `PLAN_WRITE_OK=true` gate before leaving the fence. Rename (`RENAMED`) and Step 6 cleanup remain gated on `PUBLISH_OK` separately.
