@@ -99,54 +99,6 @@ jobs:
           path: ~/.cache/pre-commit
           key: ${{ steps.main-cache-keys.outputs.pre-commit }}
 
-  main-cache-test-harnesses:
-    name: main-cache-test-harnesses
-    needs: [main-cache-admission]
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/larch-logs/
-          sparse-checkout-cone-mode: false
-      - id: main-cache-keys
-        uses: ./.github/actions/main-cache-keys
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-      - id: site-packages
-        shell: bash
-        run: printf 'path=%s\n' "$(python -c 'import site; print(site.getsitepackages()[0])')" >> "$GITHUB_OUTPUT"
-      - id: pip-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ~/.cache/pip
-          key: ${{ steps.main-cache-keys.outputs.pip-test-harnesses }}
-      - id: site-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ${{ steps.site-packages.outputs.path }}
-          key: ${{ steps.main-cache-keys.outputs.site-test-harnesses }}
-      - name: Populate test-harness packages on a miss
-        if: steps.pip-cache.outputs.cache-hit != 'true' || steps.site-cache.outputs.cache-hit != 'true'
-        env:
-          PIP_DEFAULT_TIMEOUT: "30"
-          PIP_RETRIES: "5"
-        run: pip install -r .github/workflows/requirements-test-harnesses.txt
-      - name: Save test-harness pip cache
-        if: success() && steps.pip-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ~/.cache/pip
-          key: ${{ steps.main-cache-keys.outputs.pip-test-harnesses }}
-      - name: Save test-harness site-packages
-        if: success() && steps.site-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ${{ steps.site-packages.outputs.path }}
-          key: ${{ steps.main-cache-keys.outputs.site-test-harnesses }}
-
   main-cache-agent-tools:
     name: main-cache-agent-tools
     needs: [main-cache-admission]

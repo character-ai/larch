@@ -78,9 +78,6 @@ outputs:
   pip-shellcheck:
     description: Exact pip download cache key for the shellcheck wheel.
     value: ${{ steps.keys.outputs.pip-shellcheck }}
-  pip-test-harnesses:
-    description: Exact pip download cache key for Bash harnesses.
-    value: ${{ steps.keys.outputs.pip-test-harnesses }}
   pre-commit:
     description: Exact pre-commit hook environment cache key.
     value: ${{ steps.keys.outputs.pre-commit }}
@@ -93,9 +90,6 @@ outputs:
   rust-policy-inputs-sha256:
     description: Exact Rust-input digest used to validate the trusted policy binary.
     value: ${{ steps.keys.outputs.rust-policy-inputs-sha256 }}
-  site-test-harnesses:
-    description: Exact installed site-packages cache key for Bash harnesses.
-    value: ${{ steps.keys.outputs.site-test-harnesses }}
 
 runs:
   using: composite
@@ -112,7 +106,6 @@ runs:
         PIP_AGENT_LINTERS_HASH: ${{ hashFiles('.github/workflows/requirements-agent-linters.txt') }}
         PIP_LINT_HASH: ${{ hashFiles('.github/workflows/requirements-lint.txt') }}
         PIP_SHELLCHECK_HASH: ${{ hashFiles('.pre-commit-config.yaml') }}
-        PIP_TEST_HARNESSES_HASH: ${{ hashFiles('.github/workflows/requirements-test-harnesses.txt') }}
         PRE_COMMIT_HASH: ${{ hashFiles('.pre-commit-config.yaml') }}
         RUST_POLICY_HASH: ${{ hashFiles(format('{0}/Cargo.lock', inputs.rust-policy-source-root), format('{0}/Cargo.toml', inputs.rust-policy-source-root), format('{0}/crates/**/Cargo.toml', inputs.rust-policy-source-root), format('{0}/rust-toolchain.toml', inputs.rust-policy-source-root), format('{0}/build.rs', inputs.rust-policy-source-root), format('{0}/crates/**/*.rs', inputs.rust-policy-source-root), format('{0}/.cargo/**', inputs.rust-policy-source-root)) }}
         RUST_POLICY_SOURCE_ROOT: ${{ inputs.rust-policy-source-root }}
@@ -128,7 +121,6 @@ runs:
           "$PIP_AGENT_LINTERS_HASH" \
           "$PIP_LINT_HASH" \
           "$PIP_SHELLCHECK_HASH" \
-          "$PIP_TEST_HARNESSES_HASH" \
           "$PRE_COMMIT_HASH" \
           "$RUST_POLICY_HASH"; do
           case "$digest" in
@@ -167,10 +159,8 @@ runs:
           printf 'pip-agent-linters=pip-agent-linters-v1-%s-%s-py311-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$PIP_AGENT_LINTERS_HASH"
           printf 'pip-lint=pip-lint-v1-%s-%s-py311-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$PIP_LINT_HASH"
           printf 'pip-shellcheck=pip-shellcheck-v1-%s-%s-py311-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$PIP_SHELLCHECK_HASH"
-          printf 'pip-test-harnesses=pip-test-harnesses-v1-%s-%s-py311-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$PIP_TEST_HARNESSES_HASH"
           printf 'pre-commit=pre-commit-%s\n' "$PRE_COMMIT_HASH"
           printf 'rust-lint-deps=rust-lint-deps-v2-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$CARGO_INPUTS_HASH"
           printf 'rust-policy=trusted-main-rust-policy-v1-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$RUST_POLICY_HASH"
           printf 'rust-policy-inputs-sha256=%s\n' "$RUST_POLICY_HASH"
-          printf 'site-test-harnesses=ubuntu-24.04-pip-site-py311-%s\n' "$PIP_TEST_HARNESSES_HASH"
         } >> "$GITHUB_OUTPUT"

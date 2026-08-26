@@ -197,9 +197,8 @@ There are four pre-commit-driven paths:
 - **Manual pre-commit stage** — Run `pre-commit run --hook-stage manual --all-files` only when deliberately requesting repository-wide policy, agent/config, secret, or type scans. It is not part of relevant checks or the default git hook.
 
 `.github/workflows/requirements-lint.txt` pins the pre-commit environment used
-by CI lint jobs. `.github/workflows/requirements-test-harnesses.txt` pins
-PyYAML for Bash harness parsers. These utility environments do not run or test
-larch runtime code. `agent-sync` restores the exact
+by CI lint jobs. That utility environment does not run or test larch runtime
+code. `agent-sync` restores the exact
 trusted Cargo-input and lint-dependency caches, then runs `make agent-sync`.
 
 ## Shellcheck Engine
