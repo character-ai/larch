@@ -2537,12 +2537,30 @@ clean_install_test = "clean-install-hook-anti-read-poll"
 
 [[commands]]
 domain = "hook"
+verb = "audit-edit-write"
+machine_stdout = false
+owner = "rust"
+planning_issue = 8935
+migration_issue = 8935
+clean_install_test = "clean-install-hook-audit-edit-write"
+
+[[commands]]
+domain = "hook"
 verb = "block-submodule-edit"
 machine_stdout = true
 owner = "rust"
 planning_issue = 8934
 migration_issue = 8934
 clean_install_test = "clean-install-hook-block-submodule-edit"
+
+[[commands]]
+domain = "hook"
+verb = "cleanup-sessionstart"
+machine_stdout = false
+owner = "rust"
+planning_issue = 8935
+migration_issue = 8935
+clean_install_test = "clean-install-hook-cleanup-sessionstart"
 
 [[commands]]
 domain = "hook"
@@ -2561,6 +2579,33 @@ owner = "rust"
 planning_issue = 8934
 migration_issue = 8934
 clean_install_test = "clean-install-hook-deny-run-in-background"
+
+[[commands]]
+domain = "hook"
+verb = "sessionstart-health"
+machine_stdout = true
+owner = "rust"
+planning_issue = 8935
+migration_issue = 8935
+clean_install_test = "clean-install-hook-sessionstart-health"
+
+[[commands]]
+domain = "hook"
+verb = "sessionstart-statusline"
+machine_stdout = false
+owner = "rust"
+planning_issue = 8935
+migration_issue = 8935
+clean_install_test = "clean-install-hook-sessionstart-statusline"
+
+[[commands]]
+domain = "hook"
+verb = "stop-fail-close"
+machine_stdout = true
+owner = "rust"
+planning_issue = 8935
+migration_issue = 8935
+clean_install_test = "clean-install-hook-stop-fail-close"
 
 [[commands]]
 domain = "implement"
@@ -6214,9 +6259,14 @@ kind = "agent"
 rust = ["generate reviewer-testing-agent"]
 
 [[callers]]
+path = "scripts/audit-edit-write.sh"
+kind = "script"
+rust = ["hook audit-edit-write"]
+
+[[callers]]
 path = "scripts/cleanup-sessionstart.sh"
 kind = "hook"
-rust = ["bgjob reap", "cleanup run"]
+rust = ["hook cleanup-sessionstart"]
 
 [[callers]]
 path = "scripts/external-tool-registry.sh"
@@ -6261,12 +6311,12 @@ rust = ["design read-result-env"]
 [[callers]]
 path = "scripts/sessionstart-health.sh"
 kind = "hook"
-rust = ["kv get", "session resolve-implement-tmpdir"]
+rust = ["hook sessionstart-health"]
 
 [[callers]]
 path = "scripts/sessionstart-statusline.sh"
 kind = "hook"
-rust = ["progress install-statusline", "progress session-reset"]
+rust = ["hook sessionstart-statusline"]
 
 [[callers]]
 path = "skills/alias/SKILL.md"
@@ -6679,14 +6729,9 @@ kind = "skill"
 rust = ["execution-issues flush"]
 
 [[callers]]
-path = "skills/implement/scripts/hook-stop-fail-close.md"
-kind = "skill"
-rust = ["session resolve-implement-tmpdir"]
-
-[[callers]]
 path = "skills/implement/scripts/hook-stop-fail-close.sh"
 kind = "hook"
-rust = ["session resolve-implement-tmpdir"]
+rust = ["hook stop-fail-close"]
 
 [[callers]]
 path = "skills/implement/scripts/oos-disposition-checkpoint.md"

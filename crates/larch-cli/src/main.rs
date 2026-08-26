@@ -699,15 +699,30 @@ enum HookCommand {
     /// Warn after repeated identical Read calls without ever blocking the hook.
     #[command(name = "anti-read-poll", disable_help_flag = true)]
     AntiReadPoll(RawCompatibilityArguments),
+    /// Append one opt-in Edit/Write audit record without blocking tool use.
+    #[command(name = "audit-edit-write", disable_help_flag = true)]
+    AuditEditWrite(RawCompatibilityArguments),
     /// Deny edits inside checked-out submodules of the current superproject.
     #[command(name = "block-submodule-edit", disable_help_flag = true)]
     BlockSubmoduleEdit(RawCompatibilityArguments),
+    /// Launch the age-based `SessionStart` cleanup without blocking startup.
+    #[command(name = "cleanup-sessionstart", disable_help_flag = true)]
+    CleanupSessionstart(RawCompatibilityArguments),
     /// Confine active read-only skill writes to larch scratch roots.
     #[command(name = "deny-edit-write", disable_help_flag = true)]
     DenyEditWrite(RawCompatibilityArguments),
     /// Deny background Bash launches while this clone owns a bgjob row.
     #[command(name = "deny-run-in-background", disable_help_flag = true)]
     DenyRunInBackground(RawCompatibilityArguments),
+    /// Emit non-blocking `SessionStart` environment and workflow advisories.
+    #[command(name = "sessionstart-health", disable_help_flag = true)]
+    SessionstartHealth(RawCompatibilityArguments),
+    /// Reset and install the clone-local progress statusline at `SessionStart`.
+    #[command(name = "sessionstart-statusline", disable_help_flag = true)]
+    SessionstartStatusline(RawCompatibilityArguments),
+    /// Block Stop at a pending post-review implementation boundary.
+    #[command(name = "stop-fail-close", disable_help_flag = true)]
+    StopFailClose(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -3398,14 +3413,29 @@ fn run(
         Domain::Hook(HookCommand::AntiReadPoll(arguments)) => {
             Ok(hook_commands::anti_read_poll(&arguments.arguments))
         }
+        Domain::Hook(HookCommand::AuditEditWrite(arguments)) => {
+            Ok(hook_commands::audit_edit_write(&arguments.arguments))
+        }
         Domain::Hook(HookCommand::BlockSubmoduleEdit(arguments)) => {
             Ok(hook_commands::block_submodule_edit(&arguments.arguments))
+        }
+        Domain::Hook(HookCommand::CleanupSessionstart(arguments)) => {
+            Ok(hook_commands::cleanup_sessionstart(&arguments.arguments))
         }
         Domain::Hook(HookCommand::DenyEditWrite(arguments)) => {
             Ok(hook_commands::deny_edit_write(&arguments.arguments))
         }
         Domain::Hook(HookCommand::DenyRunInBackground(arguments)) => {
             Ok(hook_commands::deny_run_in_background(&arguments.arguments))
+        }
+        Domain::Hook(HookCommand::SessionstartHealth(arguments)) => {
+            Ok(hook_commands::sessionstart_health(&arguments.arguments))
+        }
+        Domain::Hook(HookCommand::SessionstartStatusline(arguments)) => {
+            Ok(hook_commands::sessionstart_statusline(&arguments.arguments))
+        }
+        Domain::Hook(HookCommand::StopFailClose(arguments)) => {
+            Ok(hook_commands::stop_fail_close(&arguments.arguments))
         }
         Domain::Issue(command) => Ok(match command {
             IssueCommand::AddBlockedBy(arguments) => {

@@ -199,11 +199,12 @@ an existing executable intact and prints retry guidance. Run the same command
 again after fixing a missing tool, authentication problem, or interrupted
 download.
 
-The deny and anti-read-poll hook wrappers set
-`LARCH_BOOTSTRAP_NO_INSTALL=1`. They may run an already verified override or
+The deny, advisory, maintenance, audit, Stop-boundary, and anti-read-poll hook
+wrappers set `LARCH_BOOTSTRAP_NO_INSTALL=1`. They may run an already verified override or
 installed executable, but they never start a download or installation from a
 hook event. When no verified executable is available, `scripts/larch.sh` exits
-97 and each wrapper applies its documented local allow or deny fallback.
+97 and each wrapper applies its documented local allow, deny, or fixed-advisory
+fallback.
 Explicit `--preflight-release` and `--latest-stable-version` actions are
 unaffected.
 

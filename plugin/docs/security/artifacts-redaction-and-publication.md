@@ -285,10 +285,12 @@ that pass. See
 operator setting and [Larch Run Logs](../run-logs.md#retention) for run-log
 retention.
 
-The opt-in `scripts/audit-edit-write.sh` developer hook is intentionally
-unredacted. Its gitignored JSONL can contain file paths, file contents,
-credentials, personal data, and proprietary code. It has no automatic
-retention. Never commit or publish it, and clear it after debugging. The Claude
+The Rust-owned audit verb behind the opt-in `scripts/audit-edit-write.sh`
+developer shim is intentionally unredacted. It accepts only object JSON and
+refuses symlinked, multiply linked, or non-regular audit paths, but its
+gitignored JSONL can still contain file paths, file contents, credentials,
+personal data, and proprietary code. It has no automatic retention. Never
+commit or publish it, and clear it after debugging. The Claude
 `--debug-file` log can expose settings paths, plugin paths, MCP server URLs, and
 permission data. Review and redact that log before sharing it. See
 [Developer Hook Audit](../dev-hook-audit.md) and the

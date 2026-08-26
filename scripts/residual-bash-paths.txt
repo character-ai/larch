@@ -21,7 +21,6 @@ scripts/sessionstart-health.sh
 scripts/sleep-seconds.sh
 scripts/test-anti-halt-banners.sh
 scripts/test-anti-improvised-wakeup.sh
-scripts/test-audit-edit-write.sh
 scripts/test-cache-key-discipline.sh
 scripts/test-cache-root-validation.sh
 scripts/test-check-stale-plugin.sh
@@ -30,8 +29,6 @@ scripts/test-effort-prose.sh
 scripts/test-external-tool-registry.sh
 scripts/test-harness-shards-coverage.sh
 scripts/test-hook-anti-read-poll.sh
-scripts/test-sessionstart-statusline.sh
-scripts/test-hook-stop-fail-close.sh
 scripts/test-implement-anti-halt.sh
 scripts/test-implement-cleanup-roundtrip.sh
 scripts/test-implement-fence-shape.sh
@@ -53,7 +50,6 @@ scripts/test-render-cost-line-callsites.sh
 scripts/test-review-dispatch-panel.sh
 scripts/test-resolve-upstream-larch-repo.sh
 scripts/test-rust-integration-consumer.sh
-scripts/test-sessionstart-health.sh
 scripts/test-subskill-anchors.sh
 scripts/test-token-vendor-scrapers.sh
 scripts/test-triage-structure.sh

@@ -4,14 +4,18 @@ use std::{
     env,
     ffi::OsString,
     fs,
-    io::{self, Read as _, Write as _},
+    io::{self, BufRead as _, BufReader, Read as _, Write as _},
     path::{Path, PathBuf},
-    process::ExitCode,
+    process::{Command, ExitCode, Stdio},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use larch_adapters::{GixRepository, bgjob_registry::find_entry_for_clone};
-use larch_core::RepositoryRead as _;
+use chrono::Utc;
+use larch_adapters::{GixRepository, bgjob_registry::find_entry_for_clone, read_first_raw_key};
+use larch_core::{
+    Head, ReferenceKind, ReferenceTarget, RepositoryRead as _, StatusOptions, binary_on_path,
+    implement_session_roots,
+};
 use serde::Serialize;
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
@@ -71,10 +75,28 @@ const BACKGROUND_CWD_REASON: &str =
     "run_in_background denied: missing canonical cwd for Bash background launch";
 const BACKGROUND_REGISTRY_REASON: &str =
     "run_in_background denied: cannot read active bgjob registry entry";
+const SESSIONSTART_JQ_ONLY_FALLBACK: &str = r#"{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH (install jq for advisory hook output)."}}"#;
+const SESSIONSTART_JQ_GIT_FALLBACK: &str = r#"{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH and git not on PATH; install jq and git for advisory hook output."}}"#;
+const SESSIONSTART_GIT_MISSING: &str = "larch hook preflight: git not on PATH. The submodule-edit guard and most larch scripts depend on git.";
+const SESSIONSTART_SPARSE_DRIFT: &str = "larch hook preflight: larch-local marketplace sparse checkout is out of date; run /upgrade-larch to repair it.";
+const SESSIONSTART_DIRTY: &str = "larch hook preflight: working tree has uncommitted changes; the next /implement will fail preflight or inherit them.";
+const SESSIONSTART_STASH: &str = "larch hook preflight: leftover larch-managed stash detected (run 'git stash list | grep larch-' to inspect).";
+const SESSIONSTART_INTERRUPTED: &str =
+    "larch hook preflight: interrupted rebase/merge/cherry-pick state on disk.";
+const SESSIONSTART_UNMERGED: &str = "larch hook preflight: local feature branch(es) not merged into main; consider deleting or pushing.";
+const SESSIONSTART_REVIEW_BOUNDARY_PREFIX: &str =
+    "larch hook preflight: pending post-/review boundary in active /implement tmpdir";
+const CLEANUP_LOG_PREFIX: &str = "larch-cleanup-sessionstart";
+#[cfg(any(not(unix), test))]
+const AUDIT_LOG_RELATIVE: &str = ".claude/hook-audit.log";
 #[cfg(unix)]
 const STATE_DIRECTORY_MODE: Mode = Mode::S_IRWXU;
 #[cfg(unix)]
 const STATE_FILE_MODE: Mode = Mode::from_bits_retain(0o600);
+#[cfg(unix)]
+const AUDIT_DIRECTORY_MODE: Mode = Mode::S_IRWXU;
+#[cfg(unix)]
+const AUDIT_FILE_MODE: Mode = Mode::from_bits_retain(0o600);
 #[cfg(unix)]
 const LOCK_WAIT: Duration = Duration::from_millis(100);
 #[cfg(unix)]
@@ -114,6 +136,40 @@ struct DenyOutput<'reason> {
     permission_decision_reason: &'reason str,
 }
 
+#[derive(Serialize)]
+struct SessionstartEnvelope<'context> {
+    #[serde(rename = "hookSpecificOutput")]
+    hook_specific_output: SessionstartOutput<'context>,
+}
+
+#[derive(Serialize)]
+struct SessionstartOutput<'context> {
+    #[serde(rename = "hookEventName")]
+    hook_event_name: &'static str,
+    #[serde(rename = "additionalContext")]
+    additional_context: &'context str,
+}
+
+#[derive(Serialize)]
+struct StopEnvelope<'reason> {
+    decision: &'static str,
+    reason: &'reason str,
+}
+
+#[derive(Serialize)]
+struct AuditRecord<'payload> {
+    ts: &'payload str,
+    event: &'static str,
+    payload: &'payload Value,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct HookContext {
+    cwd: String,
+    session_id: String,
+    stop_hook_active: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProbeError {
     SymlinkLimit,
@@ -146,6 +202,529 @@ fn read_stdin_bytes() -> Result<Vec<u8>, ()> {
         .read_to_end(&mut input)
         .map_err(|_| ())?;
     (input.len() <= MAX_STDIN_BYTES).then_some(input).ok_or(())
+}
+
+fn read_all_stdin_bytes() -> Result<Vec<u8>, ()> {
+    let mut input = Vec::new();
+    io::stdin().lock().read_to_end(&mut input).map_err(|_| ())?;
+    Ok(input)
+}
+
+fn emit_line(value: &str) {
+    let _ = writeln!(io::stdout().lock(), "{value}");
+}
+
+fn sessionstart_envelope(context: &str) -> String {
+    serde_json::to_string_pretty(&SessionstartEnvelope {
+        hook_specific_output: SessionstartOutput {
+            hook_event_name: "SessionStart",
+            additional_context: context,
+        },
+    })
+    .expect("a SessionStart envelope containing strings is serializable")
+}
+
+fn stop_envelope(reason: &str) -> String {
+    serde_json::to_string(&StopEnvelope {
+        decision: "block",
+        reason,
+    })
+    .expect("a Stop envelope containing strings is serializable")
+}
+
+fn hook_context(input: &[u8]) -> HookContext {
+    let Ok(Value::Object(payload)) = serde_json::from_slice(input) else {
+        return HookContext::default();
+    };
+    HookContext {
+        cwd: json_text(payload.get("cwd")).unwrap_or_default(),
+        session_id: json_text(payload.get("session_id")).unwrap_or_default(),
+        stop_hook_active: json_text(payload.get("stop_hook_active")).as_deref() == Ok("true"),
+    }
+}
+
+fn hook_session_roots() -> [PathBuf; 3] {
+    implement_session_roots(
+        env::var_os("XDG_CACHE_HOME").as_deref(),
+        env::var_os("HOME").as_deref(),
+    )
+}
+
+fn implement_session_dir_exists(roots: &[PathBuf], hook_cwd: &str) -> bool {
+    if hook_cwd.is_empty() {
+        return false;
+    }
+    roots.iter().any(|root| {
+        fs::read_dir(root).is_ok_and(|entries| {
+            entries.flatten().any(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("claude-implement-")
+                    && entry.path().is_dir()
+            })
+        })
+    })
+}
+
+fn active_implement_tmpdir(context: &HookContext) -> Option<PathBuf> {
+    let roots = hook_session_roots();
+    if !implement_session_dir_exists(&roots, &context.cwd) {
+        return None;
+    }
+    let resolved = crate::session_lifecycle_commands::resolve_implement_tmpdir_for_hook(
+        &context.cwd,
+        &context.session_id,
+    );
+    (!resolved.is_empty()).then(|| PathBuf::from(resolved))
+}
+
+fn pending_review_boundary(tmpdir: &Path) -> Option<String> {
+    if tmpdir.join(".run-cleaned-up").is_file()
+        || !tmpdir.join("review-round-summary.md").is_file()
+        || tmpdir.join(".review-boundary-passed").is_file()
+    {
+        return None;
+    }
+    Some(tmpdir.file_name().map_or_else(
+        || "<implement-tmpdir>".into(),
+        |name| name.to_string_lossy().into_owned(),
+    ))
+}
+
+fn active_review_boundary(context: &HookContext) -> Option<String> {
+    active_implement_tmpdir(context).and_then(|tmpdir| pending_review_boundary(&tmpdir))
+}
+
+fn review_boundary_advisory(basename: &str) -> String {
+    format!(
+        "{SESSIONSTART_REVIEW_BOUNDARY_PREFIX} ({basename}); NEXT REQUIRED: execute Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order per skills/implement/SKILL.md Step 5, then touch .review-boundary-passed."
+    )
+}
+
+fn sparse_checkout_dirs(repository: &GixRepository) -> Option<Vec<String>> {
+    let git_dir = repository_path(&repository.location().git_dir);
+    let text = fs::read_to_string(git_dir.join("info/sparse-checkout")).ok()?;
+    let mut directories = Vec::new();
+    for raw in text.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('!') || line == "/*" {
+            continue;
+        }
+        let directory = line.trim_start_matches('/').trim_end_matches('/');
+        if !directory.is_empty() && !directory.contains('*') {
+            directories.push(directory.to_owned());
+        }
+    }
+    directories.sort();
+    directories.dedup();
+    Some(directories)
+}
+
+fn marketplace_sparse_cone_drift(home: Option<&Path>) -> bool {
+    let Some(home) = home.filter(|path| !path.as_os_str().is_empty()) else {
+        return false;
+    };
+    let clone = home.join(".claude/plugins/marketplaces/larch-local");
+    if !clone.join(".git").is_dir() || clone.join("larch-logs").is_dir() {
+        return false;
+    }
+    let Ok(repository) = GixRepository::open(&clone) else {
+        return false;
+    };
+    sparse_checkout_dirs(&repository)
+        .is_some_and(|configured| !configured.is_empty() && configured != [".claude-plugin"])
+}
+
+fn reflog_contains_larch(path: &Path) -> bool {
+    let Ok(file) = fs::File::open(path) else {
+        return false;
+    };
+    BufReader::new(file).split(b'\n').any(|line| {
+        line.is_ok_and(|bytes| {
+            bytes
+                .iter()
+                .position(|byte| *byte == b'\t')
+                .is_some_and(|separator| {
+                    bytes[separator + 1..]
+                        .windows(6)
+                        .any(|window| window == b"larch-")
+                })
+        })
+    })
+}
+
+const fn object_target(target: &ReferenceTarget) -> Option<&larch_core::ObjectId> {
+    match target {
+        ReferenceTarget::Object(id) => Some(id),
+        ReferenceTarget::Symbolic(_) => None,
+    }
+}
+
+fn has_unmerged_local_branch(repository: &GixRepository) -> bool {
+    let Ok(references) = repository.references() else {
+        return false;
+    };
+    let Some(main) = references
+        .iter()
+        .find(|reference| reference.name.as_bytes() == b"refs/heads/main")
+        .and_then(|reference| object_target(&reference.target))
+    else {
+        return false;
+    };
+    let current = match repository.head() {
+        Ok(Head::Symbolic { name, .. }) => Some(name),
+        Ok(Head::Detached { .. } | Head::Unborn { .. }) | Err(_) => None,
+    };
+    references.iter().any(|reference| {
+        reference.kind == ReferenceKind::LocalBranch
+            && reference.name.as_bytes() != b"refs/heads/main"
+            && current
+                .as_ref()
+                .is_none_or(|name| name.as_bytes() != reference.name.as_bytes())
+            && object_target(&reference.target)
+                .is_some_and(|tip| repository.is_ancestor(tip, main).ok() == Some(false))
+    })
+}
+
+fn stalled_run_advisory(git_dir: &Path) -> Option<String> {
+    let sentinel = git_dir.join("larch-stalled-run.txt");
+    if !sentinel.is_file() {
+        return None;
+    }
+    let issue = read_first_raw_key(&sentinel, "ISSUE_NUMBER")
+        .ok()
+        .flatten()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "unknown".to_owned());
+    let step = read_first_raw_key(&sentinel, "STALL_STEP")
+        .ok()
+        .flatten()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "unknown".to_owned());
+    let stash = read_first_raw_key(&sentinel, "STASH_REF")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    Some(if stash.is_empty() {
+        format!(
+            "larch hook preflight: a prior /implement run for #{issue} stalled at step {step}. No working-tree edits were stashed; inspect 'git status' / the issue for context."
+        )
+    } else {
+        format!(
+            "larch hook preflight: a prior /implement run for #{issue} stalled at step {step}. Working-tree edits stashed as {stash}. Resume via 'git stash apply {stash}' or drop via 'git stash drop {stash}'."
+        )
+    })
+}
+
+fn repository_health_advisories(start: &Path) -> Vec<String> {
+    let Ok(repository) = GixRepository::discover(start) else {
+        return Vec::new();
+    };
+    let location = repository.location();
+    let git_dir = repository_path(&location.git_dir);
+    let common_dir = repository_path(&location.common_dir);
+    let mut advisories = Vec::new();
+    if repository
+        .local_status(&StatusOptions::default())
+        .is_ok_and(|status| status.is_dirty())
+    {
+        advisories.push(SESSIONSTART_DIRTY.to_owned());
+    }
+    if reflog_contains_larch(&common_dir.join("logs/refs/stash")) {
+        advisories.push(SESSIONSTART_STASH.to_owned());
+    }
+    if ["REBASE_HEAD", "MERGE_HEAD", "CHERRY_PICK_HEAD"]
+        .iter()
+        .any(|name| git_dir.join(name).exists())
+    {
+        advisories.push(SESSIONSTART_INTERRUPTED.to_owned());
+    }
+    if has_unmerged_local_branch(&repository) {
+        advisories.push(SESSIONSTART_UNMERGED.to_owned());
+    }
+    if let Some(advisory) = stalled_run_advisory(&git_dir) {
+        advisories.push(advisory);
+    }
+    advisories
+}
+
+fn health_advisories(
+    input: &[u8],
+    git_available: bool,
+    home: Option<&Path>,
+    current_dir: Option<&Path>,
+) -> Vec<String> {
+    let mut advisories = Vec::new();
+    if git_available {
+        if marketplace_sparse_cone_drift(home) {
+            advisories.push(SESSIONSTART_SPARSE_DRIFT.to_owned());
+        }
+        if let Some(current_dir) = current_dir {
+            advisories.extend(repository_health_advisories(current_dir));
+        }
+    } else {
+        advisories.push(SESSIONSTART_GIT_MISSING.to_owned());
+    }
+    if let Some(basename) = active_review_boundary(&hook_context(input)) {
+        advisories.push(review_boundary_advisory(&basename));
+    }
+    advisories
+}
+
+/// Run the advisory `hook sessionstart-health` command.
+pub fn sessionstart_health(arguments: &[OsString]) -> ExitCode {
+    if !arguments.is_empty() {
+        return ExitCode::SUCCESS;
+    }
+    let path = env::var("PATH").ok();
+    let jq_available = binary_on_path("jq", path.as_deref());
+    let git_available = binary_on_path("git", path.as_deref());
+    if !jq_available {
+        emit_line(if git_available {
+            SESSIONSTART_JQ_ONLY_FALLBACK
+        } else {
+            SESSIONSTART_JQ_GIT_FALLBACK
+        });
+        return ExitCode::SUCCESS;
+    }
+    let input = read_stdin_bytes().unwrap_or_default();
+    let home = env::var_os("HOME").filter(|value| !value.is_empty());
+    let current_dir = env::current_dir().ok();
+    let advisories = health_advisories(
+        &input,
+        git_available,
+        home.as_deref().map(Path::new),
+        current_dir.as_deref(),
+    );
+    if !advisories.is_empty() {
+        emit_line(&sessionstart_envelope(&advisories.join(" ")));
+    }
+    ExitCode::SUCCESS
+}
+
+fn stop_reason(tmpdir_basename: &str) -> String {
+    format!(
+        "You halted mid-Step-5 (post-/review boundary).\n\nNEXT REQUIRED: execute the Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order per skills/implement/SKILL.md Step 5 post-/review directives, then touch .review-boundary-passed inside the active /implement tmpdir ({tmpdir_basename}) to release this guard.\n\nOperator escape: hard-quit the session, OR touch .run-cleaned-up inside the active /implement tmpdir to intentionally abandon the run."
+    )
+}
+
+/// Run the post-review `hook stop-fail-close` command.
+pub fn stop_fail_close(arguments: &[OsString]) -> ExitCode {
+    if !arguments.is_empty() {
+        return ExitCode::SUCCESS;
+    }
+    let Ok(input) = read_stdin_bytes() else {
+        return ExitCode::SUCCESS;
+    };
+    let context = hook_context(&input);
+    if context.stop_hook_active {
+        return ExitCode::SUCCESS;
+    }
+    if let Some(basename) = active_review_boundary(&context) {
+        emit_line(&stop_envelope(&stop_reason(&basename)));
+    }
+    ExitCode::SUCCESS
+}
+
+fn audit_row(payload: &Value, timestamp: &str) -> Result<Vec<u8>, ()> {
+    let mut row = serde_json::to_vec(&AuditRecord {
+        ts: timestamp,
+        event: "PostToolUse",
+        payload,
+    })
+    .map_err(|_| ())?;
+    row.push(b'\n');
+    Ok(row)
+}
+
+#[cfg(unix)]
+fn append_audit_record(project_dir: &Path, payload: &Value, timestamp: &str) -> Result<(), ()> {
+    let project_dir = fs::canonicalize(project_dir).map_err(|_| ())?;
+    let project = open(
+        &project_dir,
+        OFlag::O_RDONLY | OFlag::O_DIRECTORY | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(|_| ())?;
+    match mkdirat(&project, ".claude", AUDIT_DIRECTORY_MODE) {
+        Ok(()) | Err(Errno::EEXIST) => {}
+        Err(_) => return Err(()),
+    }
+    let audit_dir = openat(
+        &project,
+        ".claude",
+        OFlag::O_RDONLY | OFlag::O_DIRECTORY | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(|_| ())?;
+    let opened_dir = fstat(&audit_dir).map_err(|_| ())?;
+    let visible_dir = fstatat(&project, ".claude", AtFlags::AT_SYMLINK_NOFOLLOW).map_err(|_| ())?;
+    if entry_kind(&opened_dir) != SFlag::S_IFDIR
+        || entry_kind(&visible_dir) != SFlag::S_IFDIR
+        || !same_file(&opened_dir, &visible_dir)
+    {
+        return Err(());
+    }
+    match fstatat(&audit_dir, "hook-audit.log", AtFlags::AT_SYMLINK_NOFOLLOW) {
+        Ok(stat) if is_single_link_regular(&stat) => {}
+        Err(Errno::ENOENT) => {}
+        Ok(_) | Err(_) => return Err(()),
+    }
+    let descriptor = openat(
+        &audit_dir,
+        "hook-audit.log",
+        OFlag::O_WRONLY | OFlag::O_CREAT | OFlag::O_APPEND | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC,
+        AUDIT_FILE_MODE,
+    )
+    .map_err(|_| ())?;
+    let opened_log = fstat(&descriptor).map_err(|_| ())?;
+    let visible_log =
+        fstatat(&audit_dir, "hook-audit.log", AtFlags::AT_SYMLINK_NOFOLLOW).map_err(|_| ())?;
+    let current_dir = fstatat(&project, ".claude", AtFlags::AT_SYMLINK_NOFOLLOW).map_err(|_| ())?;
+    if !is_single_link_regular(&opened_log)
+        || !is_single_link_regular(&visible_log)
+        || !same_file(&opened_log, &visible_log)
+        || !same_file(&opened_dir, &current_dir)
+    {
+        return Err(());
+    }
+    fchmod(&descriptor, AUDIT_FILE_MODE).map_err(|_| ())?;
+    let row = audit_row(payload, timestamp)?;
+    let mut file = File::from(descriptor);
+    file.write_all(&row).map_err(|_| ())
+}
+
+#[cfg(not(unix))]
+fn append_audit_record(project_dir: &Path, payload: &Value, timestamp: &str) -> Result<(), ()> {
+    let project_dir = fs::canonicalize(project_dir).map_err(|_| ())?;
+    let audit_dir = project_dir.join(".claude");
+    match fs::symlink_metadata(&audit_dir) {
+        Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            fs::create_dir(&audit_dir).map_err(|_| ())?;
+        }
+        Ok(_) | Err(_) => return Err(()),
+    }
+    let log = project_dir.join(AUDIT_LOG_RELATIVE);
+    if fs::symlink_metadata(&log)
+        .is_ok_and(|metadata| metadata.file_type().is_symlink() || !metadata.is_file())
+    {
+        return Err(());
+    }
+    let row = audit_row(payload, timestamp)?;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log)
+        .map_err(|_| ())?;
+    file.write_all(&row).map_err(|_| ())
+}
+
+fn append_audit_input(project_dir: &Path, input: &[u8], timestamp: &str) -> Result<(), ()> {
+    let payload @ Value::Object(_) = serde_json::from_slice(input).map_err(|_| ())? else {
+        return Err(());
+    };
+    append_audit_record(project_dir, &payload, timestamp)
+}
+
+/// Run the opt-in advisory `hook audit-edit-write` command.
+pub fn audit_edit_write(arguments: &[OsString]) -> ExitCode {
+    if !arguments.is_empty() {
+        return ExitCode::SUCCESS;
+    }
+    let Ok(input) = read_all_stdin_bytes() else {
+        return ExitCode::SUCCESS;
+    };
+    let project_dir = env::var_os("CLAUDE_PROJECT_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| env::current_dir().ok());
+    if let Some(project_dir) = project_dir {
+        let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let _ = append_audit_input(&project_dir, &input, &timestamp);
+    }
+    ExitCode::SUCCESS
+}
+
+fn launch_cleanup_sessionstart(plugin_root: &Path, temporary_root: &Path) {
+    let entrypoint = plugin_root.join("scripts/larch.sh");
+    if !entrypoint.is_file() {
+        return;
+    }
+    let mut reap = Command::new(&entrypoint); // lint-subprocess-via-runner: ok the hook re-enters the verified bootstrap for an existing first-party command
+    let _ = reap
+        .args(["bgjob", "reap"])
+        .env("CLAUDE_PLUGIN_ROOT", plugin_root)
+        .env("LARCH_BOOTSTRAP_NO_INSTALL", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    let log_path = temporary_root.join(format!("{CLEANUP_LOG_PREFIX}-{}.log", std::process::id()));
+    let mut log_options = fs::OpenOptions::new();
+    log_options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        log_options.mode(0o600);
+    }
+    let log = log_options.open(log_path).ok();
+    let mut cleanup = Command::new(&entrypoint); // lint-subprocess-via-runner: ok the detached cleanup must outlive this hook and still enter through the verified bootstrap
+    cleanup
+        .args(["cleanup", "run"])
+        .env("CLAUDE_PLUGIN_ROOT", plugin_root)
+        .env("LARCH_BOOTSTRAP_NO_INSTALL", "1")
+        .env_remove("LARCH_TEST_TMP_ROOT")
+        .stdin(Stdio::null());
+    if let Some(log) = log {
+        if let Ok(stderr) = log.try_clone() {
+            cleanup.stdout(Stdio::from(log)).stderr(Stdio::from(stderr));
+        } else {
+            cleanup.stdout(Stdio::null()).stderr(Stdio::null());
+        }
+    } else {
+        cleanup.stdout(Stdio::null()).stderr(Stdio::null());
+    }
+    let _ = cleanup.spawn();
+}
+
+/// Run the advisory `hook cleanup-sessionstart` command.
+pub fn cleanup_sessionstart(arguments: &[OsString]) -> ExitCode {
+    if !arguments.is_empty() {
+        return ExitCode::SUCCESS;
+    }
+    let Some(plugin_root) = env::var_os("CLAUDE_PLUGIN_ROOT")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+    else {
+        return ExitCode::SUCCESS;
+    };
+    let temporary_root = env::var_os("TMPDIR")
+        .filter(|value| !value.is_empty())
+        .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
+    launch_cleanup_sessionstart(&plugin_root, &temporary_root);
+    ExitCode::SUCCESS
+}
+
+/// Run the advisory `hook sessionstart-statusline` command.
+pub fn sessionstart_statusline(arguments: &[OsString]) -> ExitCode {
+    if !arguments.is_empty() {
+        return ExitCode::SUCCESS;
+    }
+    let Ok(input) = read_stdin_bytes() else {
+        return ExitCode::SUCCESS;
+    };
+    let Some(plugin_root) = env::var_os("CLAUDE_PLUGIN_ROOT")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+    else {
+        return ExitCode::SUCCESS;
+    };
+    let payload = String::from_utf8_lossy(&input);
+    crate::progress_commands::sessionstart_statusline(&payload, &plugin_root);
+    ExitCode::SUCCESS
 }
 
 fn json_text(value: Option<&Value>) -> Result<String, ()> {
@@ -1091,18 +1670,26 @@ fn assert_or_unlink_replaceable_destination(state: &StateDirectory, name: &str) 
 #[cfg(test)]
 mod tests {
     use super::{
-        ACTIVATION_TTL, BACKGROUND_CWD_REASON, BACKGROUND_MALFORMED_REASON,
+        ACTIVATION_TTL, AUDIT_LOG_RELATIVE, BACKGROUND_CWD_REASON, BACKGROUND_MALFORMED_REASON,
         BACKGROUND_PARSE_REASON, BACKGROUND_REGISTRY_REASON, BLOCK_ABSOLUTE_REASON,
-        BLOCK_PARSE_REASON, DENY_EDIT_WRITE_REASON, REMINDER_TEXT, ReadEvent, STATE_DIR_NAME,
-        StateDirectory, StateRow, activation_is_live, active_edit_reason, block_submodule_reason,
+        BLOCK_PARSE_REASON, CLEANUP_LOG_PREFIX, DENY_EDIT_WRITE_REASON, HookContext, REMINDER_TEXT,
+        ReadEvent, SESSIONSTART_DIRTY, SESSIONSTART_GIT_MISSING, SESSIONSTART_INTERRUPTED,
+        SESSIONSTART_JQ_GIT_FALLBACK, SESSIONSTART_JQ_ONLY_FALLBACK, SESSIONSTART_SPARSE_DRIFT,
+        SESSIONSTART_STASH, SESSIONSTART_UNMERGED, STATE_DIR_NAME, StateDirectory, StateRow,
+        activation_is_live, active_edit_reason, append_audit_input, block_submodule_reason,
         count_for, deny_envelope, deny_run_in_background_reason, elapsed_is_in_window,
-        increment_decimal, normalize_decimal, parse_payload, parse_state_row, path_hash,
-        process_event_at, state_basename, write_state_row,
+        health_advisories, hook_context, implement_session_dir_exists, increment_decimal,
+        launch_cleanup_sessionstart, marketplace_sparse_cone_drift, normalize_decimal,
+        parse_payload, parse_state_row, path_hash, pending_review_boundary, process_event_at,
+        reflog_contains_larch, repository_health_advisories, review_boundary_advisory,
+        sessionstart_envelope, sparse_checkout_dirs, stalled_run_advisory, state_basename,
+        stop_envelope, stop_reason, write_state_row,
     };
+    use larch_adapters::GixRepository;
     use larch_test_support::{GitFixture, GitRepository};
     #[cfg(unix)]
     use nix::{sys::stat::Mode, unistd::mkfifo};
-    use serde_json::json;
+    use serde_json::{Value, json};
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt as _;
     use std::{
@@ -1110,7 +1697,7 @@ mod tests {
         path::Path,
         sync::{Arc, Barrier},
         thread,
-        time::SystemTime,
+        time::{Duration, SystemTime},
     };
     use tempfile::TempDir;
 
@@ -1468,6 +2055,432 @@ mod tests {
         assert_eq!(
             deny_run_in_background_reason(&payload, &registry).as_deref(),
             Some(BACKGROUND_REGISTRY_REASON)
+        );
+    }
+
+    #[test]
+    fn sessionstart_and_stop_envelopes_keep_their_visible_bytes() {
+        assert_eq!(
+            SESSIONSTART_JQ_ONLY_FALLBACK,
+            r#"{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH (install jq for advisory hook output)."}}"#
+        );
+        assert_eq!(
+            SESSIONSTART_JQ_GIT_FALLBACK,
+            r#"{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH and git not on PATH; install jq and git for advisory hook output."}}"#
+        );
+        assert_eq!(
+            SESSIONSTART_GIT_MISSING,
+            "larch hook preflight: git not on PATH. The submodule-edit guard and most larch scripts depend on git."
+        );
+        assert_eq!(
+            SESSIONSTART_SPARSE_DRIFT,
+            "larch hook preflight: larch-local marketplace sparse checkout is out of date; run /upgrade-larch to repair it."
+        );
+        assert_eq!(
+            SESSIONSTART_DIRTY,
+            "larch hook preflight: working tree has uncommitted changes; the next /implement will fail preflight or inherit them."
+        );
+        assert_eq!(
+            SESSIONSTART_STASH,
+            "larch hook preflight: leftover larch-managed stash detected (run 'git stash list | grep larch-' to inspect)."
+        );
+        assert_eq!(
+            SESSIONSTART_INTERRUPTED,
+            "larch hook preflight: interrupted rebase/merge/cherry-pick state on disk."
+        );
+        assert_eq!(
+            SESSIONSTART_UNMERGED,
+            "larch hook preflight: local feature branch(es) not merged into main; consider deleting or pushing."
+        );
+        assert_eq!(
+            review_boundary_advisory("claude-implement-demo"),
+            "larch hook preflight: pending post-/review boundary in active /implement tmpdir (claude-implement-demo); NEXT REQUIRED: execute Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order per skills/implement/SKILL.md Step 5, then touch .review-boundary-passed."
+        );
+        assert_eq!(
+            sessionstart_envelope("first advisory. second advisory."),
+            concat!(
+                "{\n",
+                "  \"hookSpecificOutput\": {\n",
+                "    \"hookEventName\": \"SessionStart\",\n",
+                "    \"additionalContext\": \"first advisory. second advisory.\"\n",
+                "  }\n",
+                "}"
+            )
+        );
+        assert_eq!(
+            health_advisories(b"not-json", false, None, None),
+            vec![SESSIONSTART_GIT_MISSING.to_owned()]
+        );
+
+        let reason = stop_reason("claude-implement-demo");
+        assert_eq!(
+            reason,
+            "You halted mid-Step-5 (post-/review boundary).\n\nNEXT REQUIRED: execute the Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order per skills/implement/SKILL.md Step 5 post-/review directives, then touch .review-boundary-passed inside the active /implement tmpdir (claude-implement-demo) to release this guard.\n\nOperator escape: hard-quit the session, OR touch .run-cleaned-up inside the active /implement tmpdir to intentionally abandon the run."
+        );
+        assert_eq!(
+            stop_envelope(&reason),
+            r#"{"decision":"block","reason":"You halted mid-Step-5 (post-/review boundary).\n\nNEXT REQUIRED: execute the Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order per skills/implement/SKILL.md Step 5 post-/review directives, then touch .review-boundary-passed inside the active /implement tmpdir (claude-implement-demo) to release this guard.\n\nOperator escape: hard-quit the session, OR touch .run-cleaned-up inside the active /implement tmpdir to intentionally abandon the run."}"#
+        );
+    }
+
+    #[test]
+    fn hook_context_and_review_boundary_fail_open_and_release_cleanly() {
+        assert_eq!(hook_context(b"not-json"), HookContext::default());
+        assert_eq!(
+            hook_context(br#"{"cwd":"/clone","session_id":"session-a","stop_hook_active":true}"#),
+            HookContext {
+                cwd: "/clone".to_owned(),
+                session_id: "session-a".to_owned(),
+                stop_hook_active: true,
+            }
+        );
+        assert_eq!(
+            hook_context(br#"{"cwd":"/clone","session_id":null}"#).session_id,
+            ""
+        );
+
+        let temporary = TempDir::new().expect("temporary root");
+        let implementation = temporary.path().join("claude-implement-demo");
+        fs::create_dir(&implementation).expect("implementation directory");
+        assert_eq!(pending_review_boundary(&implementation), None);
+        fs::write(implementation.join("review-round-summary.md"), "review\n")
+            .expect("review summary");
+        assert_eq!(
+            pending_review_boundary(&implementation).as_deref(),
+            Some("claude-implement-demo")
+        );
+        fs::write(implementation.join(".review-boundary-passed"), "").expect("boundary sentinel");
+        assert_eq!(pending_review_boundary(&implementation), None);
+        fs::remove_file(implementation.join(".review-boundary-passed"))
+            .expect("remove boundary sentinel");
+        fs::write(implementation.join(".run-cleaned-up"), "").expect("cleanup sentinel");
+        assert_eq!(pending_review_boundary(&implementation), None);
+
+        let roots = [temporary.path().to_path_buf()];
+        assert!(implement_session_dir_exists(&roots, "/clone"));
+        assert!(!implement_session_dir_exists(&roots, ""));
+    }
+
+    #[test]
+    fn sessionstart_repository_probes_cover_dirty_stash_and_interrupted_state() {
+        let dirty = GitRepository::builder(GitFixture::Changes)
+            .build()
+            .expect("changes fixture");
+        assert!(
+            repository_health_advisories(dirty.root())
+                .iter()
+                .any(|message| message == SESSIONSTART_DIRTY)
+        );
+
+        let stash = GitRepository::builder(GitFixture::Refs)
+            .build()
+            .expect("stash fixture");
+        fs::write(stash.root().join("tracked.txt"), "stash me\n").expect("stash change");
+        let output = stash
+            .git(["stash", "push", "-m", "larch-managed"])
+            .expect("create stash");
+        assert!(
+            output.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            repository_health_advisories(stash.root())
+                .iter()
+                .any(|message| message == SESSIONSTART_STASH)
+        );
+
+        let ordinary_stash = GitRepository::builder(GitFixture::Refs)
+            .build()
+            .expect("ordinary stash fixture");
+        fs::write(ordinary_stash.root().join("tracked.txt"), "stash me\n")
+            .expect("ordinary stash change");
+        let output = ordinary_stash
+            .git(["stash", "push", "-m", "operator-work"])
+            .expect("create ordinary stash");
+        assert!(
+            output.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !repository_health_advisories(ordinary_stash.root())
+                .iter()
+                .any(|message| message == SESSIONSTART_STASH)
+        );
+
+        let interrupted = GitRepository::builder(GitFixture::Refs)
+            .build()
+            .expect("interrupted fixture");
+        fs::write(interrupted.root().join(".git/MERGE_HEAD"), "pending\n").expect("merge marker");
+        assert!(
+            repository_health_advisories(interrupted.root())
+                .iter()
+                .any(|message| message == SESSIONSTART_INTERRUPTED)
+        );
+
+        let reflog = interrupted.root().join("identity-only-stash-log");
+        fs::write(
+            &reflog,
+            "old new Larch <larch-owner@example.invalid> 1 +0000\tOn main: operator work\n",
+        )
+        .expect("identity-only reflog");
+        assert!(!reflog_contains_larch(&reflog));
+        fs::write(
+            &reflog,
+            "old new Operator <operator@example.invalid> 1 +0000\tOn main: larch-managed\n",
+        )
+        .expect("larch-message reflog");
+        assert!(reflog_contains_larch(&reflog));
+    }
+
+    #[test]
+    fn sessionstart_repository_probes_cover_unmerged_branches_and_stall_sentinel() {
+        let repository = GitRepository::builder(GitFixture::Refs)
+            .build()
+            .expect("refs fixture");
+        for arguments in [
+            vec!["checkout", "--quiet", "topic"],
+            vec!["commit", "--quiet", "--allow-empty", "-m", "topic work"],
+            vec!["checkout", "--quiet", "main"],
+        ] {
+            let output = repository.git(arguments).expect("git fixture command");
+            assert!(
+                output.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        let advisories = repository_health_advisories(repository.root());
+        assert!(
+            advisories
+                .iter()
+                .any(|message| message == SESSIONSTART_UNMERGED)
+        );
+
+        fs::write(
+            repository.root().join(".git/larch-stalled-run.txt"),
+            "ISSUE_NUMBER=77\nSTALL_STEP=12d\nSTASH_REF=stash@{0}\n",
+        )
+        .expect("stall sentinel");
+        assert_eq!(
+            stalled_run_advisory(&repository.root().join(".git")).as_deref(),
+            Some(
+                "larch hook preflight: a prior /implement run for #77 stalled at step 12d. Working-tree edits stashed as stash@{0}. Resume via 'git stash apply stash@{0}' or drop via 'git stash drop stash@{0}'."
+            )
+        );
+        fs::write(
+            repository.root().join(".git/larch-stalled-run.txt"),
+            "ISSUE_NUMBER=88\nSTALL_STEP=8b\nSTASH_REF=\n",
+        )
+        .expect("clean stall sentinel");
+        let advisory =
+            stalled_run_advisory(&repository.root().join(".git")).expect("clean stall advisory");
+        assert!(advisory.contains("No working-tree edits were stashed"));
+        assert!(!advisory.contains("git stash apply"));
+
+        let no_main = GitRepository::builder(GitFixture::Refs)
+            .build()
+            .expect("no-main fixture");
+        let output = no_main
+            .git(["branch", "-m", "master"])
+            .expect("rename main");
+        assert!(
+            output.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !repository_health_advisories(no_main.root())
+                .iter()
+                .any(|message| message == SESSIONSTART_UNMERGED)
+        );
+    }
+
+    #[test]
+    fn sessionstart_sparse_checkout_probe_reads_the_configured_cone() {
+        let repository = GitRepository::builder(GitFixture::SparseCheckout)
+            .build()
+            .expect("sparse fixture");
+        let repository = GixRepository::open(repository.root()).expect("open sparse fixture");
+        assert_eq!(
+            sparse_checkout_dirs(&repository),
+            Some(vec!["keep".to_owned()])
+        );
+
+        let ordinary = GitRepository::builder(GitFixture::Refs)
+            .build()
+            .expect("ordinary fixture");
+        let ordinary = GixRepository::open(ordinary.root()).expect("open ordinary fixture");
+        assert_eq!(sparse_checkout_dirs(&ordinary), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sessionstart_sparse_checkout_probe_preserves_skip_and_drift_cases() {
+        use std::os::unix::fs::symlink;
+
+        let home = TempDir::new().expect("home");
+        assert!(!marketplace_sparse_cone_drift(Some(home.path())));
+        let marketplace = home.path().join(".claude/plugins/marketplaces/larch-local");
+        fs::create_dir_all(marketplace.parent().expect("marketplace parent"))
+            .expect("marketplace parent");
+        fs::create_dir(&marketplace).expect("non-git marketplace");
+        assert!(!marketplace_sparse_cone_drift(Some(home.path())));
+        fs::remove_dir(&marketplace).expect("remove non-git marketplace");
+
+        let repository = GitRepository::builder(GitFixture::SparseCheckout)
+            .build()
+            .expect("sparse fixture");
+        symlink(repository.root(), &marketplace).expect("marketplace clone link");
+        assert!(marketplace_sparse_cone_drift(Some(home.path())));
+
+        fs::write(
+            repository.root().join(".git/info/sparse-checkout"),
+            "/*\n!/*/\n/.claude-plugin/\n",
+        )
+        .expect("matching sparse cone");
+        assert!(!marketplace_sparse_cone_drift(Some(home.path())));
+
+        fs::write(
+            repository.root().join(".git/info/sparse-checkout"),
+            "/*\n!/*/\n",
+        )
+        .expect("empty sparse cone");
+        assert!(!marketplace_sparse_cone_drift(Some(home.path())));
+
+        fs::create_dir(repository.root().join("larch-logs")).expect("legacy marketplace marker");
+        fs::write(
+            repository.root().join(".git/info/sparse-checkout"),
+            "/*\n!/*/\n/other/\n",
+        )
+        .expect("drifted legacy cone");
+        assert!(!marketplace_sparse_cone_drift(Some(home.path())));
+    }
+
+    #[test]
+    fn audit_hook_appends_objects_and_skips_invalid_input() {
+        let project = TempDir::new().expect("project root");
+        append_audit_input(
+            project.path(),
+            br#"{"tool_name":"Edit","tool_input":{"file_path":"/tmp/a"}}"#,
+            "2026-08-25T12:34:56Z",
+        )
+        .expect("append Edit row");
+        append_audit_input(
+            project.path(),
+            br#"{"tool_name":"Write","tool_input":{"file_path":"/tmp/b"}}"#,
+            "2026-08-25T12:34:57Z",
+        )
+        .expect("append Write row");
+        let log = project.path().join(".claude/hook-audit.log");
+        let rows: Vec<Value> = fs::read_to_string(&log)
+            .expect("audit log")
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("audit JSON row"))
+            .collect();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["ts"], "2026-08-25T12:34:56Z");
+        assert_eq!(rows[0]["event"], "PostToolUse");
+        assert_eq!(rows[0]["payload"]["tool_name"], "Edit");
+        assert_eq!(rows[1]["payload"]["tool_name"], "Write");
+
+        for invalid in [b"".as_slice(), b"not-json", br#"["not", "object"]"#] {
+            assert!(append_audit_input(project.path(), invalid, "ignored").is_err());
+        }
+        assert_eq!(
+            fs::read_to_string(log)
+                .expect("unchanged audit log")
+                .lines()
+                .count(),
+            2
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn audit_hook_refuses_symlinked_and_non_regular_targets() {
+        use std::os::unix::fs::symlink;
+
+        let project = TempDir::new().expect("project root");
+        let outside = TempDir::new().expect("outside root");
+        symlink(outside.path(), project.path().join(".claude")).expect("symlink audit directory");
+        assert!(append_audit_input(project.path(), br#"{"tool_name":"Edit"}"#, "ignored").is_err());
+        assert!(!outside.path().join("hook-audit.log").exists());
+
+        fs::remove_file(project.path().join(".claude")).expect("remove directory symlink");
+        fs::create_dir(project.path().join(".claude")).expect("audit directory");
+        let outside_log = outside.path().join("captured.jsonl");
+        fs::write(&outside_log, "unchanged\n").expect("outside log");
+        symlink(&outside_log, project.path().join(AUDIT_LOG_RELATIVE)).expect("symlink audit log");
+        assert!(
+            append_audit_input(project.path(), br#"{"tool_name":"Write"}"#, "ignored").is_err()
+        );
+        assert_eq!(
+            fs::read_to_string(&outside_log).expect("unchanged outside log"),
+            "unchanged\n"
+        );
+
+        fs::remove_file(project.path().join(AUDIT_LOG_RELATIVE)).expect("remove log symlink");
+        fs::hard_link(&outside_log, project.path().join(AUDIT_LOG_RELATIVE))
+            .expect("hard-linked audit log");
+        assert!(append_audit_input(project.path(), br#"{"tool_name":"Edit"}"#, "ignored").is_err());
+        assert_eq!(
+            fs::read_to_string(&outside_log).expect("unchanged hard-linked log"),
+            "unchanged\n"
+        );
+
+        fs::remove_file(project.path().join(AUDIT_LOG_RELATIVE)).expect("remove hard link");
+        fs::create_dir(project.path().join(AUDIT_LOG_RELATIVE)).expect("directory at log path");
+        assert!(append_audit_input(project.path(), br#"{"tool_name":"Edit"}"#, "ignored").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cleanup_sessionstart_reaps_before_detached_cleanup() {
+        let temporary = TempDir::new().expect("temporary root");
+        let scripts = temporary.path().join("scripts");
+        fs::create_dir(&scripts).expect("scripts directory");
+        let calls = temporary.path().join("calls.txt");
+        let entrypoint = scripts.join("larch.sh");
+        fs::write(
+            &entrypoint,
+            format!(
+                "#!/bin/sh\nprintf '%s\\t%s\\n' \"$*\" \"${{LARCH_BOOTSTRAP_NO_INSTALL:-}}\" >> '{}'\n",
+                calls.display()
+            ),
+        )
+        .expect("stub entrypoint");
+        fs::set_permissions(&entrypoint, fs::Permissions::from_mode(0o755))
+            .expect("executable entrypoint");
+
+        launch_cleanup_sessionstart(temporary.path(), temporary.path());
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            let lines = fs::read_to_string(&calls).unwrap_or_default();
+            if lines.lines().count() >= 2 || std::time::Instant::now() >= deadline {
+                assert_eq!(lines, "bgjob reap\t1\ncleanup run\t1\n");
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            temporary
+                .path()
+                .join(format!("{CLEANUP_LOG_PREFIX}-{}.log", std::process::id()))
+                .is_file()
+        );
+        assert_eq!(
+            fs::metadata(
+                temporary
+                    .path()
+                    .join(format!("{CLEANUP_LOG_PREFIX}-{}.log", std::process::id()))
+            )
+            .expect("cleanup log metadata")
+            .permissions()
+            .mode()
+                & 0o777,
+            0o600
         );
     }
 

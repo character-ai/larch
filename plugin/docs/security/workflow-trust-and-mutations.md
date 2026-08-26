@@ -124,6 +124,29 @@ Malformed events, unresolved cwd identity, and unreadable regular rows fail
 closed. The combinator-free `scripts/larch.sh bgjob wait` form remains the only
 active-registry carve-out.
 
+#### Advisory-hook runtime boundary
+
+Session health, statusline installation, SessionStart cleanup, the opt-in
+edit/write audit, and the `/implement` Stop boundary are Rust-owned `hook` verbs
+in `crates/larch-cli/src/hook_commands.rs`. Their shipped shell files are thin
+compatibility shims. Each enters through `scripts/larch.sh`, sets
+`LARCH_BOOTSTRAP_NO_INSTALL=1`, and exits 0 without output when the verified
+executable is unavailable or the Rust verb fails. Hook evaluation never
+downloads or installs code. `sessionstart-health.sh` alone retains fixed JSON
+literals for stripped-`PATH` environments where `jq` is unavailable; those
+literals interpolate no event or environment data.
+
+The Rust health and Stop owners read each hook payload once and use the shared
+in-process session resolver, so a missing payload session identity cannot
+inherit stale process state. Health repository reads use `GixRepository` and
+remain advisory. The Stop owner emits its existing block envelope only for an
+unreleased post-`/review` boundary; a re-entrant Stop and unavailable runtime
+fail open. Statusline installation reuses the Rust progress owner. Cleanup
+reaps background jobs synchronously before launching the age-based sweep as a
+detached, no-install child with a newly created diagnostic log. The audit owner
+accepts only object JSON and refuses symlinked, multiply linked, or non-regular
+audit paths before appending one compact JSONL record.
+
 Review launchers use the narrowest available CLI posture. Codex review runs use
 `--sandbox read-only`. Cursor review runs use `--mode ask`. Their launchers also
 compare the working tree with a pre-launch baseline and discard results after a

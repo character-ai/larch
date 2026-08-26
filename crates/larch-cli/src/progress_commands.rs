@@ -212,18 +212,10 @@ pub fn install_statusline(arguments: &[OsString]) -> ExitCode {
         .map(|value| value.to_string_lossy().into_owned())
         .or_else(|| env::var("CLAUDE_PLUGIN_ROOT").ok())
         .unwrap_or_default();
-    if repo_root.is_empty() || plugin_root.is_empty() {
-        return ExitCode::SUCCESS;
-    }
     let home = home_directory();
-    let plugin_root = PathBuf::from(plugin_root);
-    let outcome = statusline::install(
-        Path::new(&repo_root),
-        &plugin_root,
-        &home.join(LAUNCHER_RELATIVE),
-        &plugin_root.join(LARCH_ENTRYPOINT_RELATIVE),
-        Some(&home.join(".claude/settings.json")),
-    );
+    let Some(outcome) = install_statusline_at(&repo_root, Path::new(&plugin_root), &home) else {
+        return ExitCode::SUCCESS;
+    };
     if notice
         && matches!(
             outcome,
@@ -235,6 +227,48 @@ pub fn install_statusline(arguments: &[OsString]) -> ExitCode {
         announce_first_install(&home.join(NOTICE_SENTINEL_RELATIVE));
     }
     ExitCode::SUCCESS
+}
+
+/// Apply both `SessionStart` statusline operations to one already-read payload.
+pub fn sessionstart_statusline(payload: &str, plugin_root: &Path) {
+    if statusline_disabled() {
+        return;
+    }
+    let _outcome = sessionstart_statusline_at(
+        payload,
+        plugin_root,
+        &home_directory(),
+        &statusline_environment(),
+    );
+}
+
+fn sessionstart_statusline_at(
+    payload: &str,
+    plugin_root: &Path,
+    home: &Path,
+    environment: &StatuslineEnvironment,
+) -> (bool, Option<InstallOutcome>) {
+    let cleared = statusline::session_reset(payload, environment);
+    let repo_root = larch_core::install_payload_directory(payload).unwrap_or_default();
+    let installed = install_statusline_at(&repo_root, plugin_root, home);
+    (cleared, installed)
+}
+
+fn install_statusline_at(
+    repo_root: &str,
+    plugin_root: &Path,
+    home: &Path,
+) -> Option<InstallOutcome> {
+    if repo_root.is_empty() || plugin_root.as_os_str().is_empty() {
+        return None;
+    }
+    Some(statusline::install(
+        Path::new(repo_root),
+        plugin_root,
+        &home.join(LAUNCHER_RELATIVE),
+        &plugin_root.join(LARCH_ENTRYPOINT_RELATIVE),
+        Some(&home.join(".claude/settings.json")),
+    ))
 }
 
 /// Render the historical review-phase detail report through the Rust adapter.
@@ -477,9 +511,14 @@ fn usage_error(usage: &str, program: &str, error: &str) -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::{cleanup, missing_arguments, required_run_id};
+    use super::{cleanup, missing_arguments, required_run_id, sessionstart_statusline_at};
     use crate::argparse_compat::parse;
-    use std::{ffi::OsString, process::ExitCode};
+    use larch_adapters::{
+        progress_state,
+        statusline::{InstallOutcome, StatuslineEnvironment},
+    };
+    use std::{ffi::OsString, fs, process::ExitCode};
+    use tempfile::TempDir;
 
     fn arguments(values: &[&str]) -> Vec<OsString> {
         values.iter().map(OsString::from).collect()
@@ -516,5 +555,41 @@ mod tests {
             cleanup(&arguments(&["--retention-days", "0"])),
             ExitCode::from(2)
         );
+    }
+
+    #[test]
+    fn sessionstart_statusline_resets_before_installing_from_one_payload() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let home = sandbox.path().join("home");
+        let cache = home.join(".cache");
+        let clone = sandbox.path().join("clone");
+        let plugin = sandbox.path().join("plugin");
+        fs::create_dir_all(plugin.join("scripts")).expect("plugin scripts");
+        fs::create_dir_all(&clone).expect("clone");
+        fs::write(plugin.join("scripts/larch.sh"), "#!/bin/sh\n").expect("bootstrap entrypoint");
+        let paths = progress_state::progress_paths(&cache, &clone);
+        progress_state::activate_run(&paths, "run-1").expect("activate progress run");
+        let payload = serde_json::json!({
+            "source": "startup",
+            "workspace": {"current_dir": clone},
+        })
+        .to_string();
+        let environment = StatuslineEnvironment {
+            cache_home: cache,
+            bgjob_registry_root: Some(sandbox.path().join("missing-registry")),
+            lines: None,
+            stale_after_s: None,
+            hide_after_s: None,
+            columns: None,
+            now_override: Some("1000".to_owned()),
+        };
+
+        let (cleared, outcome) = sessionstart_statusline_at(&payload, &plugin, &home, &environment);
+
+        assert!(cleared);
+        assert!(matches!(outcome, Some(InstallOutcome::Installed { .. })));
+        assert_eq!(progress_state::read_active_run_id(&paths), None);
+        assert!(clone.join(".claude/settings.local.json").is_file());
+        assert!(home.join(".cache/larch/statusline.sh").is_file());
     }
 }

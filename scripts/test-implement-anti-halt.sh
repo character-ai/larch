@@ -35,31 +35,6 @@ check_contains() {
   fi
 }
 
-first_line_number() {
-  local needle="$1"
-  local rel="$2"
-  local abs="$REPO_ROOT/$rel"
-  grep -nF -- "$needle" "$abs" | head -1 | cut -d: -f1 || true
-}
-
-check_order() {
-  local label="$1"
-  local rel="$2"
-  local before="$3"
-  local after="$4"
-  local before_line after_line
-
-  before_line=$(first_line_number "$before" "$rel")
-  after_line=$(first_line_number "$after" "$rel")
-  if [[ -n "$before_line" && -n "$after_line" && "$before_line" -lt "$after_line" ]]; then
-    echo "PASS: $label"
-    PASS_COUNT=$((PASS_COUNT + 1))
-  else
-    echo "FAIL: $label — before=$before_line after=$after_line" >&2
-    FAIL_COUNT=$((FAIL_COUNT + 1))
-  fi
-}
-
 echo "--- /implement step-boundary anti-halt coverage ---"
 
 # Step 2→3: pin the post-implementation-completion boundary specifically
@@ -116,23 +91,24 @@ check_contains "/review Step 4d to Step 5 reminder" "skills/review/SKILL.md" "re
 
 echo ""
 echo "--- /implement post-/review Stop hook coverage (issue #1862) ---"
-# Mechanical enforcement for post-/review boundary (analogous to the post-/design
-# Stop hook guard): hook-stop-fail-close.sh blocks session stop while
-# review-round-summary.md exists without .review-boundary-passed, and SKILL.md Step 6
-# writes .review-boundary-passed to release the guard once the boundary is cleared.
-check_contains "Post-/review boundary — Stop hook reads review-round-summary.md sentinel" \
+# Mechanical enforcement for the post-/review boundary: the compatibility shim
+# delegates through the no-install bootstrap, the Rust hook owner checks the
+# sentinels through the shared resolver, and SKILL.md Step 6 releases the guard.
+check_contains "Post-/review boundary — Stop shim delegates to Rust owner" \
   "skills/implement/scripts/hook-stop-fail-close.sh" \
+  "hook stop-fail-close"
+check_contains "Post-/review boundary — Stop shim forbids bootstrap installation" \
+  "skills/implement/scripts/hook-stop-fail-close.sh" \
+  "LARCH_BOOTSTRAP_NO_INSTALL=1"
+check_contains "Post-/review boundary — Rust owner reads review sentinel" \
+  "crates/larch-cli/src/hook_commands.rs" \
   "review-round-summary.md"
-check_contains "Post-/review boundary — Stop hook calls Rust resolver CLI" \
-  "skills/implement/scripts/hook-stop-fail-close.sh" \
-  "session resolve-implement-tmpdir"
-check_order "Post-/review boundary — Stop hook pre-check before Rust resolver" \
-  "skills/implement/scripts/hook-stop-fail-close.sh" \
-  "for dir in \"\$root\"/claude-implement-*; do" \
-  "session resolve-implement-tmpdir --cwd \"\$HOOK_CWD\""
-check_contains "Post-/review boundary — Stop hook resolver capture fail-open" \
-  "skills/implement/scripts/hook-stop-fail-close.sh" \
-  "IMPLEMENT_TMPDIR=\$(CLAUDE_PLUGIN_ROOT=\"\$PLUGIN_ROOT\" \"\$PLUGIN_ROOT/scripts/larch.sh\" session resolve-implement-tmpdir --cwd \"\$HOOK_CWD\" 2>/dev/null) || IMPLEMENT_TMPDIR=\"\""
+check_contains "Post-/review boundary — Rust owner reads release sentinel" \
+  "crates/larch-cli/src/hook_commands.rs" \
+  ".review-boundary-passed"
+check_contains "Post-/review boundary — Rust owner uses shared resolver" \
+  "crates/larch-cli/src/hook_commands.rs" \
+  "resolve_implement_tmpdir_for_hook"
 check_contains "Post-/review boundary — review-boundary-passed sentinel write in SKILL.md" \
   "skills/implement/SKILL.md" \
   ".review-boundary-passed"
