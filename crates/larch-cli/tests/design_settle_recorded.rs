@@ -147,13 +147,20 @@ fn gate_c_case() -> RecordedCase {
 }
 
 fn fake_publish_case(name: &'static str, mode: &str) -> RecordedCase {
+    let mut seeds = vec![
+        SeedFile::text("design/.completed/step-5b", ""),
+        SeedFile::text("design/composed-plan.md", "## Plan\n\nReady.\n"),
+    ];
+    if mode == "rc5" {
+        seeds.push(SeedFile::text(
+            "design/design-publish-log.stderr.log",
+            "design log-publish: archive publication failed: run lifecycle finalize failed: run-log incomplete: plan-review-round-1:plan-review/round-1/findings-classification.tsv\nsecond line omitted from the summary\n",
+        ));
+    }
     let mut case = step5c_child_case(
         name,
         &[],
-        vec![
-            SeedFile::text("design/.completed/step-5b", ""),
-            SeedFile::text("design/composed-plan.md", "## Plan\n\nReady.\n"),
-        ],
+        seeds,
     );
     let plugin = fixture_directory()
         .join("design_finalize_fake_plugin")

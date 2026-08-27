@@ -136,7 +136,46 @@ fn native_pruned_round_records_transcript_stage_argv_and_artifacts() {
     let native=run(Some(&root),"run",&["--mode","loop","--no-preview"],&[("CLAUDE_PLUGIN_ROOT",&plugin),("DESIGN_TMPDIR",&root)]); assert!(native.status.success(),"{}",err(&native));
     let tally=root.join("voting-tally.md"); let expected=format!("PANEL_PRUNED_EMPTY=true\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=skipped-pruned-empty\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nVOTING_TALLY_FILE={}\nLOOP_STATUS=zero-findings-degraded-panel\nNEXT_ACTION=step3b\nLOOP_STATUS=zero-findings-degraded-panel\nROUNDS_COMPLETED=1\nREVIEW_ROUND_COUNT=1\nPANEL_PRUNED_EMPTY=true\nTALLY_PLAN_REVIEW_STATUS=ok\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\n",tally.display()); assert_eq!(out(&native),expected);
     let expected_argv=format!("plan-review panel-dispatch --design-tmpdir {} --round-num 1 --prune-round-num 1 --plan-file {}/plan.txt --feature-file {}/feature-description.txt --codex-present false --cursor-present false --timeout 1860 --tier MODERATE --escalated-round false\nprogress write-design-round-meta --round-dir {}/plan-review/round-1\nplan-review continuation --design-tmpdir {} --approve-requested false\n",root.display(),root.display(),root.display(),root.display(),root.display()); assert_eq!(text(root.join("native-stage-argv.log")),expected_argv);
-    assert_eq!(text(root.join("plan-review/round-1/round-summary.env")),"LOOP_STATUS=zero-findings-degraded-panel\nCOLLECT_OK_COUNT=0\nCOLLECT_FAILURE_COUNT=0\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=skipped-pruned-empty\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\n"); assert_eq!(text(root.join("plan-review/round-1/reviewer-status.tsv")),"slot\tstatus\telapsed\n"); assert_eq!(text(root.join(".step3-review-result.env")),"NEXT_ACTION=step3b\nLOOP_STATUS=zero-findings-degraded-panel\nROUNDS_COMPLETED=1\nREVIEW_ROUND_COUNT=1\nPANEL_PRUNED_EMPTY=true\nTALLY_PLAN_REVIEW_STATUS=ok\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nDEGRADED_PANEL_WARNING=\nINVALID_SLOT_PANEL_WARNING=\nREASON=\n"); assert!(root.join(".completed/step-3").is_file()); assert!(root.join(".completed/step-3.5").is_file());
+    assert_eq!(text(root.join("plan-review/round-1/round-summary.env")),"LOOP_STATUS=zero-findings-degraded-panel\nCOLLECT_OK_COUNT=0\nCOLLECT_FAILURE_COUNT=0\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=skipped-pruned-empty\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\n"); assert_eq!(text(root.join("plan-review/round-1/reviewer-status.tsv")),"slot\tstatus\telapsed\n"); assert_eq!(text(root.join("plan-review/round-1/findings-classification.tsv")),format!("{}\n",larch_core::review::FINDINGS_CLASSIFICATION_HEADER)); assert_eq!(text(root.join(".step3-review-result.env")),"NEXT_ACTION=step3b\nLOOP_STATUS=zero-findings-degraded-panel\nROUNDS_COMPLETED=1\nREVIEW_ROUND_COUNT=1\nPANEL_PRUNED_EMPTY=true\nTALLY_PLAN_REVIEW_STATUS=ok\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nDEGRADED_PANEL_WARNING=\nINVALID_SLOT_PANEL_WARNING=\nREASON=\n"); assert!(root.join(".completed/step-3").is_file()); assert!(root.join(".completed/step-3.5").is_file());
+}
+
+#[cfg(unix)]
+#[test]
+fn native_zero_findings_round_writes_classification_before_publish() {
+    let sandbox=TempDir::new().expect("sandbox");
+    let root=design(&sandbox).canonicalize().expect("canonical design");
+    fs::write(root.join("plan.txt"),"# Plan\n\ndiff_lines: 1\n").expect("plan");
+    fs::write(root.join("run-params.json"),"{}\n").expect("params");
+    fs::write(root.join("difficulty-rating.json"),"{\"applied_tier\":\"MODERATE\",\"panel_tier\":\"MODERATE\",\"audit_evaluated\":true,\"audit_upgrade\":null,\"escalations\":[]}\n").expect("difficulty");
+    let plugin=sandbox.path().join("plugin");
+    fs::create_dir_all(plugin.join("scripts")).expect("scripts");
+    fs::create_dir_all(plugin.join("python")).expect("python");
+    script(&plugin.join("scripts/larch.sh"),r#"root="${DESIGN_TMPDIR:?}"
+case "${1:-} ${2:-}" in
+  'plan-review panel-dispatch')
+    mkdir -p "$root/plan-review/round-1"
+    printf '%s\n' "$root/reviewer.txt" >"$root/plan-review-panel-paths.txt"
+    printf '%s\n' '{"slot":"codex-plan-arch","tool":"codex","output":"reviewer.txt","agent":"larch:code-reviewer","prompt_file":"prompt.txt"}' >"$root/plan-review-slots.ndjson"
+    printf '%s\n' 'scope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix' >"$root/reviewer.txt.tsv"
+    printf '%s\n' 'PANEL_PRUNED_EMPTY=false' "PANEL_PATHS_FILE=$root/plan-review-panel-paths.txt"
+    ;;
+  'agent collect-results')
+    printf '%s\n' "REVIEWER_FILE=$root/reviewer.txt" 'TOOL=codex' 'STATUS=OK' 'EXIT_CODE=0' 'FAILURE_REASON=' "STRUCTURED_SIDECAR=$root/reviewer.txt.tsv" ''
+    ;;
+  'review aggregate-findings')
+    printf '%s\n' 'REASON=insufficient-input' 'AGGREGATED=false'
+    ;;
+  'plan-review continuation')
+    printf '%s\n' 'PLAN_REVIEW_CONTINUE=false' 'PLAN_REVIEW_CONTINUE_REASON=small-clean'
+    ;;
+esac"#);
+    fs::write(plugin.join("python/cli.py"),"import sys\nif sys.argv[1:3] != ['difficulty', 'resolve-panel']:\n    raise SystemExit(2)\nprint('STATUS=ok')\nprint('PANEL_TIER=MODERATE')\nprint('ESCALATED_ROUND=false')\n").expect("python fixture");
+
+    let native=run(Some(&root),"run",&["--mode","loop","--no-preview"],&[("CLAUDE_PLUGIN_ROOT",&plugin),("DESIGN_TMPDIR",&root)]);
+
+    assert!(native.status.success(),"stdout={} stderr={}",out(&native),err(&native));
+    assert!(out(&native).contains("LOOP_STATUS=zero-findings-degraded-panel\n"),"{}",out(&native));
+    assert_eq!(text(root.join("plan-review/round-1/findings-classification.tsv")),format!("{}\n",larch_core::review::FINDINGS_CLASSIFICATION_HEADER));
 }
 
 #[cfg(unix)]

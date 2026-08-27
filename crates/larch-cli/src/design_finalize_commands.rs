@@ -21,8 +21,8 @@ use larch_core::{
         OPTIONAL_SIZE_TRAILER_KEYS, OVERSIZE_OVERRIDE_OPERATOR, match_trailer_line,
         parse_final_trailers, validate_plan_facets,
     },
-    has_live_entry, parse_allowlisted_env_line, private_atomic_write, read_for, result_env_path,
-    unlink_entry, validate_merge_result_env,
+    has_live_entry, parse_allowlisted_env_line, private_atomic_write, read_for,
+    redact_run_log_payload, result_env_path, unlink_entry, validate_merge_result_env,
 };
 use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
@@ -39,10 +39,12 @@ use crate::design_step2b_commands::{
     rehydrate_env as wrapper_env, resolve_design_tmpdir, touch, validate_design_tmpdir_result,
 };
 use crate::design_terminal_commands::{STAGE_EXTRA_FLAGS, emit_report_gate_sidecars_from_disk};
+use crate::run_log_entry_commands::append_execution_issue;
 
 const STEP5C_STEP: &str = "design-step5c";
 const STEP5C_BUDGET_S: &str = "21600";
 const TAIL_BYTE_CAP: usize = 16_384;
+const LOG_PUBLISH_DETAIL_CHAR_CAP: usize = 1_024;
 const INFO_ICON: &str = "\u{2139}";
 
 const STEP5C_SESSION_ENV_KEYS: &[&str] = &[
@@ -564,6 +566,47 @@ fn phase_tail(design_tmpdir: &Path, name: &str) -> String {
     bounded_tail(&String::from_utf8_lossy(
         &fs::read(path).unwrap_or_default(),
     ))
+}
+
+fn record_log_publish_failure_detail(
+    design_tmpdir: &Path,
+    result: &BTreeMap<String, String>,
+) -> Option<String> {
+    if get(result, "LATEST_PHASE") != "log-publish-failed"
+        || get(result, "LOG_PUBLISH_ATTEMPTED") != "true"
+    {
+        return None;
+    }
+    let raw = phase_tail(design_tmpdir, "design-publish-log.stderr.log");
+    let line = raw.lines().next()?.trim();
+    if line.is_empty() {
+        return None;
+    }
+    let redacted = redact_run_log_payload(line);
+    let mut chars = redacted.trim().chars();
+    let mut detail = chars
+        .by_ref()
+        .take(LOG_PUBLISH_DETAIL_CHAR_CAP)
+        .collect::<String>();
+    if chars.next().is_some() {
+        detail.push_str(" [truncated]");
+    }
+    if detail.is_empty() {
+        return None;
+    }
+    let entry = format!("design Step 5c log publish failed: {detail}");
+    if let Err(error) = append_execution_issue(
+        &design_tmpdir.join("execution-issues.md"),
+        "Tool Failures",
+        &entry,
+    ) {
+        let error = redact_run_log_payload(&error);
+        eprintln!(
+            "**⚠ Step 5c: failed to append the log-publish diagnostic: {}**",
+            error.trim()
+        );
+    }
+    Some(detail)
 }
 
 fn render_publish_failure_detail(
@@ -1266,6 +1309,7 @@ fn step5c_core_with(
             );
             eprintln!("**⚠ Step 5c: publish-tail diagnostic persistence failed: {error}**");
         }
+        let log_publish_detail = record_log_publish_failure_detail(&design_tmpdir, &result);
         let rows = early_status_rows(
             &ctx,
             "5",
@@ -1285,7 +1329,13 @@ fn step5c_core_with(
             &publish.stdout,
             &result,
         );
-        eprintln!("**⚠ Step 5c: design-publish.sh failed (exit 5); aborting /design**");
+        if let Some(detail) = log_publish_detail {
+            eprintln!(
+                "**⚠ Step 5c: design-publish.sh failed (exit 5): {detail}; aborting /design**"
+            );
+        } else {
+            eprintln!("**⚠ Step 5c: design-publish.sh failed (exit 5); aborting /design**");
+        }
         return ExitCode::from(1);
     }
     if publish_rc == 3 {

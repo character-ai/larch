@@ -3725,6 +3725,43 @@ mod tests {
     }
 
     #[test]
+    fn zero_findings_design_round_accepts_header_only_classification() {
+        let root = tempdir().expect("temporary completeness root is available");
+        let root_path = fs::canonicalize(root.path()).expect("temporary root canonicalizes");
+        let run_dir = root_path.join("run");
+        let repo = root_path.join("repo");
+        fs::create_dir_all(run_dir.join("plan-review/round-1")).expect("review round is writable");
+        fs::create_dir(&repo).expect("repository fixture is writable");
+        fs::write(run_dir.join("manifest.json"), "{}\n").expect("manifest is writable");
+        fs::write(run_dir.join(UNIVERSAL_FINAL_REPORT), "final report\n")
+            .expect("final report is writable");
+        fs::write(run_dir.join(UNIVERSAL_SESSION_TRANSCRIPT), "transcript\n")
+            .expect("transcript is writable");
+        fs::write(run_dir.join(UNIVERSAL_EXECUTION_ISSUES), "")
+            .expect("execution issues are writable");
+        fs::write(
+            run_dir.join("plan-review/round-1/reviewer-status.tsv"),
+            "slot\tstatus\telapsed\n",
+        )
+        .expect("review status is writable");
+
+        let missing = verify_run_completeness(&run_dir, "design", &repo)
+            .expect_err("classification is required");
+        assert_eq!(
+            missing.to_string(),
+            "run-log incomplete: plan-review-round-1:plan-review/round-1/findings-classification.tsv"
+        );
+
+        fs::write(
+            run_dir.join("plan-review/round-1/findings-classification.tsv"),
+            format!("{}\n", larch_core::review::FINDINGS_CLASSIFICATION_HEADER),
+        )
+        .expect("classification is writable");
+        verify_run_completeness(&run_dir, "design", &repo)
+            .expect("header-only classification completes the run log");
+    }
+
+    #[test]
     fn filesystem_helpers_preserve_confinement_and_stable_file_identity() {
         let root = tempdir().expect("temporary filesystem root is available");
         let root_path = fs::canonicalize(root.path()).expect("temporary root canonicalizes");
