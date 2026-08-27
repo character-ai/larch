@@ -6264,24 +6264,24 @@ kind = "script"
 rust = ["hook audit-edit-write"]
 
 [[callers]]
-path = "scripts/cleanup-sessionstart.sh"
-kind = "hook"
-rust = ["hook cleanup-sessionstart"]
-
-[[callers]]
-path = "scripts/external-tool-registry.sh"
-kind = "script"
-rust = ["agent check-reviewers", "agent collect-results", "agent model-args", "agent run-external-agent", "implement step2-dispatch"]
-
-[[callers]]
 path = "scripts/block-submodule-edit.sh"
 kind = "hook"
 rust = ["hook block-submodule-edit"]
 
 [[callers]]
+path = "scripts/cleanup-sessionstart.sh"
+kind = "hook"
+rust = ["hook cleanup-sessionstart"]
+
+[[callers]]
 path = "scripts/deny-edit-write.sh"
 kind = "script"
 rust = ["hook deny-edit-write"]
+
+[[callers]]
+path = "scripts/external-tool-registry.sh"
+kind = "script"
+rust = ["agent check-reviewers", "agent collect-results", "agent model-args", "agent run-external-agent", "implement step2-dispatch"]
 
 [[callers]]
 path = "scripts/hook-anti-read-poll.sh"
@@ -6901,7 +6901,7 @@ rust = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-fail
 [[callers]]
 path = "skills/learn-from-bugs/SKILL.md"
 kind = "skill"
-rust = ["learn-from-bugs check-proposals", "learn-from-bugs filing-deps", "learn-from-bugs prepare", "learn-from-bugs resolve-zones", "learn-from-bugs state-publish", "learn-from-bugs validate-report", "oos file-conflict-deps"]
+rust = ["issue create-batch", "issue parse-input", "learn-from-bugs check-proposals", "learn-from-bugs filing-deps", "learn-from-bugs prepare", "learn-from-bugs resolve-zones", "learn-from-bugs state-publish", "learn-from-bugs validate-report", "oos file-conflict-deps"]
 
 [[callers]]
 path = "skills/pause/SKILL.md"

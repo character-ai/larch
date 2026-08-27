@@ -332,7 +332,7 @@ write each file atomically with mode `0600`.
 
 Keep `${RUN_DIR}/batch-issues.md` as the working artifact; the durable path is the retry copy. If durable artifact creation or pending-state persistence fails, stop before dry-run validation and filing (fail-closed). Do not advance the scan marker.
 
-#### Run the deterministic preview, then invoke `/issue` once
+#### Run the deterministic preview, then invoke `/issue` once with the Skill tool
 
 Parse the batch and preview its caller-supplied edges through the deterministic issue owners:
 
