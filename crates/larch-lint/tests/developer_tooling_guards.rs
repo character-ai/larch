@@ -211,39 +211,6 @@ fn crate_process_rejects_retained_skill_prompt_and_workflow_git() {
 }
 
 #[test]
-fn crate_process_rejects_python_subprocess_argv() {
-    let repository = TempRepo::new();
-    repository.write(
-        "scripts/developer_tool.py",
-        br#"import subprocess as process
-
-github_argv = ["gh", "api", "/user"]
-git_argv = ["git", "status", "--short"]
-git_command = "git status --short"
-process.run(args=github_argv, check=True)
-process.check_call(git_argv)
-process.run(git_command, shell=True)
-"#,
-    );
-    repository.commit_all();
-
-    TempRepo::command_from(repository.path())
-        .args(["rule", "developer-tooling-crate-process"])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::contains(
-            "scripts/developer_tool.py:6: developer tooling spawns gh; a Rust crate already provides this capability",
-        ))
-        .stdout(predicate::str::contains(
-            "scripts/developer_tool.py:7: developer tooling spawns git; a Rust crate already provides this capability",
-        ))
-        .stdout(predicate::str::contains(
-            "scripts/developer_tool.py:8: developer tooling spawns git; a Rust crate already provides this capability",
-        ))
-        .stderr(predicate::str::is_empty());
-}
-
-#[test]
 fn rust_owned_python_rejects_retained_developer_prompt() {
     let repository = TempRepo::new();
     write_rust_owned_registry(&repository, "plugin", "read-version");

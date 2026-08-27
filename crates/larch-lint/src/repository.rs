@@ -11,7 +11,7 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 use crate::{
     command_registry::CommandRegistryAnalysis,
     runner::LintError,
-    syntax::{parse_bash, parse_python},
+    syntax::parse_bash,
 };
 
 /// A lazily materialized immutable fact set for one repository snapshot.
@@ -272,7 +272,6 @@ pub struct Repository {
     committed_paths: Vec<RepoPath>,
     sources: BTreeMap<RepoPath, SourceFile>,
     bash_syntax: BTreeMap<RepoPath, OnceLock<Result<Arc<tree_sitter::Tree>, String>>>,
-    python_syntax: BTreeMap<RepoPath, OnceLock<Result<Arc<tree_sitter::Tree>, String>>>,
     command_registry_analysis: OnceLock<Arc<CommandRegistryAnalysis>>,
 }
 
@@ -293,7 +292,6 @@ impl Repository {
         let mut paths = Vec::with_capacity(discovered.len());
         let mut sources = BTreeMap::new();
         let mut bash_syntax = BTreeMap::new();
-        let mut python_syntax = BTreeMap::new();
         for path in discovered {
             let candidate = root.join(path.as_str());
             match regular_file_status(&candidate) {
@@ -313,7 +311,6 @@ impl Repository {
                         LintError::new(format!("{path}: cannot read source: {error}"))
                     })?;
                     bash_syntax.insert(path.clone(), OnceLock::new());
-                    python_syntax.insert(path.clone(), OnceLock::new());
                     sources.insert(path.clone(), SourceFile::new(bytes));
                     paths.push(path);
                 }
@@ -330,7 +327,6 @@ impl Repository {
             committed_paths: committed,
             sources,
             bash_syntax,
-            python_syntax,
             command_registry_analysis: OnceLock::new(),
         })
     }
@@ -411,15 +407,6 @@ impl Repository {
     /// Returns an error when `path` is not tracked or its source cannot be parsed.
     pub fn bash_syntax(&self, path: &RepoPath) -> Result<Arc<tree_sitter::Tree>, LintError> {
         self.cached_syntax(path, &self.bash_syntax, parse_bash)
-    }
-
-    /// Return shared parsed Python syntax for one snapshotted source file.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when `path` is not tracked or its source cannot be parsed.
-    pub fn python_syntax(&self, path: &RepoPath) -> Result<Arc<tree_sitter::Tree>, LintError> {
-        self.cached_syntax(path, &self.python_syntax, parse_python)
     }
 
     /// Return the shared command-registry facts for this immutable snapshot.
@@ -622,8 +609,8 @@ mod tests {
     #[test]
     fn snapshot_reuses_contents_and_parsed_syntax() {
         let temporary = tempfile::tempdir().expect("tempdir");
-        std::fs::write(temporary.path().join("module.py"), "print('before')\n")
-            .expect("write Python fixture");
+        std::fs::write(temporary.path().join("notes.md"), "before\n")
+            .expect("write text fixture");
         std::fs::write(
             temporary.path().join("script.sh"),
             "printf '%s\\n' before\n",
@@ -632,36 +619,31 @@ mod tests {
         let repository = Repository::discover(
             &FakeGit {
                 root: temporary.path().to_path_buf(),
-                stream: b"script.sh\0module.py\0".to_vec(),
+                stream: b"script.sh\0notes.md\0".to_vec(),
             },
             temporary.path(),
         )
         .expect("discover fixture repository");
-        let python = RepoPath::parse("module.py").expect("valid Python path");
+        let notes = RepoPath::parse("notes.md").expect("valid text path");
         let shell = RepoPath::parse("script.sh").expect("valid Bash path");
 
-        let first_bytes = repository.read_bytes(&python).expect("read Python bytes");
-        let second_bytes = repository.read_bytes(&python).expect("reuse Python bytes");
+        let first_bytes = repository.read_bytes(&notes).expect("read text bytes");
+        let second_bytes = repository.read_bytes(&notes).expect("reuse text bytes");
         assert!(Arc::ptr_eq(&first_bytes, &second_bytes));
 
-        let first_source = repository.read_utf8(&python).expect("read Python source");
-        let second_source = repository.read_utf8(&python).expect("reuse Python source");
+        let first_source = repository.read_utf8(&notes).expect("read text source");
+        let second_source = repository.read_utf8(&notes).expect("reuse text source");
         assert!(Arc::ptr_eq(&first_source, &second_source));
-        std::fs::write(temporary.path().join("module.py"), "print('after')\n")
+        std::fs::write(temporary.path().join("notes.md"), "after\n")
             .expect("mutate fixture after discovery");
         assert_eq!(
             repository
-                .read_utf8(&python)
+                .read_utf8(&notes)
                 .expect("read snapshot")
                 .as_ref(),
-            "print('before')\n"
+            "before\n"
         );
 
-        let first_python = repository.python_syntax(&python).expect("parse Python");
-        let second_python = repository
-            .python_syntax(&python)
-            .expect("reuse Python parse");
-        assert!(Arc::ptr_eq(&first_python, &second_python));
         let first_bash = repository.bash_syntax(&shell).expect("parse Bash");
         let second_bash = repository.bash_syntax(&shell).expect("reuse Bash parse");
         assert!(Arc::ptr_eq(&first_bash, &second_bash));

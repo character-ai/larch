@@ -667,9 +667,9 @@ fn classify_caller(path: &str, hook_paths: &BTreeSet<String>) -> Option<CallerKi
     {
         Some(CallerKind::Agent)
     } else if path.starts_with("scripts/")
-        && Path::new(path).extension().is_some_and(|extension| {
-            extension.eq_ignore_ascii_case("sh") || extension.eq_ignore_ascii_case("py")
-        })
+        && Path::new(path)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("sh"))
     {
         Some(CallerKind::Script)
     } else if path.starts_with(".github/workflows/")

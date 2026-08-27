@@ -1,6 +1,5 @@
 //! Shared Rust and Markdown syntax support for rule implementations.
 
-use std::path::Path;
 use std::sync::LazyLock;
 
 use pulldown_cmark::Parser;
@@ -8,15 +7,6 @@ use regex::Regex;
 use tree_sitter::Parser as TreeSitterParser;
 
 use crate::LintError;
-
-/// Return whether a repository path is a production Python module.
-#[must_use]
-pub fn is_production_python_path(path: &str) -> bool {
-    path.starts_with("python/larch/")
-        && Path::new(path)
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
-}
 
 static INLINE_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:run|execute|invoke|call|use)\s*:?\s*$")
@@ -78,21 +68,6 @@ pub fn parse_bash(source: &str) -> Result<tree_sitter::Tree, LintError> {
     parser
         .parse(source, None)
         .ok_or_else(|| LintError::new("cannot parse Bash source"))
-}
-
-/// Parse Python source with the workspace's maintained grammar.
-///
-/// # Errors
-///
-/// Returns an error when the parser cannot be configured or produce a tree.
-pub fn parse_python(source: &str) -> Result<tree_sitter::Tree, LintError> {
-    let mut parser = TreeSitterParser::new();
-    parser
-        .set_language(&tree_sitter_python::LANGUAGE.into())
-        .map_err(|error| LintError::new(format!("cannot configure Python parser: {error}")))?;
-    parser
-        .parse(source, None)
-        .ok_or_else(|| LintError::new("cannot parse Python source"))
 }
 
 /// Return leaf Bash commands, excluding heredoc payloads.

@@ -16,7 +16,6 @@ use syn::{
     visit::{self, Visit},
 };
 use toml::Value;
-use tree_sitter::Node;
 
 use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput, syntax};
 
@@ -116,14 +115,6 @@ const LATER_DOMAIN_ISSUES: [u64; 12] = [
     7674, 7676, 7677, 7678, 7679, 7680, 7681, 7682, 7683, 7684, 7685, 7686,
 ];
 
-const RETIRED_PUSH_REBASE_SYMBOLS: [&str; 5] = [
-    "RebasePushResult",
-    "_rebase_push_force_with_lease",
-    "_rebase_push_jitter_sleep",
-    "_transient_retry_git_result",
-    "rebase_push",
-];
-
 static SHELL_GIT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)(?:^[[:space:]]*|[;&|({][[:space:]]*)git[[:space:]]+(?:(?:-C|-c)[[:space:]]+[^[:space:]]+[[:space:]]+)*(?P<op>--version|[a-z][a-z-]*)")
         .expect("shell Git operation expression is valid")
@@ -195,7 +186,6 @@ impl Rule for GitOwnershipRule {
         check_concrete_gix_boundary(repository, &mut findings)?;
         check_closed_cli_operations(repository, &mut findings)?;
         check_atomic_command_rows(repository, &mut findings)?;
-        check_retired_push_rebase_symbols(repository, &mut findings)?;
         check_inventory(repository, &mut findings)?;
         findings.sort();
         findings.dedup();
@@ -881,57 +871,6 @@ fn check_atomic_command_rows(
     Ok(())
 }
 
-fn check_retired_push_rebase_symbols(
-    repository: &Repository,
-    findings: &mut Vec<Finding>,
-) -> Result<(), LintError> {
-    for path in repository.paths() {
-        let path_text = path.as_str();
-        if !syntax::is_production_python_path(path_text) {
-            continue;
-        }
-        if path_text.starts_with("python/larch/git/") {
-            findings.push(Finding::new(
-                path_text,
-                1,
-                "retired Git Python runtime source returned",
-            ));
-        }
-        let source = repository.read_utf8(path)?;
-        if !RETIRED_PUSH_REBASE_SYMBOLS
-            .iter()
-            .any(|symbol| source.contains(symbol))
-        {
-            continue;
-        }
-        let tree = repository.python_syntax(path)?;
-        collect_retired_python_identifiers(tree.root_node(), &source, path_text, findings);
-    }
-    Ok(())
-}
-
-fn collect_retired_python_identifiers(
-    node: Node<'_>,
-    source: &str,
-    path: &str,
-    findings: &mut Vec<Finding>,
-) {
-    if node.kind() == "identifier"
-        && let Ok(identifier) = node.utf8_text(source.as_bytes())
-        && RETIRED_PUSH_REBASE_SYMBOLS.contains(&identifier)
-    {
-        findings.push(Finding::new(
-            path,
-            to_u32(node.start_position().row + 1),
-            format!("retired push rebase Python state-machine symbol: {identifier}"),
-        ));
-    }
-    let mut cursor = node.walk();
-    for child in node.named_children(&mut cursor) {
-        collect_retired_python_identifiers(child, source, path, findings);
-    }
-}
-
 fn check_inventory(repository: &Repository, findings: &mut Vec<Finding>) -> Result<(), LintError> {
     let inventory = parse_inventory(&required_utf8(repository, INVENTORY_PATH)?)?;
     let detected = detect_surfaces(repository)?;
@@ -1179,12 +1118,11 @@ fn is_production_surface(path: &str) -> bool {
         return true;
     }
     let extension = Path::new(path).extension().and_then(|value| value.to_str()).unwrap_or_default();
-    let runtime = path.starts_with("python/larch/") && extension == "py"
-        || (path.starts_with("skills/") || path.starts_with(".claude/skills/")
-            || path.starts_with("agents/") || path.starts_with(".claude/agents/"))
-            && matches!(extension, "md" | "sh" | "py")
+    let runtime = (path.starts_with("skills/") || path.starts_with(".claude/skills/")
+        || path.starts_with("agents/") || path.starts_with(".claude/agents/"))
+        && matches!(extension, "md" | "sh")
         || path.starts_with("hooks/") && matches!(extension, "json" | "sh")
-        || path.starts_with("scripts/") && matches!(extension, "sh" | "py")
+        || path.starts_with("scripts/") && matches!(extension, "sh")
         || path.starts_with(".github/workflows/") && matches!(extension, "yml" | "yaml")
         || matches!(path, "Makefile" | ".pre-commit-config.yaml");
     runtime && !path.split('/').any(|part| part == "tests" || part == "fixtures")
@@ -1207,8 +1145,6 @@ fn later_domain_issue(path: &str) -> u64 {
         || path.contains("check-stale-plugin")
     {
         7674
-    } else if path == "python/larch/git/gh.py" {
-        7676
     } else if path.contains("/state/")
         || path.contains("sessionstart-health")
         || path.contains("block-submodule-edit")
@@ -1220,9 +1156,7 @@ fn later_domain_issue(path: &str) -> u64 {
         7679
     } else if path.contains("/design/") || path.starts_with("skills/design") {
         7680
-    } else if path.contains("/implement/") || path.starts_with("skills/implement")
-        || path.starts_with("python/larch/git/")
-    {
+    } else if path.contains("/implement/") || path.starts_with("skills/implement") {
         7681
     } else if let Some(issue) = super::issue_python_free::retained_module_owner(path) {
         u64::try_from(issue).expect("retained issue-domain owner is positive")

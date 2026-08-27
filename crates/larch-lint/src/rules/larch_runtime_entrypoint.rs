@@ -95,9 +95,6 @@ fn is_production_rust(path: &str) -> bool {
 }
 
 pub(super) fn is_production_surface(path: &str) -> bool {
-    if path.starts_with("python/larch/") {
-        return has_extension(path, "py");
-    }
     if path.starts_with("skills/")
         || path.starts_with(".claude/skills/")
         || path.starts_with("agents/")
@@ -128,12 +125,10 @@ mod tests {
 
     #[test]
     fn scopes_only_runtime_sources() {
-        assert!(is_production_surface("python/larch/core/example.py"));
         assert!(is_production_surface("skills/example/SKILL.md"));
         assert!(is_production_surface("agents/example.md"));
         assert!(is_production_surface("hooks/hooks.json"));
         assert!(is_production_surface("scripts/example.sh"));
-        assert!(!is_production_surface("python/tests/test_example.py"));
         assert!(!is_production_surface("docs/example.md"));
         assert!(!is_production_surface("scripts/test-example.sh"));
     }

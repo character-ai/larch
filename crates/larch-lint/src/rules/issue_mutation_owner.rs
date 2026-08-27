@@ -1,16 +1,12 @@
 //! Keep GitHub issue field mutation behind the typed issue-mutation owner.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    path::Path,
-};
+use std::{collections::BTreeSet, path::Path};
 
 use syn::{
     Expr, ExprCall, ExprMethodCall, ItemFn, ItemMod, ItemUse, UseTree,
     spanned::Spanned,
     visit::{self, Visit},
 };
-use tree_sitter::Node;
 
 use crate::{
     Finding, LintError, Repository, Rule, RuleMetadata, RuleOutput,
@@ -27,13 +23,6 @@ const RUST_OWNER: &str = "crates/larch-adapters/src/github/issue_mutation.rs";
 const RUST_TRANSPORT_ADAPTER: &str = "crates/larch-adapters/src/github_rest.rs";
 const OWNER_GUIDANCE: &str = "use larch_adapters::github::IssueMutationOwner";
 
-const RAW_HELPERS: &[&str] = &[
-    "issue_edit",
-    "issue_edit_body_file",
-    "issue_edit_body_with_retry",
-    "issue_label_add",
-    "issue_label_remove",
-];
 const GRAPHQL_MUTATIONS: &[&str] = &[
     "updateIssue",
     "addLabelsToLabelable",
@@ -75,10 +64,6 @@ impl Rule for IssueMutationOwnerRule {
             };
             let source = repository.read_utf8(path)?;
             findings.extend(match surface {
-                Surface::Python => {
-                    let syntax = repository.python_syntax(path)?;
-                    check_python(path_text, &source, &syntax)?
-                }
                 Surface::Rust => check_rust(path_text, &source)?,
                 Surface::Shell => {
                     let syntax = repository.bash_syntax(path)?;
@@ -98,7 +83,6 @@ crate::register_rule!(METADATA, RULE);
 
 #[derive(Clone, Copy)]
 enum Surface {
-    Python,
     Rust,
     Shell,
     Markdown,
@@ -107,9 +91,6 @@ enum Surface {
 
 fn surface(path: &str) -> Option<Surface> {
     let extension = Path::new(path).extension()?.to_str()?;
-    if path.starts_with("python/larch/") && extension.eq_ignore_ascii_case("py") {
-        return Some(Surface::Python);
-    }
     if path.starts_with("crates/")
         && !path.starts_with("crates/larch-lint/")
         && extension.eq_ignore_ascii_case("rs")
@@ -148,7 +129,6 @@ fn is_fixture(path: &str) -> bool {
 
 #[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
 enum MutationKind {
-    Helper(String),
     Rust(String),
     Cli,
     Rest,
@@ -158,9 +138,6 @@ enum MutationKind {
 impl MutationKind {
     fn message(self) -> String {
         match self {
-            Self::Helper(name) => {
-                format!("raw issue mutation helper {name}; {OWNER_GUIDANCE}")
-            }
             Self::Rust(name) => {
                 format!("raw Rust issue field mutation {name}; {OWNER_GUIDANCE}")
             }
@@ -171,28 +148,6 @@ impl MutationKind {
             }
         }
     }
-}
-
-#[derive(Default)]
-struct PythonImports {
-    gh_modules: BTreeSet<String>,
-    helper_calls: BTreeMap<String, String>,
-    command_calls: BTreeSet<String>,
-}
-
-fn check_python(
-    path: &str,
-    source: &str,
-    syntax: &tree_sitter::Tree,
-) -> Result<Vec<Finding>, LintError> {
-    let mut imports = PythonImports::default();
-    collect_python_imports(syntax.root_node(), source, &mut imports);
-    let mut matches = BTreeSet::new();
-    collect_python_calls(syntax.root_node(), source, &imports, &mut matches);
-    matches
-        .into_iter()
-        .map(|(line, kind)| Ok(Finding::new(path, line_number(path, line)?, kind.message())))
-        .collect()
 }
 
 fn check_rust(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
@@ -331,161 +286,6 @@ fn has_test_attribute(attributes: &[syn::Attribute]) -> bool {
 
 fn line_number_span(span: proc_macro2::Span) -> u32 {
     u32::try_from(span.start().line).unwrap_or(1)
-}
-
-fn collect_python_imports(node: Node<'_>, source: &str, imports: &mut PythonImports) {
-    if matches!(node.kind(), "import_statement" | "import_from_statement") {
-        record_python_import(source.get(node.byte_range()).unwrap_or(""), imports);
-        return;
-    }
-    let mut cursor = node.walk();
-    for child in node.named_children(&mut cursor) {
-        collect_python_imports(child, source, imports);
-    }
-}
-
-fn record_python_import(statement: &str, imports: &mut PythonImports) {
-    let normalized = statement.replace(['\n', '(', ')'], " ");
-    let normalized = normalized.split_whitespace().collect::<Vec<_>>().join(" ");
-    if let Some(items) = normalized.strip_prefix("import ") {
-        for item in items.split(',').map(str::trim) {
-            let words: Vec<&str> = item.split_whitespace().collect();
-            if words.first() == Some(&"larch.git.gh") {
-                let local = match words.as_slice() {
-                    [_, "as", alias] => *alias,
-                    _ => "larch.git.gh",
-                };
-                imports.gh_modules.insert(local.to_owned());
-            }
-        }
-        return;
-    }
-    let Some((module, names)) = normalized
-        .strip_prefix("from ")
-        .and_then(|rest| rest.split_once(" import "))
-    else {
-        return;
-    };
-    if module == "larch.git" {
-        for item in names.split(',').map(str::trim) {
-            let words: Vec<&str> = item.split_whitespace().collect();
-            if words.first() == Some(&"gh") {
-                let local = match words.as_slice() {
-                    [_, "as", alias] => *alias,
-                    _ => "gh",
-                };
-                imports.gh_modules.insert(local.to_owned());
-            }
-        }
-    } else if module == "larch.git.gh" {
-        for item in names.split(',').map(str::trim) {
-            let words: Vec<&str> = item.split_whitespace().collect();
-            let Some(name) = words.first().copied() else {
-                continue;
-            };
-            let local = match words.as_slice() {
-                [_, "as", alias] => *alias,
-                _ => name,
-            };
-            if RAW_HELPERS.contains(&name) {
-                imports
-                    .helper_calls
-                    .insert(local.to_owned(), name.to_owned());
-            } else if name == "command" {
-                imports.command_calls.insert(local.to_owned());
-            }
-        }
-    }
-}
-
-fn collect_python_calls(
-    node: Node<'_>,
-    source: &str,
-    imports: &PythonImports,
-    matches: &mut BTreeSet<(usize, MutationKind)>,
-) {
-    if node.kind() == "call"
-        && let Some(kind) = python_call_kind(node, source, imports)
-    {
-        matches.insert((node.start_position().row + 1, kind));
-    }
-    let mut cursor = node.walk();
-    for child in node.named_children(&mut cursor) {
-        collect_python_calls(child, source, imports, matches);
-    }
-}
-
-fn python_call_kind(call: Node<'_>, source: &str, imports: &PythonImports) -> Option<MutationKind> {
-    let function = call.child_by_field_name("function")?;
-    let function = source.get(function.byte_range()).unwrap_or("").trim();
-    if let Some(helper) = raw_helper(function, imports) {
-        return Some(MutationKind::Helper(helper));
-    }
-    let arguments = call.child_by_field_name("arguments")?;
-    let gh_wrapper = is_gh_command(function, imports);
-    let mut cursor = arguments.walk();
-    for argument in arguments.named_children(&mut cursor) {
-        let candidate = if argument.kind() == "keyword_argument" {
-            let name = argument.child_by_field_name("name")?;
-            if !matches!(source.get(name.byte_range()), Some("args" | "argv")) {
-                continue;
-            }
-            argument.child_by_field_name("value")?
-        } else {
-            argument
-        };
-        if !matches!(candidate.kind(), "list" | "tuple") {
-            continue;
-        }
-        let mut words = Vec::new();
-        collect_python_strings(candidate, source, &mut words);
-        if let Some(kind) = command_mutation(&words, gh_wrapper) {
-            return Some(kind);
-        }
-    }
-    None
-}
-
-fn raw_helper(function: &str, imports: &PythonImports) -> Option<String> {
-    if let Some(helper) = imports.helper_calls.get(function) {
-        return Some(helper.clone());
-    }
-    let (module, helper) = function.rsplit_once('.')?;
-    (RAW_HELPERS.contains(&helper)
-        && (module == "larch.git.gh" || imports.gh_modules.contains(module)))
-    .then(|| helper.to_owned())
-}
-
-fn is_gh_command(function: &str, imports: &PythonImports) -> bool {
-    if imports.command_calls.contains(function) {
-        return true;
-    }
-    function.rsplit_once('.').is_some_and(|(module, name)| {
-        name == "command" && (module == "larch.git.gh" || imports.gh_modules.contains(module))
-    })
-}
-
-fn collect_python_strings(node: Node<'_>, source: &str, words: &mut Vec<String>) {
-    if node.kind() == "call" {
-        return;
-    }
-    if node.kind() == "string" {
-        words.push(python_string_value(node, source));
-        return;
-    }
-    let mut cursor = node.walk();
-    for child in node.named_children(&mut cursor) {
-        collect_python_strings(child, source, words);
-    }
-}
-
-fn python_string_value(node: Node<'_>, source: &str) -> String {
-    source
-        .get(node.byte_range())
-        .unwrap_or("")
-        .trim_start_matches(['r', 'R', 'b', 'B', 'f', 'F'])
-        .trim_matches(['\"', '\''])
-        .replace("\\\n", "")
 }
 
 fn command_mutation(words: &[String], gh_wrapper: bool) -> Option<MutationKind> {

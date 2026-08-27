@@ -7,10 +7,6 @@ use support::TempRepo;
 fn larch_runtime_entrypoint_rejects_direct_binary_callers() {
     let repository = TempRepo::new();
     repository.write(
-        "python/larch/core/direct.py",
-        b"from pathlib import Path\nBINARY = Path('/plugin') / \"bin\" / \"larch\"\nOTHER = Path('/plugin', \"bin\", \"larch\")\n",
-    );
-    repository.write(
         "agents/direct.md",
         b"Run `\"$CLAUDE_PLUGIN_ROOT/bin/larch\" git clean-tree`.\n",
     );
@@ -28,12 +24,6 @@ fn larch_runtime_entrypoint_rejects_direct_binary_callers() {
         .args(["rule", "larch-runtime-entrypoint"])
         .assert()
         .code(1)
-        .stdout(predicate::str::contains(
-            "python/larch/core/direct.py:2: direct bin/larch production entrypoint",
-        ))
-        .stdout(predicate::str::contains(
-            "python/larch/core/direct.py:3: direct bin/larch production entrypoint",
-        ))
         .stdout(predicate::str::contains(
             "agents/direct.md:1: direct bin/larch production entrypoint",
         ))
@@ -53,10 +43,6 @@ fn larch_runtime_entrypoint_allows_bootstrap_and_nonproduction_surfaces() {
         b"#!/usr/bin/env bash\nexec \"$plugin_root/bin/larch\" \"$@\"\n",
     );
     repository.write(
-        "python/larch/core/caller.py",
-        b"entrypoint = root / \"scripts/larch.sh\"\n",
-    );
-    repository.write(
         "scripts/test-entrypoint.sh",
         b"#!/usr/bin/env bash\n\"$CLAUDE_PLUGIN_ROOT/bin/larch\" example echo fixture\n",
     );
@@ -69,24 +55,6 @@ fn larch_runtime_entrypoint_allows_bootstrap_and_nonproduction_surfaces() {
         .success()
         .stdout("")
         .stderr("");
-}
-
-#[test]
-fn larch_runtime_entrypoint_rejects_retired_upgrade_python_exception() {
-    let repository = TempRepo::new();
-    repository.write(
-        "python/larch/core/upgrade_larch.py",
-        b"binary = root / \"bin/larch\"\n",
-    );
-    repository.commit_all();
-
-    TempRepo::command_from(repository.path())
-        .args(["rule", "larch-runtime-entrypoint"])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::contains(
-            "python/larch/core/upgrade_larch.py:1: direct bin/larch production entrypoint",
-        ));
 }
 
 #[test]

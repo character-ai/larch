@@ -4,7 +4,7 @@
 //!
 //! | Need | Candidates | Selection |
 //! | --- | --- | --- |
-//! | Shipped-skill inventory | recursive filesystem walk, repository snapshot plus direct child inspection | Reuse the validated repository snapshot for prompt content and inspect only the two declared direct-child skill roots for the Python rule's symlink and shape contract. |
+//! | Shipped-skill inventory | recursive filesystem walk, repository snapshot plus direct child inspection | Reuse the validated repository snapshot for prompt content and inspect only the two declared direct-child skill roots for the symlink and shape contract. |
 //! | Child-call grammar | generic Markdown parser, direct line parser | The existing grammar is a narrow ordered block, so a direct line parser is clearer and preserves its exact accepted bullet shapes without adding a Markdown dependency. |
 
 use std::{
@@ -36,11 +36,6 @@ const TERMINAL_VERBS: [&str; 4] = [
     "lifecycle-cancel",
     "lifecycle-early-return",
 ];
-const PYTHON_PUBLISHER_ALLOWLIST: [&str; 2] = [
-    "python/larch/report/run_lifecycle.py",
-    "python/larch/report/run_log_publish.py",
-];
-
 pub static METADATA: RuleMetadata = RuleMetadata::new(
     NAME,
     DESCRIPTION,
@@ -87,7 +82,7 @@ impl Rule for SkillRunLifecycleRule {
             findings.extend(check_prompt_ownership(repository, prompt, &ownership)?);
             findings.extend(check_child_handoffs(prompt));
         }
-        findings.extend(check_publishers(repository, &prompts)?);
+        findings.extend(check_publishers(&prompts));
         findings.sort();
         findings.dedup();
         Ok(RuleOutput::from_findings(findings))
@@ -420,7 +415,7 @@ fn check_owner(
     }
 }
 
-fn check_publishers(repository: &Repository, prompts: &[Prompt]) -> Result<Vec<Finding>, LintError> {
+fn check_publishers(prompts: &[Prompt]) -> Vec<Finding> {
     let mut findings = Vec::new();
     for prompt in prompts {
         if ["run-log publish", "publish_log_run("]
@@ -434,22 +429,7 @@ fn check_publishers(repository: &Repository, prompts: &[Prompt]) -> Result<Vec<F
             ));
         }
     }
-    for path in repository.paths().iter().filter(|path| {
-        path.as_str().starts_with("python/larch/") && path.as_str().strip_suffix(".py").is_some()
-    }) {
-        if PYTHON_PUBLISHER_ALLOWLIST.contains(&path.as_str()) {
-            continue;
-        }
-        let text = repository.read_utf8(path)?;
-        if text.contains("publish_log_run(") {
-            findings.push(Finding::new(
-                path.as_str(),
-                1,
-                "second terminal run-log publisher bypasses lifecycle ownership",
-            ));
-        }
-    }
-    Ok(findings)
+    findings
 }
 
 fn check_child_handoffs(prompt: &Prompt) -> Vec<Finding> {
