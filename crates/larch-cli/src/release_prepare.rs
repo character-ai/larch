@@ -1246,10 +1246,10 @@ fn resolve(repository: &GixRepository, revision: &str) -> Result<ObjectId, Strin
 /// Resolve the commit that starts a release-history window.
 ///
 /// Legacy release tags name a commit on `main` and remain their own window
-/// base. Projection tags name a two-parent child of `main`; their first parent
-/// is the merged release commit and becomes the window base. Requiring the
-/// two-parent shape keeps an arbitrary one-parent side-branch tag from being
-/// accepted as a release projection.
+/// base. Projection tags name a one- or two-parent child of `main`; their first
+/// parent is the merged release commit and becomes the window base. A
+/// projection is accepted only when that parent is on the source history and
+/// every tree change from it is confined to `plugin/`.
 fn release_window_base(
     repository: &GixRepository,
     baseline: &ObjectId,
@@ -1267,17 +1267,38 @@ fn release_window_base(
         .into_iter()
         .next()
         .ok_or_else(|| "baseline tag commit is missing".to_owned())?;
-    if commit.parents.len() != 2 {
+    if !(1..=2).contains(&commit.parents.len()) {
         return Ok(None);
     }
     let first_parent = commit
         .parents
         .first()
-        .expect("two-parent projection commit has a first parent");
-    repository
+        .expect("one- or two-parent projection commit has a first parent");
+    if !repository
         .is_ancestor(first_parent, source)
-        .map(|is_ancestor| is_ancestor.then(|| first_parent.to_owned()))
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(None);
+    }
+    let parent = repository
+        .walk_commits(first_parent, 1)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .next()
+        .ok_or_else(|| "projection first parent commit is missing".to_owned())?;
+    let changes = repository
+        .tree_changes(&parent.tree, &commit.tree)
+        .map_err(|error| error.to_string())?;
+    let is_plugin_path = |path: &[u8]| path == b"plugin" || path.starts_with(b"plugin/");
+    let changes_only_plugin = changes.entries().iter().all(|change| {
+        is_plugin_path(change.path.as_bytes())
+            && (change.kind != ChangeKind::Renamed
+                || change
+                    .source_path
+                    .as_ref()
+                    .is_some_and(|path| is_plugin_path(path.as_bytes())))
+    });
+    Ok(changes_only_plugin.then(|| first_parent.to_owned()))
 }
 
 fn pr_suffix(subject: &str) -> Option<u64> {
