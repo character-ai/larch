@@ -14,7 +14,7 @@ scraping, post-emit recap prose, and approximate no-cost paraphrases.
 `skills/design/SKILL.md` keeps only site-specific gates, source names, and
 shared-row citations. The harness pins Step 0b cancel routes to the file-only
 profile, the non-empty `FINAL_SUMMARY_PATH` gate, the retained
-`design-step-final-summary.sh` and `design-step5c.sh` source names, and the
+`design-step-final-summary.sh` source and `design step5c` command names, and the
 `/design` marker-first row cite at each emit site. It also pins the
 render-exit carve-out phrase **Not** gated on `scripts/larch.sh design
 render-final-summary` exit 0 in both the always-loaded preamble and Step 5c

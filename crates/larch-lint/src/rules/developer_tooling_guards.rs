@@ -552,9 +552,9 @@ mod tests {
         assert!(!is_developer_tooling_surface("skills/design/SKILL.md"));
         assert!(!is_developer_tooling_surface("python/larch/cli.py"));
 
-        let residual = BTreeSet::from(["skills/design/scripts/design-clarify.sh".to_owned()]);
+        let residual = BTreeSet::from(["skills/design/scripts/runtime-helper.sh".to_owned()]);
         assert!(is_manifest_runtime_surface(
-            "skills/design/scripts/design-clarify.sh",
+            "skills/design/scripts/runtime-helper.sh",
             &residual,
         ));
         assert!(!is_manifest_runtime_surface(
@@ -562,7 +562,7 @@ mod tests {
             &residual,
         ));
         assert!(!is_manifest_runtime_surface(
-            "skills/design/scripts/test-design-clarify.sh",
+            "skills/design/scripts/test-runtime-helper.sh",
             &residual,
         ));
     }

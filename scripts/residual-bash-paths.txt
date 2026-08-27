@@ -53,10 +53,8 @@ scripts/test-rust-integration-consumer.sh
 scripts/test-subskill-anchors.sh
 scripts/test-token-vendor-scrapers.sh
 scripts/test-triage-structure.sh
-skills/design/scripts/design-clarify.sh
 skills/design/scripts/design-step5b-annotate.sh
 skills/design/scripts/design-step5b-prepare.sh
-skills/design/scripts/design-step5c.sh
 fixtures/plan-commands/validate-plan-commands/demo-empty-help.sh
 fixtures/plan-commands/validate-plan-commands/demo-help-nonzero-rc.sh
 fixtures/plan-commands/validate-plan-commands/demo-stdout-help.sh
@@ -64,8 +62,6 @@ fixtures/plan-commands/validate-plan-commands/demo-tier3-dry.sh
 fixtures/plan-commands/validate-plan-commands/demo-tier3-fail.sh
 fixtures/plan-commands/validate-plan-commands/demo-tier3-validate-only.sh
 skills/design/scripts/test-brainstorm-prompts.sh
-skills/design/scripts/test-design-clarify.sh
-skills/design/scripts/test-design-step5c.sh
 skills/design/scripts/test-findings-classification.sh
 skills/design/scripts/test-gate-b-apply-mode.sh
 skills/design/scripts/test-step3-orchestrator-fence.sh

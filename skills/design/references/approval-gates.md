@@ -31,10 +31,10 @@ Run renderer commands as `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" design render
 <!-- loop-mode review contract -->
 In loop mode, accepted findings are applied inside the Rust plan-review owner before `STEP3_REVIEW_LOOP_STATUS=complete`. Prompt-side Gate B applies only on loop bail-outs; under `--per-round-approval` it asks explicitly: Apply all / Go through each / Switch to discussion mode.
 
-Step 5c missing or empty `$DESIGN_TMPDIR/composed-plan.md` is a file-precondition defect. Recovery must compose Step 5c item 1 first, then re-run `design-step5c.sh --fresh-attempt`. Skip auto-repair and do not offer Override.
+Step 5c missing or empty `$DESIGN_TMPDIR/composed-plan.md` is a file-precondition defect. Recovery must compose Step 5c item 1 first, then re-run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" design step5c --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" --claude-pid "$PPID" --fresh-attempt`. Skip auto-repair and do not offer Override.
 
 For ordinary composed-plan validator defects where the file exists and is non-empty, keep ordinary recovery semantics: auto-repair, then Fix-and-retry / Override / Cancel when auto-repair does not resolve the defect.
 
-Limit `design-step5c.sh --fresh-attempt --skip-validate` to ordinary Step 5c validator defects after operator Override or successful auto-fix validation. Fix-and-retry re-runs `design-step5c.sh --fresh-attempt` without `--skip-validate` so command validation reruns on the operator-edited `composed-plan.md`. Do not imply that `--skip-validate` can repair a missing or empty composed plan.
+Limit `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" design step5c --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" --claude-pid "$PPID" --fresh-attempt --skip-validate` to ordinary Step 5c validator defects after operator Override or successful auto-fix validation. Fix-and-retry re-runs the same command without `--skip-validate` so command validation reruns on the operator-edited `composed-plan.md`. Do not imply that `--skip-validate` can repair a missing or empty composed plan.
 
 Compatibility grep note: `scripts/larch.sh design step35-settle` calls `scripts/larch.sh design step2b-postplan --site gate-b` in-process (historical launcher fence: `design-step35-settle.sh`).

@@ -451,6 +451,17 @@ mod clarify_orchestrator_tests {
             ]))
             .is_err()
         );
+        assert!(
+            parse_design_clarify_args(&osargs(&[
+                "--phase",
+                "publish",
+                "--issue",
+                "7",
+                "--claude-pid",
+                "0",
+            ]))
+            .is_err()
+        );
         let parsed = parse_design_clarify_args(&osargs(&[
             "--phase",
             "publish",

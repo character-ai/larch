@@ -994,6 +994,18 @@ pub struct WrapperArgs2b {
     pub skip_validate: bool,
 }
 
+impl WrapperArgs2b {
+    /// Explicit session-env path supplied by the prompt-side caller.
+    pub fn session_env_path(&self) -> &str {
+        &self.session_env_path
+    }
+
+    /// Explicit plugin root supplied by the caller, if any.
+    pub fn plugin_root(&self) -> &str {
+        &self.plugin_root
+    }
+}
+
 /// Port of `_parse_common_wrapper_args`: bind behavior-bearing flags, consume
 /// value flags, and forward-compatibly skip retired generated wrapper args.
 pub fn parse_common_wrapper_args(argv: &[String]) -> Result<WrapperArgs2b, String> {
