@@ -975,6 +975,7 @@ pub struct PlanReviewRoundInput {
 pub struct PlanReviewRoundState {
     pub exit_code: i32,
     pub loop_status: String,
+    pub reason: String,
     pub tally_status: String,
     pub aggregator_status: String,
     pub accepted_count: usize,
@@ -990,6 +991,7 @@ impl PlanReviewRoundState {
         Self {
             exit_code: 0,
             loop_status: "complete".to_owned(),
+            reason: String::new(),
             tally_status: "ok".to_owned(),
             aggregator_status: "ok".to_owned(),
             accepted_count: 0,
@@ -1011,6 +1013,27 @@ impl PlanReviewRoundState {
 
     fn set_aggregator_status(&mut self, value: &str) {
         value.clone_into(&mut self.aggregator_status);
+    }
+
+    fn set_empty_findings(&mut self, round_num: u64, input: &PlanReviewRoundInput) {
+        self.set_tally_status("skipped-empty-findings");
+        if self.aggregator_status == "insufficient-input" {
+            self.set_aggregator_status("skipped-empty-input");
+        }
+        self.degraded_panel = input.collection.exit_code != 0 || input.collection.failure_count > 0;
+        self.set_loop_status(classify_round_loop_status(
+            0,
+            input.collection.ok_count,
+            self.degraded_panel,
+            self.panel_pruned_empty,
+        ));
+        let reason = if self.degraded_panel {
+            "zero-findings-degraded-panel"
+        } else {
+            "zero-findings"
+        };
+        reason.clone_into(&mut self.reason);
+        self.rounds_completed = Some(round_num);
     }
 
     /// Return the byte-stable per-round summary for this state.
@@ -1045,8 +1068,9 @@ pub fn run_plan_review_round(round_num: u64, input: &PlanReviewRoundInput) -> Pl
         return state;
     }
     if input.panel.panel_pruned_empty {
-        state.set_loop_status("zero-findings-degraded-panel");
+        state.set_tally_status("skipped-pruned-empty");
         state.set_aggregator_status("skipped-pruned-empty");
+        state.rounds_completed = Some(round_num);
         return state;
     }
     if input.collection.exit_code != 0 && input.collection.record_count == 0 {
@@ -1082,8 +1106,7 @@ pub fn run_plan_review_round(round_num: u64, input: &PlanReviewRoundInput) -> Pl
         return state;
     }
     if input.collection.ok_count > 0 && !input.ballot.has_canonical_items {
-        state.set_loop_status("zero-findings-degraded-panel");
-        state.rounds_completed = Some(round_num);
+        state.set_empty_findings(round_num, input);
         return state;
     }
     if input.voter.exit_code != 0 || !input.voter.dispatch_ok {
@@ -1121,11 +1144,13 @@ pub fn run_plan_review_round(round_num: u64, input: &PlanReviewRoundInput) -> Pl
         input.collection.ok_count,
         state.degraded_panel,
         state.panel_pruned_empty,
-        &state.tally_status,
     ));
     if state.loop_status == "degraded-empty-collector" {
         state.degraded_panel = true;
         return state;
+    }
+    if state.loop_status == "zero-findings-degraded-panel" {
+        "zero-findings-degraded-panel".clone_into(&mut state.reason);
     }
     state.rounds_completed = Some(round_num);
     state
@@ -1166,16 +1191,15 @@ pub fn aggregator_status(exit_code: i32, reason: &str, aggregated: bool) -> Stri
 
 /// Classify a completed non-error plan-review round.
 #[must_use]
-pub fn classify_round_loop_status(
+pub const fn classify_round_loop_status(
     accepted: usize,
     ok_count: usize,
     degraded: bool,
     panel_pruned_empty: bool,
-    tally_status: &str,
 ) -> &'static str {
     if accepted == 0 && ok_count == 0 && !panel_pruned_empty {
         "degraded-empty-collector"
-    } else if accepted == 0 && (degraded || tally_status == "skipped-empty-findings") {
+    } else if accepted == 0 && degraded {
         "zero-findings-degraded-panel"
     } else {
         "complete"
