@@ -323,6 +323,13 @@ fn recorded_design_settlement_contract() {
             design_seed(),
             &design_env(),
         ),
+        domain_case(
+            "design-step35-settle-gate-c-missing-snapshot",
+            "design",
+            &["step35-settle", "--site", "gate-c"],
+            vec![SeedFile::text("design/plan.txt", CONTRACT_PLAN)],
+            &design_env(),
+        ),
         prepare_missing_assessment_case(),
         prepare_session_repo_root_case(),
         prepare_skip_case(),

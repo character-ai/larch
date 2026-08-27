@@ -1,0 +1,15 @@
+{
+  "exit_code": 3,
+  "files": {
+    "design/plan.txt": {
+      "text": "## Plan\n\n### Closed decisions and ownership\n\n- Publish keeps one owner.\n\n### Ordered implementation\n\n1. Write the plan block.\n2. Rename the issue.\n\n## Files to modify/create\n\n### NEW: src/lib.rs\n\n## Acceptance\n\n- The publish rows stay allowlisted.\n\n## Breaking changes and migration\n\nNone.\n\ndiff_lines: 12\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "design-step35-settle: post-rewrite dedup failed with rc 3\n"
+  },
+  "stdout": {
+    "text": "GATE_B_DEDUP_STATUS=missing-snapshot\nSETTLE_NEXT_ACTION=settle-repair\n"
+  }
+}

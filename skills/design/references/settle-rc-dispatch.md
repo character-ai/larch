@@ -23,7 +23,7 @@ Diagnostics:
 - `POSTPLAN_RC=0` maps to exit `0`.
 - `POSTPLAN_RC=10|12|13` maps to exit `10|12|13`.
 - `POSTPLAN_RC=11` or pause signals map to exit `11`.
-- Post-rewrite dedup revision needed maps to exit `1`. There is no `POSTPLAN_RC=1` on the postplan path.
+- Dedup revision needed maps to exit `1`; other dedup failures retain their exit code and emit `settle-repair`. There is no `POSTPLAN_RC=1` on the postplan path.
 - Unexpected `POSTPLAN_RC` values map to exit `3`.
 
 ## Branch on SETTLE_NEXT_ACTION
@@ -33,6 +33,7 @@ Diagnostics:
 | `gate-b-continue` | Continue to loop-mode or legacy continuation handling. |
 | `gate-a-return` | Return to Gate A. |
 | `dedup-revise` | Revise duplicate/trailer cleanup, rewrite `plan.txt`, and retry settle. |
+| `settle-repair` | Stop. Repair dedup or restore the pre-rewrite trailer snapshot, then retry. Never snapshot an already-rewritten plan. |
 | `gate-b-validator-fail` | Read allowlisted validator keys from `$DESIGN_TMPDIR/.design-postplan-emit-result.env`, then execute **### Plan command validator failure (shared)** with site `design Step 3.5 / Gate B`. Fix-and-retry re-enters settle with `--round-num` when bound. |
 | `gate-a-validator-fail` | Execute **### Plan command validator failure (shared)** with site `design discussion-round2`. Fix-and-retry re-enters settle. |
 | `pause` | Stop at the delegated pause boundary. |
@@ -45,8 +46,6 @@ Diagnostics:
 | `gate-c-hard-size` | Run the unified Split-path directly. Do not issue a local hard-size prompt. Do not re-assess until a subsequent clean `gate-c-return`. |
 | `gate-c-split` | Run Split-path only. Do not re-assess until a subsequent clean `gate-c-return`. |
 
-Gate C also emits the shared `dedup-revise` and `pause` actions (rows above): `dedup-revise` rewrites `plan.txt` and retries `--site gate-c` settle (Gate C keeps no Gate B snapshot to restore), and `pause` stops at the delegated pause boundary. Never route a Gate C action from the wrapper rc.
+Gate C uses these actions. It cannot restore `plan-pre-apply-round-N.txt`; each tier snapshots trailers before editing. Never route from wrapper rc.
 
-## Compatibility note
-
-`scripts/larch.sh design step35-settle` maps `gate-a` and `discussion-round2` to `scripts/larch.sh design step2b-postplan --site discussion-round2` internally.
+**Compatibility:** `gate-a` and `discussion-round2` both map to postplan site `discussion-round2`.
