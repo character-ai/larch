@@ -630,6 +630,26 @@ fn resume_live_child_rebinds_the_wait_lease_to_the_new_session() {
 }
 
 #[test]
+fn empty_durable_child_result_reconciles_instead_of_foreign_identity() {
+    for text in ["", "CHILD_STATUS=complete\n"] {
+        let result = parse_durable_child_result(text, LEAF, 0);
+        assert!(!matches!(
+            &result,
+            Err(message) if message.contains("identity")
+        ));
+        assert_eq!(result, Ok(None));
+    }
+
+    let foreign_leaf = parse_durable_child_result(
+        "CHILD_STATUS=complete\nCHILD_ISSUE=999\nCHILD_ENVELOPE_COMPLETE=true\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\n",
+        LEAF,
+        0,
+    )
+    .expect_err("foreign child result must be rejected");
+    assert!(foreign_leaf.contains("carries another leaf identity"));
+}
+
+#[test]
 fn resume_dead_child_result_preserves_its_failure_class_and_retry_count() {
     let run_root = tempfile::tempdir().expect("run root");
     let mut pointer = run_pointer(run_root.path(), 123);
