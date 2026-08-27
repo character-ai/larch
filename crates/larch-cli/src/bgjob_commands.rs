@@ -44,10 +44,13 @@ use nix::{
 };
 use std::{
     env,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs::{self, File},
     io::{BufRead as _, BufReader, Write as _},
-    os::unix::process::{CommandExt as _, ExitStatusExt as _},
+    os::unix::{
+        fs::PermissionsExt as _,
+        process::{CommandExt as _, ExitStatusExt as _},
+    },
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, ExitCode, Stdio},
     thread,
@@ -167,7 +170,7 @@ pub fn start(arguments: &[OsString]) -> ExitCode {
     }
     let parsed = match parse_start(arguments) {
         Ok(parsed) => parsed,
-        Err(token) => return error(token),
+        Err(token) => return error(&token),
     };
     if env::var_os(ENV_DAEMON_ROLE).is_some() {
         // The daemon owns the acknowledgement pipe, so it never prints
@@ -679,7 +682,39 @@ fn write_merge_result_env_error(detail: &str, code: u8) -> ExitCode {
     ExitCode::from(code)
 }
 
-fn parse_start(arguments: &[OsString]) -> Result<StartArguments, &'static str> {
+pub fn validate_worker_program(command: &[String]) -> Result<(), String> {
+    validate_worker_program_with_path(command, env::var_os("PATH").as_deref())
+}
+
+fn validate_worker_program_with_path(
+    command: &[String],
+    path: Option<&OsStr>,
+) -> Result<(), String> {
+    let Some(program) = command.first() else {
+        return Err("missing-command".to_owned());
+    };
+    if program.contains('/') || worker_program_on_path(program, path) {
+        return Ok(());
+    }
+    Err(format!(
+        "worker-program-not-found PROGRAM={}",
+        one_line(program)
+    ))
+}
+
+fn worker_program_on_path(program: &str, path: Option<&OsStr>) -> bool {
+    path.is_some_and(|path| {
+        env::split_paths(path)
+            .map(|directory| directory.join(program))
+            .any(|candidate| {
+                fs::metadata(candidate).is_ok_and(|metadata| {
+                    metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
+                })
+            })
+    })
+}
+
+fn parse_start(arguments: &[OsString]) -> Result<StartArguments, String> {
     let values = utf8_arguments(arguments, "invalid-argument-encoding")?;
     let mut parsed = StartArguments::default();
     let mut index = 0;
@@ -734,28 +769,29 @@ fn parse_start(arguments: &[OsString]) -> Result<StartArguments, &'static str> {
                     take_option_value(&values, &mut index, inline, "missing-option-argument")?;
                 parsed.budget_s = Some(raw.parse::<i64>().map_err(|_| "invalid-budget")?);
             }
-            _ => return Err("unrecognized-argument"),
+            _ => return Err("unrecognized-argument".to_owned()),
         }
         index += 1;
     }
     finish_start(parsed)
 }
 
-fn finish_start(mut parsed: StartArguments) -> Result<StartArguments, &'static str> {
+fn finish_start(mut parsed: StartArguments) -> Result<StartArguments, String> {
     if parsed.command.is_empty() {
-        return Err("missing-command");
+        return Err("missing-command".to_owned());
     }
     match parsed.budget_s {
-        None => return Err("missing-budget"),
-        Some(budget) if budget <= 0 => return Err("invalid-budget"),
+        None => return Err("missing-budget".to_owned()),
+        Some(budget) if budget <= 0 => return Err("invalid-budget".to_owned()),
         Some(_) => {}
     }
     if parsed.tmpdir.is_empty() {
         parsed.tmpdir = env_string(ENV_IMPLEMENT_TMPDIR);
     }
     if parsed.tmpdir.is_empty() {
-        return Err("missing-tmpdir");
+        return Err("missing-tmpdir".to_owned());
     }
+    validate_worker_program(&parsed.command)?;
     Ok(parsed)
 }
 
@@ -1353,11 +1389,17 @@ fn worker_body(arguments: &[OsString]) -> Result<String, String> {
         .env_remove(ENV_WORKER_ROLE)
         .env_remove(ENV_WORKER_TMPDIR)
         .env_remove(ENV_WORKER_STEP);
-    let exit_status = if let Ok(mut child) = requested.spawn() {
-        child.wait().map_err(|error| one_line(&error))?
-    } else {
-        write_worker_status(&status_path, &root, &step, "2")?;
-        return Ok("2".to_owned());
+    let exit_status = match requested.spawn() {
+        Ok(mut child) => child.wait().map_err(|error| one_line(&error))?,
+        Err(error) => {
+            eprintln!(
+                "bgjob worker: failed to spawn {}: {}",
+                launch.program.to_string_lossy(),
+                one_line(&error)
+            );
+            write_worker_status(&status_path, &root, &step, "2")?;
+            return Ok("2".to_owned());
+        }
     };
     let rc = exit_token(exit_status);
     wait_for_worker_group()?;
@@ -1913,7 +1955,7 @@ mod tests {
         dead_rows, done_rows, finish_start, inherited_owner, one_line, open_verified_log,
         owner_from_rows, owner_rows, parse_start, parse_wait, parse_write_merge_result_env,
         poll_sleep, read_completed_result, read_merge_text, read_result, remove_result_residue,
-        wait_rows, wall_epoch, worker_command_for, write_result,
+        validate_worker_program_with_path, wait_rows, wall_epoch, worker_command_for, write_result,
     };
     use larch_core::{
         BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BGJOB_WAIT_DEFAULT_CHUNK_S, BGJOB_WAIT_MAX_CHUNK_S,
@@ -1921,7 +1963,7 @@ mod tests {
         ordered_rows, render_rows, validate_merge_result_env,
     };
     use std::{
-        ffi::OsString,
+        ffi::{OsStr, OsString},
         fs,
         path::{Path, PathBuf},
         time::{Duration, Instant},
@@ -2042,8 +2084,27 @@ mod tests {
                 budget_s: Some(1),
                 ..StartArguments::default()
             })
-            .map_or_else(ToOwned::to_owned, |parsed| parsed.tmpdir),
+            .map_or_else(|error| error, |parsed| parsed.tmpdir),
             std::env::var("IMPLEMENT_TMPDIR").unwrap_or_else(|_| "missing-tmpdir".to_owned())
+        );
+        assert!(
+            validate_worker_program_with_path(
+                &["sh".to_owned()],
+                Some(OsStr::new("/bin:/usr/bin"))
+            )
+            .is_ok()
+        );
+        assert_eq!(
+            validate_worker_program_with_path(
+                &["larch-missing-worker-program".to_owned()],
+                Some(OsStr::new("/bin:/usr/bin"))
+            )
+            .expect_err("missing bare program"),
+            "worker-program-not-found PROGRAM=larch-missing-worker-program"
+        );
+        assert!(
+            validate_worker_program_with_path(&["./missing".to_owned()], None).is_ok(),
+            "a path-bearing program is diagnosed by the worker spawn"
         );
     }
 

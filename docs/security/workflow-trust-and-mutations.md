@@ -507,13 +507,20 @@ daemon `start`, `wait`, `status`, and `reap` surfaces, and
 `crates/larch-cli/src/bgjob_adapt.rs`, and
 `crates/larch-cli/src/bgjob_commands.rs`). The adapter confines its state files
 and holds a pinned decision lock before it reattaches or launches. `start`
-re-executes the same verified binary as a detached supervisor. The supervisor
-starts a private-gated daemon monitor, binds a confined status sidecar to that
-monitor's PID, then releases its gate. It remains the monitor's direct parent so
-it can reap the monitor and atomically record either its exit code or terminating
-signal. A DEAD recovery consumes the status only when its PID matches the daemon
-identity in the registry row. A missing or mismatched sidecar grants no process
-claim and yields empty termination fields.
+and `adapt` reject a bare worker program unless it resolves to an executable on
+`PATH`. Path-bearing programs remain subject to the worker's spawn check. A
+spawn failure writes the operating-system error to the confined step stderr log
+before recording exit 2. For an input-fingerprinted job, the next matching
+adapter call invalidates a nonzero completed result and starts a fresh attempt.
+Jobs without an input fingerprint retain nonzero results for explicit routing.
+`start` re-executes the same verified binary as a detached supervisor. The
+supervisor starts a private-gated daemon monitor,
+binds a confined status sidecar to that monitor's PID, then releases its gate.
+It remains the monitor's direct parent so it can reap the monitor and atomically
+record either its exit code or terminating signal. A DEAD recovery consumes the
+status only when its PID matches the daemon identity in the registry row. A
+missing or mismatched sidecar grants no process claim and yields empty
+termination fields.
 
 The merge-result writer accepts explicit rows or copies one confined regular
 source envelope. It rejects carriage returns, multiline keys and values,

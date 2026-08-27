@@ -446,7 +446,11 @@ mod design_finalize_commands_tests {
             .iter()
             .position(|value| value == "--")
             .expect("separator");
-        assert_eq!(&adapt[separator + 1..separator + 3], ["design", "step5c"]);
+        assert_eq!(
+            adapt[separator + 1],
+            entrypoint(&plugin).display().to_string()
+        );
+        assert_eq!(&adapt[separator + 2..separator + 4], ["design", "step5c"]);
         assert!(!adapt.iter().any(|value| value == "--fresh-attempt"));
         drop(calls);
 

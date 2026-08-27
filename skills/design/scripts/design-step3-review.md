@@ -15,7 +15,8 @@ Thin wrapper for the Rust `/design` Step 3 launcher and plan-review child.
 - Validates `--starting-round`, `--phase`, and `--findings-file` before writing resume state. `awaiting-vote` remains internal.
 - Keeps `--read-result-env`, resume writes, and parent pause-save outside child mode.
 - Delegates lifecycle decisions to `bgjob adapt` with explicit step `design-step3-review`, tmpdir, 21600-second budget, session path, and optional owner PID.
-- Uses `--replace-completed-result` only for a validated resume invocation. Ordinary duplicate calls reattach the completed result when the input fingerprint matches. When `plan.txt` is present, the wrapper passes its sha256 as `--input-fingerprint` to `bgjob adapt`; a fingerprint mismatch (or no stored sidecar for a prior result) is treated as stale and launches fresh.
+- Passes the resolved larch entrypoint as the first worker token after `--`, followed by `plan-review step3-review`. It never passes a bare larch verb as the worker program.
+- Uses `--replace-completed-result` only for a validated resume invocation. Ordinary duplicate calls reattach a successful completed result when the input fingerprint matches. A matching-fingerprint nonzero result is cleared and launches fresh. When `plan.txt` is present, the wrapper passes its sha256 as `--input-fingerprint` to `bgjob adapt`; a fingerprint mismatch (or no stored sidecar for a prior result) is treated as stale and launches fresh.
 - Requests `--clear-on-fresh` for `.completed/step-3`. A completed-result reattachment preserves the marker.
 - Accepts child mode only as the terminal `--bgjob-child --merge-result-env <path>` suffix. It preserves every earlier argv cell.
 - Keeps scope-anchor validation, `plan-review run`, stderr capture, and status normalization in the child.
