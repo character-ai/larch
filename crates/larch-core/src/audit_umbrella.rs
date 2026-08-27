@@ -238,12 +238,13 @@ impl AuditLedgerViolation {
     }
 }
 
-/// The first constraint a proposal draft violated, named for a diagnostic surface.
+/// The first constraint a proposal draft or lifecycle transition violated.
 ///
 /// This is the diagnostic granularity behind [`build_audit_proposal`]'s stable
-/// [`AuditUmbrellaRefusal`]. Leaf-scoped variants retain a one-based draft index
-/// and the bounded title supplied by the draft. Gap-scoped variants also retain
-/// the exact offending ledger entry id.
+/// [`AuditUmbrellaRefusal`] and the durable proposal transition helpers. Draft
+/// leaf-scoped variants retain a one-based draft index and the bounded title
+/// supplied by the draft. Lifecycle variants retain the offending leaf identity.
+/// Gap-scoped variants also retain the exact offending ledger entry id.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AuditProposalViolation {
     /// The immutable snapshot itself failed its bounded contract.
@@ -308,6 +309,16 @@ pub enum AuditProposalViolation {
     },
     /// One gap ledger entry was not owned by any leaf.
     UncoveredGapId { gap_id: String },
+    /// A lifecycle transition named no leaf in the durable proposal.
+    UnknownLeafIdentity { identity: String },
+    /// A lifecycle transition found a leaf in the wrong durable state.
+    LeafState {
+        identity: String,
+        expected: &'static str,
+        actual: &'static str,
+    },
+    /// A lifecycle transition found or received an invalid remote identity.
+    LeafRemoteIdentity { identity: String },
     /// One dependency endpoint was invalid or unbound.
     DependencyNode { dependency: usize, removal: bool },
     /// One dependency used the same node at both endpoints.
@@ -350,6 +361,9 @@ impl AuditProposalViolation {
             Self::UnknownGapId { .. } => "unknown-gap-id",
             Self::DuplicateGapId { .. } => "duplicate-gap-id",
             Self::UncoveredGapId { .. } => "uncovered-gap-id",
+            Self::UnknownLeafIdentity { .. } => "unknown-leaf-identity",
+            Self::LeafState { .. } => "leaf-state",
+            Self::LeafRemoteIdentity { .. } => "leaf-remote-identity",
             Self::DependencyNode { .. } => "dependency-node",
             Self::DependencySelf { .. } => "dependency-self",
             Self::DependencyDuplicate { .. } => "dependency-duplicate",
@@ -401,6 +415,28 @@ impl AuditProposalViolation {
             | Self::DuplicateLeaf { title, .. }
             | Self::UnknownGapId { title, .. }
             | Self::DuplicateGapId { title, .. } => Some(title.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Return the offending durable leaf identity for a lifecycle violation.
+    #[must_use]
+    pub const fn identity(&self) -> Option<&str> {
+        match self {
+            Self::UnknownLeafIdentity { identity }
+            | Self::LeafState { identity, .. }
+            | Self::LeafRemoteIdentity { identity } => Some(identity.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Return the required and observed durable leaf states when applicable.
+    #[must_use]
+    pub const fn leaf_state(&self) -> Option<(&'static str, &'static str)> {
+        match self {
+            Self::LeafState {
+                expected, actual, ..
+            } => Some((*expected, *actual)),
             _ => None,
         }
     }
@@ -503,6 +539,16 @@ pub enum AuditLeafState {
     Pending,
     InFlight,
     Resolved,
+}
+
+impl AuditLeafState {
+    const fn diagnostic_name(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::InFlight => "in-flight",
+            Self::Resolved => "resolved",
+        }
+    }
 }
 
 /// Durable progress state for the idempotent relationship reconciliation.
@@ -1095,79 +1141,108 @@ pub fn audit_proposal_existing_numbers(proposal: &AuditProposal) -> BTreeSet<u64
 ///
 /// # Errors
 ///
-/// Returns [`INVALID_AUDIT_PROPOSAL`] unless the named leaf is pending in a
-/// valid incomplete proposal.
+/// Returns [`AuditProposalViolation::UnknownLeafIdentity`] when the identity is
+/// absent, [`AuditProposalViolation::LeafState`] unless the leaf is pending, or
+/// [`AuditProposalViolation::ProposalShape`] if the transition invalidates the
+/// proposal.
 pub fn mark_audit_leaf_in_flight(
     proposal: &mut AuditProposal,
     identity: &str,
-) -> Result<(), AuditUmbrellaRefusal> {
+) -> Result<(), AuditProposalViolation> {
     let leaf = proposal
         .leaves
         .iter_mut()
         .find(|leaf| leaf.identity == identity)
-        .ok_or(INVALID_AUDIT_PROPOSAL)?;
+        .ok_or_else(|| AuditProposalViolation::UnknownLeafIdentity {
+            identity: identity.to_owned(),
+        })?;
     if leaf.state != AuditLeafState::Pending {
-        return Err(INVALID_AUDIT_PROPOSAL);
+        return Err(AuditProposalViolation::LeafState {
+            identity: identity.to_owned(),
+            expected: "pending",
+            actual: leaf.state.diagnostic_name(),
+        });
     }
     leaf.state = AuditLeafState::InFlight;
-    validate_audit_proposal(proposal, None)
+    validate_audit_proposal(proposal, None).map_err(|_error| AuditProposalViolation::ProposalShape)
 }
 
 /// Return one in-flight leaf to pending after proving its create never began.
 ///
 /// # Errors
 ///
-/// Returns [`INVALID_AUDIT_PROPOSAL`] unless the named leaf is in flight in a
-/// valid incomplete proposal and has no remote identity.
+/// Returns [`AuditProposalViolation::UnknownLeafIdentity`] when the identity is
+/// absent, [`AuditProposalViolation::LeafState`] unless the leaf is in flight,
+/// [`AuditProposalViolation::LeafRemoteIdentity`] when it already carries a
+/// remote identity, or [`AuditProposalViolation::ProposalShape`] if the
+/// transition invalidates the proposal.
 pub fn reset_audit_leaf_pending(
     proposal: &mut AuditProposal,
     identity: &str,
-) -> Result<(), AuditUmbrellaRefusal> {
+) -> Result<(), AuditProposalViolation> {
     let leaf = proposal
         .leaves
         .iter_mut()
         .find(|leaf| leaf.identity == identity)
-        .ok_or(INVALID_AUDIT_PROPOSAL)?;
-    if leaf.state != AuditLeafState::InFlight
-        || leaf.number != 0
-        || leaf.issue_id != 0
-        || !leaf.url.is_empty()
-    {
-        return Err(INVALID_AUDIT_PROPOSAL);
+        .ok_or_else(|| AuditProposalViolation::UnknownLeafIdentity {
+            identity: identity.to_owned(),
+        })?;
+    if leaf.state != AuditLeafState::InFlight {
+        return Err(AuditProposalViolation::LeafState {
+            identity: identity.to_owned(),
+            expected: "in-flight",
+            actual: leaf.state.diagnostic_name(),
+        });
+    }
+    if leaf.number != 0 || leaf.issue_id != 0 || !leaf.url.is_empty() {
+        return Err(AuditProposalViolation::LeafRemoteIdentity {
+            identity: identity.to_owned(),
+        });
     }
     leaf.state = AuditLeafState::Pending;
-    validate_audit_proposal(proposal, None)
+    validate_audit_proposal(proposal, None).map_err(|_error| AuditProposalViolation::ProposalShape)
 }
 
 /// Bind one in-flight leaf to the exact issue creation read-back.
 ///
 /// # Errors
 ///
-/// Returns [`INVALID_AUDIT_PROPOSAL`] unless the supplied remote identity can
-/// resolve exactly one in-flight leaf while preserving proposal validity.
+/// Returns [`AuditProposalViolation::LeafRemoteIdentity`] when the supplied
+/// remote identity is invalid, [`AuditProposalViolation::UnknownLeafIdentity`]
+/// when the durable leaf identity is absent, [`AuditProposalViolation::LeafState`]
+/// unless the leaf is in flight, or [`AuditProposalViolation::ProposalShape`]
+/// if the transition invalidates the proposal.
 pub fn record_audit_leaf_resolved(
     proposal: &mut AuditProposal,
     identity: &str,
     number: u64,
     issue_id: u64,
     url: &str,
-) -> Result<(), AuditUmbrellaRefusal> {
+) -> Result<(), AuditProposalViolation> {
     if number == 0 || issue_id == 0 || !valid_text(url, 4 * 1024) {
-        return Err(INVALID_AUDIT_PROPOSAL);
+        return Err(AuditProposalViolation::LeafRemoteIdentity {
+            identity: identity.to_owned(),
+        });
     }
     let leaf = proposal
         .leaves
         .iter_mut()
         .find(|leaf| leaf.identity == identity)
-        .ok_or(INVALID_AUDIT_PROPOSAL)?;
+        .ok_or_else(|| AuditProposalViolation::UnknownLeafIdentity {
+            identity: identity.to_owned(),
+        })?;
     if leaf.state != AuditLeafState::InFlight {
-        return Err(INVALID_AUDIT_PROPOSAL);
+        return Err(AuditProposalViolation::LeafState {
+            identity: identity.to_owned(),
+            expected: "in-flight",
+            actual: leaf.state.diagnostic_name(),
+        });
     }
     leaf.state = AuditLeafState::Resolved;
     leaf.number = number;
     leaf.issue_id = issue_id;
     url.clone_into(&mut leaf.url);
-    validate_audit_proposal(proposal, None)
+    validate_audit_proposal(proposal, None).map_err(|_error| AuditProposalViolation::ProposalShape)
 }
 
 /// Return a stable content identity for one leaf title/body pair.
@@ -1192,46 +1267,57 @@ pub fn audit_issue_fingerprint(issue: &AuditIssue) -> AuditIssueFingerprint {
 ///
 /// # Errors
 ///
-/// Returns [`INVALID_AUDIT_PROPOSAL`] unless every leaf is resolved and the
-/// graph has already entered its durable in-flight state.
+/// Returns [`AuditProposalViolation::LeafState`] when a leaf is unresolved, or
+/// [`AuditProposalViolation::ProposalShape`] when the graph is not in flight or
+/// the completed proposal is invalid.
 pub fn mark_audit_proposal_complete(
     proposal: &mut AuditProposal,
-) -> Result<(), AuditUmbrellaRefusal> {
-    if proposal
+) -> Result<(), AuditProposalViolation> {
+    if let Some(leaf) = proposal
         .leaves
         .iter()
-        .any(|leaf| leaf.state != AuditLeafState::Resolved)
+        .find(|leaf| leaf.state != AuditLeafState::Resolved)
     {
-        return Err(INVALID_AUDIT_PROPOSAL);
+        return Err(AuditProposalViolation::LeafState {
+            identity: leaf.identity.clone(),
+            expected: "resolved",
+            actual: leaf.state.diagnostic_name(),
+        });
     }
     if proposal.graph_state != AuditGraphState::InFlight {
-        return Err(INVALID_AUDIT_PROPOSAL);
+        return Err(AuditProposalViolation::ProposalShape);
     }
     proposal.graph_state = AuditGraphState::Verified;
     proposal.complete = true;
-    validate_audit_proposal(proposal, None)
+    validate_audit_proposal(proposal, None).map_err(|_error| AuditProposalViolation::ProposalShape)
 }
 
 /// Persist the transition that makes graph reconciliation safely resumable.
 ///
 /// # Errors
 ///
-/// Returns [`INVALID_AUDIT_PROPOSAL`] unless every leaf is resolved and no
-/// graph mutation has yet been attempted.
+/// Returns [`AuditProposalViolation::LeafState`] when a leaf is unresolved, or
+/// [`AuditProposalViolation::ProposalShape`] when the proposal is already
+/// complete, graph mutation has begun, or the transition invalidates it.
 pub fn mark_audit_graph_in_flight(
     proposal: &mut AuditProposal,
-) -> Result<(), AuditUmbrellaRefusal> {
-    if proposal
+) -> Result<(), AuditProposalViolation> {
+    if let Some(leaf) = proposal
         .leaves
         .iter()
-        .any(|leaf| leaf.state != AuditLeafState::Resolved)
-        || proposal.complete
-        || proposal.graph_state != AuditGraphState::Pending
+        .find(|leaf| leaf.state != AuditLeafState::Resolved)
     {
-        return Err(INVALID_AUDIT_PROPOSAL);
+        return Err(AuditProposalViolation::LeafState {
+            identity: leaf.identity.clone(),
+            expected: "resolved",
+            actual: leaf.state.diagnostic_name(),
+        });
+    }
+    if proposal.complete || proposal.graph_state != AuditGraphState::Pending {
+        return Err(AuditProposalViolation::ProposalShape);
     }
     proposal.graph_state = AuditGraphState::InFlight;
-    validate_audit_proposal(proposal, None)
+    validate_audit_proposal(proposal, None).map_err(|_error| AuditProposalViolation::ProposalShape)
 }
 
 /// Replace all live issue fingerprints after a verified mutation read-back.
@@ -2057,6 +2143,8 @@ mod tests {
             assert_eq!(violation.constraint(), *expected_constraint);
             let _ = violation.leaf_index();
             let _ = violation.leaf_title();
+            let _ = violation.identity();
+            let _ = violation.leaf_state();
             let _ = violation.gap_id();
             let _ = violation.section();
             let _ = violation.dependency();
@@ -2233,6 +2321,36 @@ mod tests {
         ];
         assert_proposal_violation_contract(&violations);
         assert_eq!(violations[2].0.gap_id(), Some("bad:id"));
+    }
+
+    #[test]
+    fn proposal_violation_lifecycle_constraint_names_are_stable() {
+        let violations = vec![
+            (
+                AuditProposalViolation::UnknownLeafIdentity {
+                    identity: "missing-leaf".to_owned(),
+                },
+                "unknown-leaf-identity",
+            ),
+            (
+                AuditProposalViolation::LeafState {
+                    identity: "known-leaf".to_owned(),
+                    expected: "pending",
+                    actual: "resolved",
+                },
+                "leaf-state",
+            ),
+            (
+                AuditProposalViolation::LeafRemoteIdentity {
+                    identity: "known-leaf".to_owned(),
+                },
+                "leaf-remote-identity",
+            ),
+        ];
+        assert_proposal_violation_contract(&violations);
+        assert_eq!(violations[0].0.identity(), Some("missing-leaf"));
+        assert_eq!(violations[1].0.identity(), Some("known-leaf"));
+        assert_eq!(violations[1].0.leaf_state(), Some(("pending", "resolved")));
     }
 
     #[test]
@@ -3015,6 +3133,83 @@ mod tests {
         );
     }
 
+    fn proposal_with_gap_leaf() -> AuditProposal {
+        let snapshot = snapshot();
+        let ledger = ledger(&snapshot);
+        build_audit_proposal(&snapshot, &ledger, &gap_draft(&snapshot, &ledger)).expect("proposal")
+    }
+
+    #[test]
+    fn mark_audit_leaf_in_flight_names_unknown_identity() {
+        let mut proposal = proposal_with_gap_leaf();
+        assert_eq!(
+            mark_audit_leaf_in_flight(&mut proposal, "not-a-leaf"),
+            Err(AuditProposalViolation::UnknownLeafIdentity {
+                identity: "not-a-leaf".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn mark_audit_leaf_in_flight_names_wrong_state() {
+        let mut proposal = proposal_with_gap_leaf();
+        let identity = proposal.leaves[0].identity.clone();
+        mark_audit_leaf_in_flight(&mut proposal, &identity).expect("in flight");
+        assert_eq!(
+            mark_audit_leaf_in_flight(&mut proposal, &identity),
+            Err(AuditProposalViolation::LeafState {
+                identity: identity.clone(),
+                expected: "pending",
+                actual: "in-flight",
+            })
+        );
+        record_audit_leaf_resolved(
+            &mut proposal,
+            &identity,
+            43,
+            143,
+            "https://github.com/o/r/issues/43",
+        )
+        .expect("resolved");
+        assert_eq!(
+            mark_audit_leaf_in_flight(&mut proposal, &identity),
+            Err(AuditProposalViolation::LeafState {
+                identity,
+                expected: "pending",
+                actual: "resolved",
+            })
+        );
+    }
+
+    #[test]
+    fn reset_audit_leaf_pending_refuses_bound_remote_identity() {
+        let mut proposal = proposal_with_gap_leaf();
+        let identity = proposal.leaves[0].identity.clone();
+        mark_audit_leaf_in_flight(&mut proposal, &identity).expect("in flight");
+        proposal.leaves[0].number = 43;
+        assert_eq!(
+            reset_audit_leaf_pending(&mut proposal, &identity),
+            Err(AuditProposalViolation::LeafRemoteIdentity { identity })
+        );
+    }
+
+    #[test]
+    fn record_audit_leaf_resolved_refuses_zero_identity() {
+        let mut proposal = proposal_with_gap_leaf();
+        let identity = proposal.leaves[0].identity.clone();
+        mark_audit_leaf_in_flight(&mut proposal, &identity).expect("in flight");
+        assert_eq!(
+            record_audit_leaf_resolved(
+                &mut proposal,
+                &identity,
+                0,
+                143,
+                "https://github.com/o/r/issues/43",
+            ),
+            Err(AuditProposalViolation::LeafRemoteIdentity { identity })
+        );
+    }
+
     #[test]
     fn proposal_lifecycle_stays_resumable_and_bound_to_its_inputs() {
         let snapshot = snapshot();
@@ -3025,7 +3220,9 @@ mod tests {
 
         assert_eq!(
             mark_audit_leaf_in_flight(&mut proposal, "not-a-leaf"),
-            Err(INVALID_AUDIT_PROPOSAL)
+            Err(AuditProposalViolation::UnknownLeafIdentity {
+                identity: "not-a-leaf".to_owned(),
+            })
         );
         assert_eq!(
             record_audit_leaf_resolved(
@@ -3035,27 +3232,45 @@ mod tests {
                 143,
                 "https://github.com/o/r/issues/43",
             ),
-            Err(INVALID_AUDIT_PROPOSAL)
+            Err(AuditProposalViolation::LeafState {
+                identity: identity.clone(),
+                expected: "in-flight",
+                actual: "pending",
+            })
         );
         assert_eq!(
             mark_audit_graph_in_flight(&mut proposal),
-            Err(INVALID_AUDIT_PROPOSAL)
+            Err(AuditProposalViolation::LeafState {
+                identity: identity.clone(),
+                expected: "resolved",
+                actual: "pending",
+            })
         );
 
         mark_audit_leaf_in_flight(&mut proposal, &identity).expect("in flight");
         assert_eq!(
             mark_audit_leaf_in_flight(&mut proposal, &identity),
-            Err(INVALID_AUDIT_PROPOSAL)
+            Err(AuditProposalViolation::LeafState {
+                identity: identity.clone(),
+                expected: "pending",
+                actual: "in-flight",
+            })
         );
         assert_eq!(
             record_audit_leaf_resolved(&mut proposal, &identity, 0, 143, "url"),
-            Err(INVALID_AUDIT_PROPOSAL)
+            Err(AuditProposalViolation::LeafRemoteIdentity {
+                identity: identity.clone(),
+            })
         );
         reset_audit_leaf_pending(&mut proposal, &identity).expect("known unstarted create");
         assert_eq!(proposal.leaves[0].state, AuditLeafState::Pending);
         assert_eq!(
             reset_audit_leaf_pending(&mut proposal, &identity),
-            Err(INVALID_AUDIT_PROPOSAL)
+            Err(AuditProposalViolation::LeafState {
+                identity: identity.clone(),
+                expected: "in-flight",
+                actual: "pending",
+            })
         );
         mark_audit_leaf_in_flight(&mut proposal, &identity).expect("retried in flight");
         record_audit_leaf_resolved(
@@ -3077,7 +3292,7 @@ mod tests {
         assert_eq!(proposal.graph_state, AuditGraphState::Verified);
         assert_eq!(
             mark_audit_proposal_complete(&mut proposal),
-            Err(INVALID_AUDIT_PROPOSAL)
+            Err(AuditProposalViolation::ProposalShape)
         );
 
         let mut stale = proposal.clone();

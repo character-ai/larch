@@ -356,6 +356,12 @@ fn proposal_violation_diagnostic(violation: &AuditProposalViolation) -> String {
     if let Some(title) = violation.leaf_title() {
         let _ = write!(detail, " title={}", diagnostic_json(title, 160));
     }
+    if let Some(identity) = violation.identity() {
+        let _ = write!(detail, " identity={}", diagnostic_json(identity, 128));
+    }
+    if let Some((expected, actual)) = violation.leaf_state() {
+        let _ = write!(detail, " expected={expected} actual={actual}");
+    }
     if let Some(section) = violation.section() {
         let _ = write!(detail, " section={}", diagnostic_json(section, 64));
     }
@@ -1089,7 +1095,8 @@ async fn enter_graph_reconciliation(
         true,
     )
     .await?;
-    mark_audit_graph_in_flight(proposal).map_err(|error| error.reason().to_owned())?;
+    mark_audit_graph_in_flight(proposal)
+        .map_err(|violation| proposal_violation_diagnostic(&violation))?;
     write_proposal(
         context.proposal_path,
         context.supplied_root,
@@ -1163,7 +1170,8 @@ async fn finish_graph_reconciliation(
     .await?;
     validate_audit_proposal_binding(proposal, context.snapshot, context.ledger)
         .map_err(|error| error.reason().to_owned())?;
-    mark_audit_proposal_complete(proposal).map_err(|error| error.reason().to_owned())?;
+    mark_audit_proposal_complete(proposal)
+        .map_err(|violation| proposal_violation_diagnostic(&violation))?;
     write_proposal(
         context.proposal_path,
         context.supplied_root,
@@ -1222,12 +1230,12 @@ async fn reconcile_pending_leaf(
         let issue_id = existing.id;
         let url = existing.url.clone();
         mark_audit_leaf_in_flight(proposal, &leaf.identity)
-            .map_err(|error| error.reason().to_owned())?;
+            .map_err(|violation| proposal_violation_diagnostic(&violation))?;
         return persist_leaf_resolution(context, proposal, &leaf.identity, number, issue_id, &url)
             .await;
     }
     mark_audit_leaf_in_flight(proposal, &leaf.identity)
-        .map_err(|error| error.reason().to_owned())?;
+        .map_err(|violation| proposal_violation_diagnostic(&violation))?;
     write_proposal(
         context.proposal_path,
         context.supplied_root,
@@ -1255,7 +1263,7 @@ async fn reconcile_pending_leaf(
                 && rollback.is_none() =>
         {
             reset_audit_leaf_pending(proposal, &leaf.identity)
-                .map_err(|error| error.reason().to_owned())?;
+                .map_err(|violation| proposal_violation_diagnostic(&violation))?;
             write_proposal(
                 context.proposal_path,
                 context.supplied_root,
@@ -1313,7 +1321,7 @@ async fn persist_leaf_resolution(
     url: &str,
 ) -> Result<(), String> {
     record_audit_leaf_resolved(proposal, identity, number, issue_id, url)
-        .map_err(|error| error.reason().to_owned())?;
+        .map_err(|violation| proposal_violation_diagnostic(&violation))?;
     let _ = refresh_fingerprints(
         context.service,
         context.cancellation,
@@ -3077,6 +3085,24 @@ mod tests {
         assert_eq!(
             proposal_violation_diagnostic(&violation),
             "proposal-violation constraint=unknown-gap-id leaf=2 title=\"[LEAF OF 10] Repair the audit gap\" gap_id=\"leaf:11:body:5\""
+        );
+    }
+
+    #[test]
+    fn proposal_diagnostic_names_apply_lifecycle_context() {
+        assert_eq!(
+            proposal_violation_diagnostic(&AuditProposalViolation::UnknownLeafIdentity {
+                identity: "missing-leaf".to_owned(),
+            }),
+            "proposal-violation constraint=unknown-leaf-identity identity=\"missing-leaf\""
+        );
+        assert_eq!(
+            proposal_violation_diagnostic(&AuditProposalViolation::LeafState {
+                identity: "resolved-leaf".to_owned(),
+                expected: "pending",
+                actual: "resolved",
+            }),
+            "proposal-violation constraint=leaf-state identity=\"resolved-leaf\" expected=pending actual=resolved"
         );
     }
 
