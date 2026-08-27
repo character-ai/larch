@@ -173,7 +173,7 @@ pub fn adapt(arguments: &[OsString]) -> ExitCode {
     }
     let parsed = match parse_arguments(arguments) {
         Ok(parsed) => parsed,
-        Err(token) => return error(token),
+        Err(token) => return error(&token),
     };
     let result = build_request(parsed).and_then(|(spec, options, session_values, owner_pid)| {
         let root = registry_root().map_err(|_| DecisionError::token("registry-failed"))?;
@@ -215,7 +215,7 @@ fn write_stdout(value: &str) -> ExitCode {
         .map_or(ExitCode::FAILURE, |()| ExitCode::SUCCESS)
 }
 
-fn parse_arguments(arguments: &[OsString]) -> Result<ParsedArguments, &'static str> {
+fn parse_arguments(arguments: &[OsString]) -> Result<ParsedArguments, String> {
     let values = utf8_arguments(arguments, "invalid-input")?;
     let mut parsed = ParsedArguments::default();
     let mut index = 0;
@@ -253,7 +253,7 @@ fn parse_arguments(arguments: &[OsString]) -> Result<ParsedArguments, &'static s
                 let raw = take_option_value(&values, &mut index, inline, "invalid-input")?;
                 parsed.budget_s = raw.parse::<i64>().ok();
                 if parsed.budget_s.is_none() {
-                    return Err("invalid-input");
+                    return Err("invalid-input".to_string());
                 }
             }
             "--log-dir" => {
@@ -295,19 +295,20 @@ fn parse_arguments(arguments: &[OsString]) -> Result<ParsedArguments, &'static s
             "--replace-completed-result" if inline.is_none() => {
                 parsed.replace_completed_result = true;
             }
-            _ => return Err("invalid-input"),
+            _ => return Err("invalid-input".to_owned()),
         }
         index += 1;
     }
     if parsed.command.is_empty() {
-        return Err("missing-command");
+        return Err("missing-command".to_owned());
     }
     if parsed.budget_s.is_none() {
-        return Err("invalid-input");
+        return Err("invalid-input".to_owned());
     }
     if parsed.budget_s.is_some_and(|value| value <= 0) {
-        return Err("invalid-budget");
+        return Err("invalid-budget".to_owned());
     }
+    bgjob_commands::validate_worker_program(&parsed.command)?;
     Ok(parsed)
 }
 
@@ -676,7 +677,12 @@ impl<Host: AdapterHost> Adapter<'_, Host> {
     fn decide(&self) -> DecisionResult<String> {
         let mut completed = self.read_completed_result()?;
         if completed.is_some() && !self.options.replace_completed_result {
-            if self.completed_is_stale()? {
+            if self.completed_is_stale()?
+                || (!self.options.input_fingerprint.is_empty()
+                    && completed
+                        .as_deref()
+                        .is_some_and(completed_result_requires_retry))
+            {
                 self.invalidate_completed_result()?;
                 completed = None;
             } else if let Some(output) = completed {
@@ -1117,6 +1123,14 @@ fn format_done(rows: &[(String, String)]) -> String {
         output.push('\n');
     }
     output
+}
+
+fn completed_result_requires_retry(output: &str) -> bool {
+    output
+        .lines()
+        .filter_map(|line| line.strip_prefix("BGJOB_RC="))
+        .next_back()
+        .is_some_and(|rc| rc != "0")
 }
 
 fn read_trusted_regular(path: &Path, root: &Path) -> DecisionResult<Option<String>> {
@@ -1690,6 +1704,67 @@ mod tests {
             "BGJOB_STATUS=DONE\nBGJOB_RC=0\nBGJOB_ELAPSED_S=1\nSTEP=demo-step\n"
         );
         assert_eq!(host.starts.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn unbound_failed_result_remains_available_for_explicit_routing() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let spec = spec(tempdir.path());
+        let result = result_env_path(&spec.tmpdir, &spec.step).expect("result path");
+        fs::write(&result, "BGJOB_RC=2\nSTEP=demo-step\n").expect("result");
+        let registry = tempdir.path().join("registry");
+        fs::create_dir_all(&registry).expect("registry");
+        let host = FakeHost {
+            starts: AtomicUsize::new(0),
+            plugin_root: tempdir.path().to_path_buf(),
+            registry_root: registry.clone(),
+        };
+
+        let output = run_with_host(
+            &host,
+            &registry,
+            &current_dir(),
+            spec,
+            AdaptOptions::default(),
+            SessionValues::default(),
+            String::new(),
+        )
+        .expect("completed result");
+
+        assert_eq!(output, "BGJOB_STATUS=DONE\nBGJOB_RC=2\nSTEP=demo-step\n");
+        assert_eq!(host.starts.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn input_bound_failed_result_restarts_without_an_explicit_replace() {
+        let sandbox = tempfile::tempdir().expect("tempdir");
+        let registry = sandbox.path().join("registry");
+        fs::create_dir_all(&registry).expect("registry");
+        let job = spec(sandbox.path());
+        let result = result_env_path(&job.tmpdir, &job.step).expect("result path");
+        fs::write(&result, "BGJOB_RC=2\nSTEP=demo-step\n").expect("failed result");
+        fs::write(job.tmpdir.join("bgjob/demo-step.input-fp"), "same\n")
+            .expect("input fingerprint");
+        let host = ScenarioHost::new(
+            sandbox.path().to_path_buf(),
+            dead_verdict("missing-pid"),
+            dead_verdict("missing-pid"),
+        );
+
+        let output = run_scenario(
+            &host,
+            &registry,
+            job,
+            AdaptOptions {
+                input_fingerprint: "same".to_owned(),
+                ..AdaptOptions::default()
+            },
+        )
+        .expect("fresh retry start");
+
+        assert_eq!(output, "BGJOB_STATUS=STARTED STEP=demo-step PGID=303\n");
+        assert_eq!(host.starts.load(Ordering::SeqCst), 1);
+        assert!(!result.exists());
     }
 
     #[cfg(unix)]
@@ -2377,8 +2452,8 @@ mod tests {
             "OUTCOME=continue=now",
             "--replace-completed-result",
             "--",
-            "python3",
-            "worker.py",
+            "/bin/echo",
+            "worker argument",
         ]
         .into_iter()
         .map(OsString::from)
@@ -2394,7 +2469,7 @@ mod tests {
             vec![("OUTCOME".to_owned(), "continue=now".to_owned())]
         );
         assert!(parsed.replace_completed_result);
-        assert_eq!(parsed.command, ["python3", "worker.py"]);
+        assert_eq!(parsed.command, ["/bin/echo", "worker argument"]);
 
         let malformed = [
             "--step",
@@ -2409,7 +2484,10 @@ mod tests {
         .into_iter()
         .map(OsString::from)
         .collect::<Vec<_>>();
-        assert!(matches!(parse_arguments(&malformed), Err("invalid-input")));
+        assert_eq!(
+            parse_arguments(&malformed).expect_err("malformed row"),
+            "invalid-input"
+        );
     }
 
     #[test]
@@ -2531,7 +2609,7 @@ mod tests {
             "OUTCOME=continue",
             "--replace-completed-result",
             "--",
-            "worker",
+            "/bin/echo",
         ]
         .into_iter()
         .map(OsString::from)

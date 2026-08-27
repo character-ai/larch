@@ -30,7 +30,7 @@ use uuid::Uuid;
 use crate::clarify_orchestrator::write_result_env;
 use crate::design_log_publish_commands::resolve_summary_mode;
 use crate::design_step0_commands::{
-    Env, LiveStep0Runner, Step0Runner, env_get, exit_from_i32, reap_pid_residuals,
+    Env, LiveStep0Runner, Step0Runner, entrypoint, env_get, exit_from_i32, reap_pid_residuals,
     require_plugin_root, resolve_owned_run_id, resolve_persisted_repo_root,
     run_progress_deactivate, run_session_cleanup, utf8_arguments as utf8, validate_claude_pid,
 };
@@ -1438,6 +1438,7 @@ fn step5c_adapter_with(arguments: &[OsString], runner: &dyn Step0Runner) -> Exit
         "--input-fingerprint".to_owned(),
         step5c_input_fingerprint(&design_tmpdir),
         "--".to_owned(),
+        entrypoint(&plugin_root).display().to_string(),
         "design".to_owned(),
         "step5c".to_owned(),
     ]);

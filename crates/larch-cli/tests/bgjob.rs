@@ -576,6 +576,113 @@ fn start_prints_one_line_and_wait_reports_the_child_result() {
 }
 
 #[test]
+fn start_and_adapt_reject_an_unresolved_bare_worker_program() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("missing-bare-program");
+    let missing = "larch-worker-program-that-does-not-exist";
+    for (verb, step) in [("start", "missing-start"), ("adapt", "missing-adapt")] {
+        sandbox
+            .larch()
+            .args(["bgjob", verb, "--step", step])
+            .arg("--tmpdir")
+            .arg(&tmpdir)
+            .args(["--budget-s", "20", "--", missing])
+            .env("PATH", "/bin:/usr/bin")
+            .assert()
+            .code(2)
+            .stdout(format!(
+                "BGJOB_ERROR=worker-program-not-found PROGRAM={missing}\n"
+            ));
+    }
+    assert!(!tmpdir.join("bgjob").exists());
+}
+
+#[test]
+fn worker_spawn_failure_is_preserved_in_the_step_stderr_log() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("spawn-failure-log");
+    let missing = tmpdir.join("missing-worker-program");
+    let missing_text = missing.to_str().expect("utf8 missing program");
+    let stdout = start(
+        &sandbox,
+        "spawn-failure-log",
+        &tmpdir,
+        "20",
+        std::process::id().try_into().expect("pid"),
+        &[missing_text],
+    );
+    assert!(started_pgid(&stdout, "spawn-failure-log") > 0);
+
+    let settled = wait_until_settled(&sandbox, "spawn-failure-log", &tmpdir);
+    assert!(settled.contains("BGJOB_RC=2\n"), "{settled:?}");
+    let stderr = fs::read_to_string(tmpdir.join("bgjob/spawn-failure-log.stderr.log"))
+        .expect("spawn diagnostic log");
+    assert!(
+        stderr.contains("bgjob worker: failed to spawn"),
+        "{stderr:?}"
+    );
+    assert!(stderr.contains(missing_text), "{stderr:?}");
+}
+
+#[test]
+fn adapt_retries_a_failed_completed_result_on_the_next_fresh_call() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("adapt-failed-result-retry");
+    let marker = tmpdir.join("attempts.log");
+    let plugin_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repository root");
+    let owner_pid = std::process::id().to_string();
+    let launch = || {
+        let output = raw_larch(&sandbox)
+            .args([
+                "bgjob",
+                "adapt",
+                "--step",
+                "adapt-failed-result-retry",
+            ])
+            .arg("--tmpdir")
+            .arg(&tmpdir)
+            .args([
+                "--budget-s",
+                "20",
+                "--owner-pid",
+                &owner_pid,
+                "--input-fingerprint",
+                "same-input",
+                "--",
+            ])
+            .args([
+                "/bin/sh",
+                "-c",
+                "printf 'run\\n' >> \"$1\"; exit 2",
+                "adapt-retry-worker",
+            ])
+            .arg(&marker)
+            .env("CLAUDE_PLUGIN_ROOT", &plugin_root)
+            .output()
+            .expect("adapter launch");
+        assert!(output.status.success(), "{output:?}");
+        String::from_utf8(output.stdout).expect("utf8 adapter stdout")
+    };
+
+    let first = launch();
+    assert!(started_pgid(&first, "adapt-failed-result-retry") > 0);
+    let first_result = wait_until_settled(&sandbox, "adapt-failed-result-retry", &tmpdir);
+    assert!(first_result.contains("BGJOB_RC=2\n"), "{first_result:?}");
+
+    let second = launch();
+    assert!(started_pgid(&second, "adapt-failed-result-retry") > 0);
+    let second_result = wait_until_settled(&sandbox, "adapt-failed-result-retry", &tmpdir);
+    assert!(second_result.contains("BGJOB_RC=2\n"), "{second_result:?}");
+    assert_eq!(
+        fs::read_to_string(marker).expect("attempt marker"),
+        "run\nrun\n"
+    );
+}
+
+#[test]
 fn direct_start_rejects_unsafe_merge_result_envs_before_launch() {
     let sandbox = Sandbox::new();
     let tmpdir = sandbox.session("direct-merge");

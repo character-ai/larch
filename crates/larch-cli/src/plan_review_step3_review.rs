@@ -23,6 +23,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{
     agent_commands::AgentRawArguments,
     argparse_compat::{ParsedCommandLine, parse_required_with_help},
+    design_step0_commands::entrypoint,
     implement_child_seam::delegate_larch_with_options,
 };
 
@@ -592,6 +593,7 @@ fn run_parent(root: &Path, parsed: &Step3ReviewArgs) -> ExitCode {
         OsString::from("--input-fingerprint"),
         OsString::from(plan_fingerprint(root)),
         OsString::from("--"),
+        entrypoint(Path::new(&parent_plugin_root(parsed))).into_os_string(),
         OsString::from("plan-review"),
         OsString::from("step3-review"),
     ]);
@@ -602,6 +604,14 @@ fn run_parent(root: &Path, parsed: &Step3ReviewArgs) -> ExitCode {
             eprintln!("{error}");
             ExitCode::from(1)
         }
+    }
+}
+
+fn parent_plugin_root(parsed: &Step3ReviewArgs) -> String {
+    if parsed.plugin_root.is_empty() {
+        env::var("CLAUDE_PLUGIN_ROOT").unwrap_or_default()
+    } else {
+        parsed.plugin_root.clone()
     }
 }
 
@@ -937,7 +947,10 @@ mod tests {
         read_round_count, resume_state_validate, resume_state_write, split_adapter_suffix,
         step3_review, validate_resume, write_resume,
     };
-    use crate::implement_child_seam::{clear_hooks, install_larch};
+    use crate::{
+        design_step0_commands::entrypoint,
+        implement_child_seam::{clear_hooks, install_larch},
+    };
     use larch_core::{ProcessOutput, ProcessStatus};
     use std::{
         ffi::OsString,
@@ -1095,7 +1108,7 @@ mod tests {
     }
 
     #[test]
-    fn parent_launches_adapt_with_fingerprint_and_resume_replace() {
+    fn parent_launches_adapt_with_entrypoint_fingerprint_and_resume_replace() {
         let (_sandbox, root) = design();
         fs::write(root.join("plan.txt"), "plan body\n").expect("plan");
         fs::write(root.join("review-round-count.txt"), "1\n").expect("count");
@@ -1113,11 +1126,14 @@ mod tests {
             ))
         });
         let _guard = HookGuard;
+        let plugin_root = root.display().to_string();
         let code = step3_review(&step3_args(
             &root,
             &[
                 "--claude-pid",
                 "123",
+                "--plugin-root",
+                &plugin_root,
                 "--starting-round",
                 "1",
                 "--phase",
@@ -1136,6 +1152,18 @@ mod tests {
         let fingerprint = plan_fingerprint(&root);
         assert_eq!(fingerprint.len(), 64);
         assert!(adapt.contains(&fingerprint));
+        let separator = adapt
+            .iter()
+            .position(|value| value == "--")
+            .expect("command separator");
+        assert_eq!(
+            adapt[separator + 1],
+            entrypoint(&root).display().to_string()
+        );
+        assert_eq!(
+            &adapt[separator + 2..separator + 4],
+            ["plan-review", "step3-review"]
+        );
         assert!(
             adapt
                 .iter()

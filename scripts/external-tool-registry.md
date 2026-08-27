@@ -62,7 +62,7 @@ outside the shared adapter unless the call carries a reason-bearing
 
 | Executable class | Bounded use | Owner |
 | --- | --- | --- |
-| Current `larch` executable and caller-supplied bgjob program | Start the detached bgjob supervisor and worker, then run the command that the caller explicitly passed to `bgjob start`. | `crates/larch-cli/src/bgjob_commands.rs`; this lifecycle cannot use a runner-owned child because the daemon must outlive its caller. |
+| Current `larch` executable and caller-supplied bgjob program | Start the detached bgjob supervisor and worker, then run the command that the caller explicitly passed to `bgjob start`. A bare program must resolve to an executable on `PATH`; a path-bearing program is checked when the worker spawns it. | `crates/larch-cli/src/bgjob_commands.rs`; this lifecycle cannot use a runner-owned child because the daemon must outlive its caller. |
 | `cargo` | Read locked workspace metadata and stream changed-path Clippy output. | `crates/larch-cli/src/checks_rust_clippy_commands.rs` and `crates/larch-cli/src/ci_selection.rs`; source-checkout validation only. |
 | Validated `scripts/larch.sh` or `larch` path | Compose nested design and run-log commands, inspect a candidate bundle version, and smoke a staged release executable. | Design command modules, `crates/larch-cli/src/ci_policy_candidate_commands.rs`, and `crates/larch-cli/src/release_assets.rs`. |
 | `bash` | Encode Bash `%q` compatibility output and run fixed shipped design scripts. | `crates/larch-cli/src/design_step0_commands.rs` and `crates/larch-cli/src/plan_review_commands.rs`. |

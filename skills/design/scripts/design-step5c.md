@@ -12,7 +12,8 @@ Adapter-backed `/design` Step 5c Rust command.
 
 - Resolves a supplied session env through the trusted bgjob resolver before parent routing or tmpdir use. It never sources the file.
 - Delegates lifecycle decisions to `bgjob adapt` with step `design-step5c`, explicit tmpdir, 21600-second budget, session path, and optional owner PID.
-- Ordinary calls reattach a valid completed result when the input fingerprint matches. When `.step3-review-result.env` is present, the Rust owner passes its SHA-256 as `--input-fingerprint` to `bgjob adapt`; a fingerprint mismatch (or no stored sidecar for a prior result) is treated as stale and launches fresh. The adapter-private `--fresh-attempt` control maps to `--replace-completed-result` only for documented repair and refusal retries.
+- Passes the resolved larch entrypoint as the first worker token after `--`, followed by `design step5c`. It never passes a bare larch verb as the worker program.
+- Ordinary calls reattach a successful completed result when the input fingerprint matches. A matching-fingerprint nonzero result is cleared and launches fresh. When `.step3-review-result.env` is present, the Rust owner passes its SHA-256 as `--input-fingerprint` to `bgjob adapt`; a fingerprint mismatch (or no stored sidecar for a prior result) is treated as stale and launches fresh. The adapter-private `--fresh-attempt` control maps to `--replace-completed-result` only for documented repair and refusal retries.
 - Never forwards `--fresh-attempt` to the child `design step5c` invocation. It preserves all other public argv cells.
 - Accepts child mode only as the terminal `--bgjob-child --merge-result-env <path>` suffix.
 - The child requires the authoritative `.design-step5c-status.env` to contain publish, validation, final-summary, and cleanup rows, then atomically copies those rows to the adapter merge env.
