@@ -419,7 +419,7 @@ mod release_prepare_tests {
             .expect("prepare release with explicit bump");
     }
 
-    fn assert_prepare_uses_projection_tags_first_parent(fixture: GitRepository) {
+    fn assert_prepare_uses_projection_tags_first_parent(fixture: &GitRepository) {
         let repository = GixRepository::open(fixture.root()).expect("open repository");
         let baseline = resolve(&repository, "v1.2.3").expect("projection baseline");
         let main = resolve(&repository, "origin/main").expect("origin/main");
@@ -463,13 +463,13 @@ mod release_prepare_tests {
 
     #[test]
     fn prepare_uses_a_two_parent_projection_tags_first_parent() {
-        assert_prepare_uses_projection_tags_first_parent(projection_baseline_repository());
+        assert_prepare_uses_projection_tags_first_parent(&projection_baseline_repository());
     }
 
     #[test]
     fn prepare_uses_a_one_parent_projection_tags_first_parent() {
         assert_prepare_uses_projection_tags_first_parent(
-            one_parent_projection_baseline_repository(),
+            &one_parent_projection_baseline_repository(),
         );
     }
 
