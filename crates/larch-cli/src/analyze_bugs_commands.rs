@@ -38,18 +38,18 @@ use crate::{
     github_service::with_github_service,
 };
 
-const PREFETCH_PROGRAM: &str = "python/cli.py analyze-bugs prefetch";
-const PREFETCH_USAGE: &str = "usage: python/cli.py analyze-bugs prefetch [-h] [--repo REPO] [-n COUNT]\n                                           [--cache-root CACHE_ROOT]\n                                           [--state-root STATE_ROOT]\n                                           [--batch-size BATCH_SIZE]\n                                           [--diff-cap DIFF_CAP]";
-const PREFETCH_HELP: &str = "usage: python/cli.py analyze-bugs prefetch [-h] [--repo REPO] [-n COUNT]\n                                           [--cache-root CACHE_ROOT]\n                                           [--state-root STATE_ROOT]\n                                           [--batch-size BATCH_SIZE]\n                                           [--diff-cap DIFF_CAP]\n\noptions:\n  -h, --help            show this help message and exit\n  --repo REPO\n  -n COUNT, --count COUNT\n  --cache-root CACHE_ROOT\n  --state-root STATE_ROOT\n  --batch-size BATCH_SIZE\n  --diff-cap DIFF_CAP\n";
-const LEDGER_PROGRAM: &str = "python/cli.py analyze-bugs ledger";
-const LEDGER_USAGE: &str = "usage: python/cli.py analyze-bugs ledger [-h] --run-dir RUN_DIR --ledger-path\n                                         LEDGER_PATH [--manifest MANIFEST]\n                                         [--ingest-triage INGEST_TRIAGE]\n                                         [--ingest-deep INGEST_DEEP]\n                                         [--refresh] [--sample SAMPLE]\n                                         [--deep-max DEEP_MAX]\n                                         [--deep-model DEEP_MODEL]\n                                         [--batch-size BATCH_SIZE]";
-const LEDGER_HELP: &str = "usage: python/cli.py analyze-bugs ledger [-h] --run-dir RUN_DIR --ledger-path\n                                         LEDGER_PATH [--manifest MANIFEST]\n                                         [--ingest-triage INGEST_TRIAGE]\n                                         [--ingest-deep INGEST_DEEP]\n                                         [--refresh] [--sample SAMPLE]\n                                         [--deep-max DEEP_MAX]\n                                         [--deep-model DEEP_MODEL]\n                                         [--batch-size BATCH_SIZE]\n\noptions:\n  -h, --help            show this help message and exit\n  --run-dir RUN_DIR\n  --ledger-path LEDGER_PATH\n  --manifest MANIFEST\n  --ingest-triage INGEST_TRIAGE\n  --ingest-deep INGEST_DEEP\n  --refresh\n  --sample SAMPLE\n  --deep-max DEEP_MAX\n  --deep-model DEEP_MODEL\n  --batch-size BATCH_SIZE\n";
-const RUNTIME_PROGRAM: &str = "python/cli.py analyze-bugs runtime";
-const RUNTIME_USAGE: &str = "usage: python/cli.py analyze-bugs runtime [-h] --run-dir RUN_DIR --manifest\n                                          MANIFEST --ledger-path LEDGER_PATH\n                                          [--runtime-max RUNTIME_MAX]\n                                          --repo-root REPO_ROOT";
-const RUNTIME_HELP: &str = "usage: python/cli.py analyze-bugs runtime [-h] --run-dir RUN_DIR --manifest\n                                          MANIFEST --ledger-path LEDGER_PATH\n                                          [--runtime-max RUNTIME_MAX]\n                                          --repo-root REPO_ROOT\n\noptions:\n  -h, --help            show this help message and exit\n  --run-dir RUN_DIR\n  --manifest MANIFEST\n  --ledger-path LEDGER_PATH\n  --runtime-max RUNTIME_MAX\n  --repo-root REPO_ROOT\n";
-const REPORT_PROGRAM: &str = "python/cli.py analyze-bugs report";
-const REPORT_USAGE: &str = "usage: python/cli.py analyze-bugs report [-h] --run-dir RUN_DIR --manifest\n                                         MANIFEST --ledger-path LEDGER_PATH";
-const REPORT_HELP: &str = "usage: python/cli.py analyze-bugs report [-h] --run-dir RUN_DIR --manifest\n                                         MANIFEST --ledger-path LEDGER_PATH\n\noptions:\n  -h, --help            show this help message and exit\n  --run-dir RUN_DIR\n  --manifest MANIFEST\n  --ledger-path LEDGER_PATH\n";
+const PREFETCH_PROGRAM: &str = "larch analyze-bugs prefetch";
+const PREFETCH_USAGE: &str = "usage: larch analyze-bugs prefetch [-h] [--repo REPO] [-n COUNT]\n                                   [--cache-root CACHE_ROOT]\n                                   [--state-root STATE_ROOT]\n                                   [--batch-size BATCH_SIZE]\n                                   [--diff-cap DIFF_CAP]";
+const PREFETCH_HELP: &str = "usage: larch analyze-bugs prefetch [-h] [--repo REPO] [-n COUNT]\n                                   [--cache-root CACHE_ROOT]\n                                   [--state-root STATE_ROOT]\n                                   [--batch-size BATCH_SIZE]\n                                   [--diff-cap DIFF_CAP]\n\noptions:\n  -h, --help            show this help message and exit\n  --repo REPO\n  -n COUNT, --count COUNT\n  --cache-root CACHE_ROOT\n  --state-root STATE_ROOT\n  --batch-size BATCH_SIZE\n  --diff-cap DIFF_CAP\n";
+const LEDGER_PROGRAM: &str = "larch analyze-bugs ledger";
+const LEDGER_USAGE: &str = "usage: larch analyze-bugs ledger [-h] --run-dir RUN_DIR --ledger-path\n                                 LEDGER_PATH [--manifest MANIFEST]\n                                 [--ingest-triage INGEST_TRIAGE]\n                                 [--ingest-deep INGEST_DEEP]\n                                 [--refresh] [--sample SAMPLE]\n                                 [--deep-max DEEP_MAX]\n                                 [--deep-model DEEP_MODEL]\n                                 [--batch-size BATCH_SIZE]";
+const LEDGER_HELP: &str = "usage: larch analyze-bugs ledger [-h] --run-dir RUN_DIR --ledger-path\n                                 LEDGER_PATH [--manifest MANIFEST]\n                                 [--ingest-triage INGEST_TRIAGE]\n                                 [--ingest-deep INGEST_DEEP]\n                                 [--refresh] [--sample SAMPLE]\n                                 [--deep-max DEEP_MAX]\n                                 [--deep-model DEEP_MODEL]\n                                 [--batch-size BATCH_SIZE]\n\noptions:\n  -h, --help            show this help message and exit\n  --run-dir RUN_DIR\n  --ledger-path LEDGER_PATH\n  --manifest MANIFEST\n  --ingest-triage INGEST_TRIAGE\n  --ingest-deep INGEST_DEEP\n  --refresh\n  --sample SAMPLE\n  --deep-max DEEP_MAX\n  --deep-model DEEP_MODEL\n  --batch-size BATCH_SIZE\n";
+const RUNTIME_PROGRAM: &str = "larch analyze-bugs runtime";
+const RUNTIME_USAGE: &str = "usage: larch analyze-bugs runtime [-h] --run-dir RUN_DIR --manifest\n                                  MANIFEST --ledger-path LEDGER_PATH\n                                  [--runtime-max RUNTIME_MAX]\n                                  --repo-root REPO_ROOT";
+const RUNTIME_HELP: &str = "usage: larch analyze-bugs runtime [-h] --run-dir RUN_DIR --manifest\n                                  MANIFEST --ledger-path LEDGER_PATH\n                                  [--runtime-max RUNTIME_MAX]\n                                  --repo-root REPO_ROOT\n\noptions:\n  -h, --help            show this help message and exit\n  --run-dir RUN_DIR\n  --manifest MANIFEST\n  --ledger-path LEDGER_PATH\n  --runtime-max RUNTIME_MAX\n  --repo-root REPO_ROOT\n";
+const REPORT_PROGRAM: &str = "larch analyze-bugs report";
+const REPORT_USAGE: &str = "usage: larch analyze-bugs report [-h] --run-dir RUN_DIR --manifest\n                                 MANIFEST --ledger-path LEDGER_PATH";
+const REPORT_HELP: &str = "usage: larch analyze-bugs report [-h] --run-dir RUN_DIR --manifest\n                                 MANIFEST --ledger-path LEDGER_PATH\n\noptions:\n  -h, --help            show this help message and exit\n  --run-dir RUN_DIR\n  --manifest MANIFEST\n  --ledger-path LEDGER_PATH\n";
 
 const DEFAULT_COUNT: usize = 200;
 const DEFAULT_BATCH_SIZE: usize = 10;
@@ -3197,14 +3197,7 @@ fn runtime_harnesses(paths: &[String]) -> Vec<String> {
 }
 
 fn runtime_uncovered_zones(paths: &[String]) -> Vec<String> {
-    const ZONES: &[&str] = &[
-        "skills/",
-        "scripts/",
-        "hooks/",
-        "agents/",
-        "python/larch/implement/",
-        "python/larch/design/",
-    ];
+    const ZONES: &[&str] = &["skills/", "scripts/", "hooks/", "agents/"];
     const HARNESSES: &[&str] = &["skills/implement/", "scripts/test-implement-anti-halt.sh"];
     paths
         .iter()
@@ -5385,6 +5378,44 @@ mod tests {
         })
     }
 
+    #[test]
+    fn command_usage_names_larch_and_aligns_continuations() {
+        for (program, usage, help) in [
+            (
+                super::PREFETCH_PROGRAM,
+                super::PREFETCH_USAGE,
+                super::PREFETCH_HELP,
+            ),
+            (
+                super::LEDGER_PROGRAM,
+                super::LEDGER_USAGE,
+                super::LEDGER_HELP,
+            ),
+            (
+                super::RUNTIME_PROGRAM,
+                super::RUNTIME_USAGE,
+                super::RUNTIME_HELP,
+            ),
+            (
+                super::REPORT_PROGRAM,
+                super::REPORT_USAGE,
+                super::REPORT_HELP,
+            ),
+        ] {
+            let prefix = format!("usage: {program} ");
+            assert!(program.starts_with("larch analyze-bugs "));
+            assert!(usage.starts_with(&prefix));
+            assert!(help.starts_with(&prefix));
+            let indentation = " ".repeat(prefix.len());
+            assert!(
+                usage
+                    .lines()
+                    .skip(1)
+                    .all(|line| line.starts_with(&indentation))
+            );
+        }
+    }
+
     fn argv(values: &[&str]) -> Vec<OsString> {
         values.iter().map(OsString::from).collect()
     }
@@ -6211,6 +6242,8 @@ mod tests {
             super::runtime_uncovered_zones(&[
                 "skills/triage/SKILL.md".to_owned(),
                 "scripts/other.sh".to_owned(),
+                "python/larch/implement/legacy.py".to_owned(),
+                "python/larch/design/legacy.py".to_owned(),
             ]),
             vec!["scripts".to_owned(), "skills".to_owned()]
         );

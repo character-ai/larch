@@ -94,10 +94,6 @@ const SKIP_PREFIX_PATH_OWNERS: &[(&str, &str)] = &[
         "lint plus trusted-main repository policy and plugin validation",
     ),
     (
-        "python/",
-        "trusted-main repository policy and plugin validation",
-    ),
-    (
         "skills/",
         "agent-lint, lintlang, and trusted-main repository policy",
     ),
@@ -1670,6 +1666,11 @@ mod tests {
             vec!["lint plus trusted-main repository policy and plugin validation"]
         );
         assert!(valid_serialized_selection(&selection));
+    }
+
+    #[test]
+    fn retired_python_paths_have_no_skip_validation_owner() {
+        assert_eq!(super::skip_validation_owner("python/larch/legacy.py"), None);
     }
 
     #[test]
