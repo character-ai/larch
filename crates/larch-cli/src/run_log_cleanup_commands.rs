@@ -501,7 +501,6 @@ impl Stats {
             "  code-review-tally body stripped:     {}",
             self.tally_bodies
         );
-        println!("  python/larch-logs/ entries removed:  0");
         println!(
             "  protected/unpublished runs skipped:  {}",
             self.protected_runs
