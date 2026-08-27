@@ -438,9 +438,9 @@ report retains the existing filename exclusions. The stable `rust-coverage`
 job verifies and extracts the LCOV runtime prepared in parallel, merges the four
 test reports and the policy report through LCOV's parallel add-tracefile path,
 then applies the line threshold to the merged report's generated line totals.
-After shard 1 produces its report, it uses the executable for both
-plugin-runtime commands and the generated-projection clean-diff check before
-uploading it for bootstrap integration tests. The separate doctest command stays
+After shard 1 produces its report, it uses the executable for the single
+plugin-runtime generate-and-validate step before uploading it for bootstrap
+integration tests. The separate doctest command stays
 required even when the workspace currently has no doctests. Nextest's
 slow-test status and final status output remain visible in the job log.
 
