@@ -636,11 +636,10 @@ pub enum DrafterDirtyTree<'a> {
 
 /// Render one drafter dirty-tree sidecar body.
 ///
-/// The baseline and the post-launch probe can come from different porcelain
-/// producers while the design step that captures the baseline is still Python,
-/// so the comparison is over the set of reported entries rather than raw bytes.
-/// Formatting or ordering differences between producers must not be reported as
-/// a drafter mutation.
+/// The Rust design step can capture the baseline with a different porcelain
+/// producer from the post-launch probe, so the comparison uses the set of
+/// reported entries rather than raw bytes. Formatting or ordering differences
+/// between producers must not be reported as a drafter mutation.
 #[must_use]
 pub fn render_drafter_dirty_tree(evidence: DrafterDirtyTree<'_>) -> String {
     let (status, mode, reason) = match evidence {
