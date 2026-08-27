@@ -38,6 +38,7 @@ Investigate a user-described bug inline, compose a detailed issue body, then del
 - The `Write` hook is active only after Step 2 writes a fresh `bug-*` activation sentinel.
 - Do not use `Edit`, `NotebookEdit`, external agents, or repo-writing Bash commands.
 - If root cause is uncertain, say so in the issue body and list the evidence and next steps.
+- Include exactly one `Origin:` line under `## Root cause analysis`. Use `regression #N`, `new-code`, or `spec-gap`.
 
 <!-- step:1 - Validate input -->
 ## Step 1 - Validate input
@@ -135,6 +136,8 @@ Use `Write` to create `$BUG_TMPDIR/bug-issue-body.md` with exactly these ten `##
 <What appears to happen instead.>
 
 ## Root cause analysis
+
+Origin: <Choose exactly one: regression #N, new-code, or spec-gap.>
 
 <Likely root cause. If uncertain, state uncertainty explicitly and explain why. When the introducing change is known, name it with one canonical origin phrase: "introduced by #N", "introduced by PR #N", "introduced in #N", "incomplete fix of #N", "persists after #N", or "residual of #N".>
 

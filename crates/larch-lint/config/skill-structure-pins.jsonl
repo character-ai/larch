@@ -1559,7 +1559,9 @@
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"--zones \"design,implement\"` → `[BUG] (design OR implement) in:title,body`","id":"ported _structure_learn_from_bugs_specialized.py:225 [69623605e9]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"REPO_ARGS=(--repo \"$REPO\")","id":"ported _structure_learn_from_bugs_specialized.py:227 [67d244ee3f]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"\"${REPO_ARGS[@]}\"","id":"ported _structure_learn_from_bugs_specialized.py:229 [a5e14b633d]"}
-{"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"--input-file \"$RUN_DIR/batch-issues.md\" --repo \"$REPO\" --dry-run","id":"ported _structure_learn_from_bugs_specialized.py:231 [172b0ee63c]"}
+{"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"issue parse-input \\","id":"learn-from-bugs-deterministic-filing-preview"}
+{"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"issue create-batch \\","id":"learn-from-bugs-deterministic-preview-create-owner"}
+{"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"Do not invoke `/issue --dry-run`","id":"learn-from-bugs-single-semantic-filing-pass"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"--input-file \"$RUN_DIR/batch-issues.md\" --repo \"$REPO\"","id":"ported _structure_learn_from_bugs_specialized.py:233 [e89f38e79b]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"learn-from-bugs resolve-zones --zones \"$ZONES_CSV\"","id":"ported _structure_learn_from_bugs_specialized.py:235 [90128ebeda]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"while IFS= read -r resolved_search_record; do","id":"ported _structure_learn_from_bugs_specialized.py:237 [dcd26513b5]"}
@@ -1576,7 +1578,8 @@
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"explicit diagnostic allowlist","id":"ported _structure_learn_from_bugs_specialized.py:259 [153f5183ff]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"excludes `summary`, suggested-fix sections","id":"ported _structure_learn_from_bugs_specialized.py:261 [e1fb713051]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"preserves repeated root-cause headings in document order","id":"ported _structure_learn_from_bugs_specialized.py:263 [40fc9b8a67]"}
-{"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"Origin classification is best-effort","id":"ported _structure_learn_from_bugs_specialized.py:265 [d7d98ece56]"}
+{"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"Origin classification reads a whole-line","id":"learn-from-bugs-explicit-origin-first"}
+{"path":"skills/file-bug/SKILL.md","kind":"contains","needle":"Origin: <Choose exactly one: regression #N, new-code, or spec-gap.>","id":"file-bug-canonical-origin-line"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"`script_lints`, and `rust_lints`","id":"ported _structure_learn_from_bugs_specialized.py:267 [57b508d07c]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"guidelines, invariants, script lints, and Rust lints","id":"learn-from-bugs-section-3-rust-lints"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"single-sourcing","id":"ported _structure_learn_from_bugs_specialized.py:269 [934aa656bc]"}
@@ -1680,7 +1683,7 @@
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"`${RUN_DIR}/proposal-deps.tsv`, with one `<blocker-proposal-id>\\t<blocked-proposal-id>` row per declaration","id":"ported _structure_learn_from_bugs_specialized.py:98 [ecf6848331]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"An invariants-file proposal that names a separately proposed same-batch regression test as its mechanical backing must list that test proposal ID","id":"ported _structure_learn_from_bugs_specialized.py:98 [ee25807555]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"dependency pre-pass failed (exit <N>); filing will rely on /issue dependency analysis","id":"ported _structure_learn_from_bugs_specialized.py:98 [fd4689e935]"}
-{"path":"skills/learn-from-bugs/SKILL.md","kind":"exact_count","needle":"--intra-batch-deps-file \"$RUN_DIR/intra-batch-deps.tsv\"","expected":2,"count_unit":"substring","id":"ported _structure_learn_from_bugs_specialized.py:99 [bbf0411a0b]"}
+{"path":"skills/learn-from-bugs/SKILL.md","kind":"exact_count","needle":"--intra-batch-deps-file \"$RUN_DIR/intra-batch-deps.tsv\"","expected":1,"count_unit":"substring","id":"ported _structure_learn_from_bugs_specialized.py:99 [bbf0411a0b]"}
 {"path":"skills/research/SKILL.md","kind":"contains","needle":"validation-phase.md","id":"ported _structure_research_specialized.py:106 [159d07ad8c]"}
 {"path":"skills/research/SKILL.md","kind":"contains","needle":"citation-validation-phase.md","id":"ported _structure_research_specialized.py:106 [b6084e28ea]"}
 {"path":"skills/research/SKILL.md","kind":"contains","needle":"critique-loop-phase.md","id":"ported _structure_research_specialized.py:106 [ba3fbb191f]"}
