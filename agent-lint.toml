@@ -18,7 +18,8 @@ inline-path-prefixes = [
   ".github/",
 ]
 # G010/G011 scan this explicit portability inventory regardless of broad
-# excludes. Its test enforces inclusion of every residual Bash path.
+# excludes. crates/larch-lint/tests/agent_lint_script_inventory.rs enforces
+# inclusion of every residual Bash path.
 script-inventory = "scripts/agent-lint-script-inventory.txt"
 suppress = [
   # A007 reports one repository-wide count mismatch between agent files and

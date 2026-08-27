@@ -558,7 +558,7 @@ shims may stay outside the manifest only when `residual-bash-shim` verifies
 their line bound and sole `scripts/larch.sh` exec. Terminal shared libraries,
 retired non-thin helpers, and verified-zero-consumer includes are absent.
 
-Agent-lint G010/G011 treat `scripts/agent-lint-script-inventory.txt` as their authoritative explicit scope, even if another rule excludes one of its paths. Add standalone awk helpers to that inventory in the same change; its test enforces complete residual-Bash coverage. CI shellcheck continues to read `scripts/residual-bash-paths.txt`. Test shard rebalance is deferred to `/rebalance-tests`.
+Agent-lint G010/G011 treat `scripts/agent-lint-script-inventory.txt` as their authoritative explicit scope, even if another rule excludes one of its paths. Add standalone awk helpers to that inventory in the same change. `crates/larch-lint/tests/agent_lint_script_inventory.rs` parses both manifests with the residual reader's fail-closed semantics and requires every residual Bash path to appear in the agent-lint inventory. CI shellcheck continues to read `scripts/residual-bash-paths.txt`. Test shard rebalance is deferred to `/rebalance-tests`.
 
 ## Bgjob background-launch lint
 
