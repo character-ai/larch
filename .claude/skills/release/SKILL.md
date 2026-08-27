@@ -1,7 +1,7 @@
 ---
 # larch-run-lifecycle: shared-v1 skill=release
 name: release
-description: "Use when cutting a larch release: merge a version candidate, tag its post-merge commit, validate draft assets, publish immutable, and promote Latest."
+description: "Use when cutting a larch release: merge a version candidate, tag the projection commit built from the merged `main` commit, validate draft assets, publish immutable, and promote Latest."
 argument-hint: "[--dry-run] [--skip-approve|-s] [--bump major|minor|patch] [--repo OWNER/REPO]"
 allowed-tools: AskUserQuestion, Bash
 disable-model-invocation: true
@@ -11,7 +11,7 @@ disable-model-invocation: true
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
 
-Operator-run release cut for `character-ai/larch`. It merges the candidate through the normal queue, then gates publication and Latest promotion on the complete asset and immutable-release verification for the resulting `main` commit. This dev-only skill lives under `.claude/skills/release/` and is not exported in the plugin package. All runtime script paths use `$PWD/.claude/skills/release/scripts/...` from the larch repo root.
+Operator-run release cut for `character-ai/larch`. It merges the candidate through the normal queue, builds and tags a projection commit from the merged `main` commit, then gates publication and Latest promotion on the complete asset and immutable-release verification for that projection commit. This dev-only skill lives under `.claude/skills/release/` and is not exported in the plugin package. All runtime script paths use `$PWD/.claude/skills/release/scripts/...` from the larch repo root.
 
 ## First release after the projection cutover
 
