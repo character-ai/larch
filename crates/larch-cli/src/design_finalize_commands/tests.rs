@@ -542,9 +542,29 @@ mod design_finalize_commands_tests {
         );
         write(
             design.join("design-publish-log.stderr.log"),
-            "log publish failed\n",
+            "log publish failed ghp_abcdefghijklmnopqrstuvwxyz0123456789\nsecond line ignored\n",
         );
-        let result = failure_status();
+        let mut result = failure_status();
+        assert!(record_log_publish_failure_detail(&design, &result).is_none());
+        assert!(!design.join("execution-issues.md").exists());
+        result.insert("LATEST_PHASE".to_owned(), "log-publish-failed".to_owned());
+        assert_eq!(
+            record_log_publish_failure_detail(&design, &result).as_deref(),
+            Some("log publish failed <REDACTED-TOKEN>")
+        );
+        let issues = fs::read_to_string(design.join("execution-issues.md")).unwrap();
+        assert!(issues.contains("log publish failed <REDACTED-TOKEN>"));
+        assert!(!issues.contains("second line ignored"));
+        assert!(!issues.contains("ghp_"));
+        write(
+            design.join("design-publish-log.stderr.log"),
+            &format!("{}\n", "x".repeat(LOG_PUBLISH_DETAIL_CHAR_CAP + 1)),
+        );
+        assert!(
+            record_log_publish_failure_detail(&design, &result)
+                .expect("bounded detail")
+                .ends_with(" [truncated]")
+        );
         render_publish_failure_detail(
             &design,
             5,

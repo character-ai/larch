@@ -8,22 +8,25 @@
       "text": "FINAL_SUMMARY_PATH=<SANDBOX>/design/final-summary.md\nFINAL_SUMMARY_READY=true\n"
     },
     "design/.design-step5c-status.env": {
-      "text": "PLAN_WRITE_OK=false\nPUBLISH_OK=false\nSTANDALONE_HEAVY_FAILED=\nSESSION_ID=\nPUBLISH_RC=5\nPUBLISH_STDOUT_FALLBACK=false\nCLEANUP_ELIGIBLE=false\nVALIDATE_STATUS=ok\nVALIDATE_DEFECT_COUNT=\nVALIDATE_SKIPPED_COUNT=\nVALIDATE_UNSAFE_TOKEN_COUNT=\nVALIDATE_MISSING_SCRIPT_COUNT=\nVALIDATE_LOG_FILE=\nPUBLISH_ATTEMPT_ID=<ATTEMPT_ID>\nPUBLISH_RC_SOURCE=returned\nLATEST_PHASE=plan-write\nLOG_PUBLISH_ATTEMPTED=false\nLOG_PUBLISH_COMPLETED=false\nRENAMED=false\nPR_URL=\nRECOVERY_BRANCH=\nFINAL_SUMMARY_PATH=<SANDBOX>/design/final-summary.md\nFINAL_SUMMARY_READY=true\n"
+      "text": "PLAN_WRITE_OK=true\nPUBLISH_OK=false\nSTANDALONE_HEAVY_FAILED=\nSESSION_ID=\nPUBLISH_RC=5\nPUBLISH_STDOUT_FALLBACK=false\nCLEANUP_ELIGIBLE=false\nVALIDATE_STATUS=ok\nVALIDATE_DEFECT_COUNT=\nVALIDATE_SKIPPED_COUNT=\nVALIDATE_UNSAFE_TOKEN_COUNT=\nVALIDATE_MISSING_SCRIPT_COUNT=\nVALIDATE_LOG_FILE=\nPUBLISH_ATTEMPT_ID=<ATTEMPT_ID>\nPUBLISH_RC_SOURCE=returned\nLATEST_PHASE=log-publish-failed\nLOG_PUBLISH_ATTEMPTED=true\nLOG_PUBLISH_COMPLETED=false\nRENAMED=true\nPR_URL=\nRECOVERY_BRANCH=\nFINAL_SUMMARY_PATH=<SANDBOX>/design/final-summary.md\nFINAL_SUMMARY_READY=true\n"
     },
     "design/.step5c-merge.env": {
-      "text": "PLAN_WRITE_OK=false\nPUBLISH_OK=false\nSTANDALONE_HEAVY_FAILED=\nSESSION_ID=\nPUBLISH_RC=5\nPUBLISH_STDOUT_FALLBACK=false\nCLEANUP_ELIGIBLE=false\nVALIDATE_STATUS=ok\nVALIDATE_DEFECT_COUNT=\nVALIDATE_SKIPPED_COUNT=\nVALIDATE_UNSAFE_TOKEN_COUNT=\nVALIDATE_MISSING_SCRIPT_COUNT=\nVALIDATE_LOG_FILE=\nPUBLISH_ATTEMPT_ID=<ATTEMPT_ID>\nPUBLISH_RC_SOURCE=returned\nLATEST_PHASE=plan-write\nLOG_PUBLISH_ATTEMPTED=false\nLOG_PUBLISH_COMPLETED=false\nRENAMED=false\nPR_URL=\nRECOVERY_BRANCH=\nFINAL_SUMMARY_PATH=<SANDBOX>/design/final-summary.md\nFINAL_SUMMARY_READY=true\n"
+      "text": "PLAN_WRITE_OK=true\nPUBLISH_OK=false\nSTANDALONE_HEAVY_FAILED=\nSESSION_ID=\nPUBLISH_RC=5\nPUBLISH_STDOUT_FALLBACK=false\nCLEANUP_ELIGIBLE=false\nVALIDATE_STATUS=ok\nVALIDATE_DEFECT_COUNT=\nVALIDATE_SKIPPED_COUNT=\nVALIDATE_UNSAFE_TOKEN_COUNT=\nVALIDATE_MISSING_SCRIPT_COUNT=\nVALIDATE_LOG_FILE=\nPUBLISH_ATTEMPT_ID=<ATTEMPT_ID>\nPUBLISH_RC_SOURCE=returned\nLATEST_PHASE=log-publish-failed\nLOG_PUBLISH_ATTEMPTED=true\nLOG_PUBLISH_COMPLETED=false\nRENAMED=true\nPR_URL=\nRECOVERY_BRANCH=\nFINAL_SUMMARY_PATH=<SANDBOX>/design/final-summary.md\nFINAL_SUMMARY_READY=true\n"
     },
     "design/composed-plan.md": {
       "text": "## Plan\n\nReady.\n"
     },
+    "design/design-publish-log.stderr.log": {
+      "text": "design log-publish: archive publication failed: run lifecycle finalize failed: run-log incomplete: plan-review-round-1:plan-review/round-1/findings-classification.tsv\nsecond line omitted from the summary\n"
+    },
     "design/design-publish-tail.failure.log": {
-      "text": "exit_code=5\nrc_source=returned\nlatest_phase=plan-write\nplan_write_ok=false\npublish_ok=false\nrenamed=false\nlog_publish_attempted=false\nlog_publish_completed=false\n[step5c_stdout]\nPUBLISH_ATTEMPT_ID=<ATTEMPT_ID>\nPUBLISH_RC_SOURCE=returned\nLATEST_PHASE=plan-write\nPLAN_WRITE_OK=false\nPUBLISH_OK=false\nLOG_PUBLISH_ATTEMPTED=false\nLOG_PUBLISH_COMPLETED=false\nRENAMED=false\nVALIDATE_STATUS=ok\n\n"
+      "text": "exit_code=5\nrc_source=returned\nlatest_phase=log-publish-failed\nplan_write_ok=true\npublish_ok=false\nrenamed=true\nlog_publish_attempted=true\nlog_publish_completed=false\n[log_publish_stderr]\ndesign log-publish: archive publication failed: run lifecycle finalize failed: run-log incomplete: plan-review-round-1:plan-review/round-1/findings-classification.tsv\nsecond line omitted from the summary\n\n[step5c_stdout]\nPUBLISH_ATTEMPT_ID=<ATTEMPT_ID>\nPUBLISH_RC_SOURCE=returned\nLATEST_PHASE=log-publish-failed\nPLAN_WRITE_OK=true\nPUBLISH_OK=false\nLOG_PUBLISH_ATTEMPTED=true\nLOG_PUBLISH_COMPLETED=false\nRENAMED=true\nVALIDATE_STATUS=ok\n\n"
     },
     "design/design-publish-tail.stderr.log": {
       "text": ""
     },
     "design/design-publish-tail.stdout.log": {
-      "text": "PUBLISH_ATTEMPT_ID=<ATTEMPT_ID>\nPUBLISH_RC_SOURCE=returned\nLATEST_PHASE=plan-write\nPLAN_WRITE_OK=false\nPUBLISH_OK=false\nLOG_PUBLISH_ATTEMPTED=false\nLOG_PUBLISH_COMPLETED=false\nRENAMED=false\nVALIDATE_STATUS=ok\n"
+      "text": "PUBLISH_ATTEMPT_ID=<ATTEMPT_ID>\nPUBLISH_RC_SOURCE=returned\nLATEST_PHASE=log-publish-failed\nPLAN_WRITE_OK=true\nPUBLISH_OK=false\nLOG_PUBLISH_ATTEMPTED=true\nLOG_PUBLISH_COMPLETED=false\nRENAMED=true\nVALIDATE_STATUS=ok\n"
     },
     "design/design-report-gate-sidecars.md": {
       "text": ""
@@ -33,6 +36,9 @@
     },
     "design/design-stage-terminal-state.stdout.log": {
       "text": "STAGED=true\n"
+    },
+    "design/execution-issues.md": {
+      "text": "### Tool Failures\n\ndesign Step 5c log publish failed: design log-publish: archive publication failed: run lifecycle finalize failed: run-log incomplete: plan-review-round-1:plan-review/round-1/findings-classification.tsv\n"
     },
     "design/final-summary.md": {
       "text": "offline final summary\n"
@@ -46,7 +52,7 @@
   },
   "side_effects": {},
   "stderr": {
-    "text": "**⚠ Step 5c: design-publish.sh failed (exit 5); aborting /design**\n"
+    "text": "**⚠ Step 5c: design-publish.sh failed (exit 5): design log-publish: archive publication failed: run lifecycle finalize failed: run-log incomplete: plan-review-round-1:plan-review/round-1/findings-classification.tsv; aborting /design**\n"
   },
   "stdout": {
     "text": "FINAL_SUMMARY_PATH=<SANDBOX>/design/final-summary.md\nLARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END\n"

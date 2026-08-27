@@ -36,15 +36,26 @@ case "$1 $2" in
       latest_phase=publish
       plan_write_ok=true
       publish_ok=true
+      log_publish_attempted=false
+      renamed=false
       rc=0
+    elif [ "$mode" = rc5 ]; then
+      latest_phase=log-publish-failed
+      plan_write_ok=true
+      publish_ok=false
+      log_publish_attempted=true
+      renamed=true
+      rc=5
     else
       latest_phase=plan-write
       plan_write_ok=false
       publish_ok=false
+      log_publish_attempted=false
+      renamed=false
       rc=5
     fi
-    body=$(printf 'PUBLISH_ATTEMPT_ID=%s\nPUBLISH_RC_SOURCE=returned\nLATEST_PHASE=%s\nPLAN_WRITE_OK=%s\nPUBLISH_OK=%s\nLOG_PUBLISH_ATTEMPTED=false\nLOG_PUBLISH_COMPLETED=false\nRENAMED=false\nVALIDATE_STATUS=ok\n' \
-      "${LARCH_DESIGN_PUBLISH_ATTEMPT_ID-}" "$latest_phase" "$plan_write_ok" "$publish_ok")
+    body=$(printf 'PUBLISH_ATTEMPT_ID=%s\nPUBLISH_RC_SOURCE=returned\nLATEST_PHASE=%s\nPLAN_WRITE_OK=%s\nPUBLISH_OK=%s\nLOG_PUBLISH_ATTEMPTED=%s\nLOG_PUBLISH_COMPLETED=false\nRENAMED=%s\nVALIDATE_STATUS=ok\n' \
+      "${LARCH_DESIGN_PUBLISH_ATTEMPT_ID-}" "$latest_phase" "$plan_write_ok" "$publish_ok" "$log_publish_attempted" "$renamed")
     printf '%s\n' "$body"
     if [ "$mode" = success ]; then
       design_tmpdir=$(value --design-tmpdir "$@")
