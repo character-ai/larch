@@ -57,6 +57,35 @@ impl Fixture {
 }
 
 #[test]
+fn empty_root_summary_omits_retired_python_row() {
+    let fixture = Fixture::new();
+
+    let output = fixture.command(&[]);
+
+    assert!(output.status.success(), "empty-root dry run should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.contains("python/"), "{stdout}");
+    assert_eq!(
+        stdout.as_ref(),
+        concat!(
+            "DRY-RUN mode: pass --execute to apply changes\n",
+            "\n",
+            "=== cleanup-implement-logs summary ===\n",
+            "  dyn-*-prompt.md deleted:             0\n",
+            "  aggregator-output.txt deleted:       0\n",
+            "  scout-round*.json.raw deleted:       0\n",
+            "  refresh sidecars deleted:            0\n",
+            "  cursor phase/retry files deleted:    0\n",
+            "  session-transcript.jsonl upgraded:   0\n",
+            "  breadcrumbs dirs consolidated:       0\n",
+            "  larch-quiet-*.log files removed:     0\n",
+            "  code-review-tally body stripped:     0\n",
+            "  protected/unpublished runs skipped:  0\n",
+        )
+    );
+}
+
+#[test]
 fn dry_run_lists_the_same_changes_as_execute_without_mutating_first() {
     let fixture = Fixture::new();
     let run = fixture.completed_run("run-complete");
