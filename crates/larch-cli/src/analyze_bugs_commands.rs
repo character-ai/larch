@@ -1418,8 +1418,12 @@ fn zones_for_files(paths: &[String]) -> Vec<String> {
 }
 
 fn is_baseline_path(path: &str) -> bool {
-    path.strip_prefix("python/")
-        .is_some_and(|name| !name.contains('/') && name.ends_with("-baseline.json"))
+    path.strip_prefix("crates/larch-lint/config/")
+        .or_else(|| path.strip_prefix("crates/larch-lint/data/"))
+        .is_some_and(|name| {
+            !name.contains('/')
+                && (name.ends_with("-baseline.json") || name.ends_with("-baseline.toml"))
+        })
 }
 
 const fn blob_or_link_mode(mode: u32) -> bool {
@@ -2070,14 +2074,8 @@ fn risk_source(bundle: &Value, chronic: &BTreeSet<String>) -> Option<(u8, &'stat
     {
         return Some((4, "chronic-zone"));
     }
-    let files = string_array(bundle, "touched_files");
-    if files.iter().any(|path| path.starts_with("python/"))
-        && files
-            .iter()
-            .any(|path| path.starts_with("scripts/") || path.starts_with("skills/"))
-    {
-        return Some((5, "cross-language"));
-    }
+    // Priority 5 (cross-language) was retired with the Python migration (umbrella #8926);
+    // the gap is deliberate so the surviving size source keeps its stable priority-6 rank.
     (positive_number(bundle.get("added_lines")).is_some_and(|lines| lines > 300))
         .then_some((6, "size"))
 }
@@ -5223,14 +5221,14 @@ mod tests {
     };
 
     use super::{
-        SIBLING_SITE, append_records, bundle_for_issue, cap_text, changed_symbols,
-        closure_pull_numbers, compute, cross_language_consumer, deep_candidates,
+        SIBLING_SITE, analytics_record_from_ledger, append_records, bundle_for_issue, cap_text,
+        changed_symbols, closure_pull_numbers, compute, cross_language_consumer, deep_candidates,
         excluded_consumer_path, find_fix, has_exact_issue_reference, hydrate_evidence, ingest,
         is_baseline_path, ledger, load_ledger, load_runtime_results, marker_evidence,
         metadata_record, model_alias, path_text, prefetch, prefetch_with_evidence, render_report,
-        report, repository_path_text, required_evidence_complete, runtime, runtime_verify,
-        sanitize_repo, test_sweep_repository_root, validate_agent_row, validate_evidence_token,
-        zones_for_files,
+        report, repository_path_text, required_evidence_complete, risk_source, runtime,
+        runtime_verify, sanitize_repo, test_sweep_repository_root, validate_agent_row,
+        validate_evidence_token, zones_for_files,
     };
     use crate::github_service::with_test_github_service;
     use larch_adapters::{GixRepository, github::OctocrabGitHubService, unified_blob_diff};
@@ -5478,8 +5476,16 @@ mod tests {
         assert!(cross_language_consumer("scripts/run.sh"));
         assert!(cross_language_consumer("skills/review/SKILL.md"));
         assert!(!cross_language_consumer("python/larch/a.py"));
-        assert!(is_baseline_path("python/bugs-baseline.json"));
-        assert!(!is_baseline_path("python/larch/bugs-baseline.json"));
+        assert!(is_baseline_path(
+            "crates/larch-lint/data/wire-artifact-pairing-baseline.toml"
+        ));
+        assert!(is_baseline_path(
+            "crates/larch-lint/config/guideline-no-exception-baseline.json"
+        ));
+        assert!(!is_baseline_path("python/bugs-baseline.json"));
+        assert!(!is_baseline_path(
+            "crates/larch-lint/config/nested/x-baseline.json"
+        ));
         assert!(required_evidence_complete(&json!({
             "diff_scan_status": "ok",
             "consumer_scan_status": "ok",
@@ -5489,6 +5495,40 @@ mod tests {
         assert!(!required_evidence_complete(
             &json!({"diff_scan_status": "failed"})
         ));
+    }
+
+    #[test]
+    fn touching_a_lint_baseline_marks_the_record_baseline_extended() {
+        let record = analytics_record_from_ledger(
+            &json!({
+                "issue": 42,
+                "touched_files": ["crates/larch-lint/data/wire-artifact-pairing-baseline.toml"],
+            }),
+            true,
+        );
+        assert!(record.baseline_extended);
+
+        let unrelated = analytics_record_from_ledger(
+            &json!({"issue": 43, "touched_files": ["crates/larch-cli/src/main.rs"]}),
+            true,
+        );
+        assert!(!unrelated.baseline_extended);
+    }
+
+    #[test]
+    fn risk_source_no_longer_emits_the_retired_cross_language_reason() {
+        // Priority 5 (cross-language) was retired with the Python migration; the size source
+        // keeps its priority-6 rank, so a former cross-language bundle now classifies by size only.
+        let chronic = std::collections::BTreeSet::new();
+        let former_cross_language = json!({
+            "touched_files": ["scripts/run.sh", "skills/review/SKILL.md"],
+        });
+        assert_eq!(risk_source(&former_cross_language, &chronic), None);
+        let large = json!({
+            "touched_files": ["scripts/run.sh", "skills/review/SKILL.md"],
+            "added_lines": 301,
+        });
+        assert_eq!(risk_source(&large, &chronic), Some((6, "size")));
     }
 
     #[test]
