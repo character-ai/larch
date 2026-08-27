@@ -1,6 +1,8 @@
 
 # Blank lines and comments are ignored. Paths are repo-relative.
 # Residual Bash inventory for bash-targeting linters and CI shellcheck.
+# crates/larch-lint/tests/agent_lint_script_inventory.rs requires every row here
+# to appear in scripts/agent-lint-script-inventory.txt.
 # Terminal shared libraries, retired non-thin utilities, verified-zero-consumer includes,
 # live orchestration bodies, and sourced helper libraries are intentionally absent.
 scripts/audit-edit-write.sh
@@ -53,8 +55,6 @@ scripts/test-rust-integration-consumer.sh
 scripts/test-subskill-anchors.sh
 scripts/test-token-vendor-scrapers.sh
 scripts/test-triage-structure.sh
-skills/design/scripts/design-step5b-annotate.sh
-skills/design/scripts/design-step5b-prepare.sh
 fixtures/plan-commands/validate-plan-commands/demo-empty-help.sh
 fixtures/plan-commands/validate-plan-commands/demo-help-nonzero-rc.sh
 fixtures/plan-commands/validate-plan-commands/demo-stdout-help.sh
