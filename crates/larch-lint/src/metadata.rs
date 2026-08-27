@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde::Deserialize;
+
 use crate::{LintError, Repository, Rule, RuleRegistry};
 
 const MIGRATION_LEDGER_PREFIX: &str = "crates/larch-lint/migration-ledger/";
@@ -190,19 +192,86 @@ fn ledger_path_for_rule(name: &str) -> String {
     format!("{MIGRATION_LEDGER_PREFIX}{name}{MIGRATION_LEDGER_SUFFIX}")
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct GrandfatheredFinding {
+    pub path: String,
+    pub function: String,
+    pub constant: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawLedger {
+    rule: String,
+    #[serde(default)]
+    grandfathered: Vec<RawGrandfatheredFinding>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawGrandfatheredFinding {
+    path: String,
+    function: String,
+    constant: String,
+    reason: String,
+}
+
+struct ParsedLedger {
+    rule: String,
+    grandfathered: BTreeSet<GrandfatheredFinding>,
+}
+
 fn parse_ledger_rule(path: &str, content: &str) -> Result<String, LintError> {
-    let parsed: toml::Table = toml::from_str(content)
+    Ok(parse_ledger(path, content)?.rule)
+}
+
+fn parse_ledger(path: &str, content: &str) -> Result<ParsedLedger, LintError> {
+    let raw: RawLedger = toml::from_str(content)
         .map_err(|error| LintError::new(format!("{path}: invalid TOML: {error}")))?;
-    let rule = parsed
-        .get("rule")
-        .and_then(toml::Value::as_str)
-        .ok_or_else(|| LintError::new(format!("{path}: missing string rule field")))?;
-    if parsed.len() != 1 {
+    let mut grandfathered = BTreeSet::new();
+    for row in raw.grandfathered {
+        if [&row.path, &row.function, &row.constant, &row.reason]
+            .into_iter()
+            .any(|value| value.trim().is_empty() || value.contains(['\n', '\r']))
+        {
+            return Err(LintError::new(format!(
+                "{path}: grandfathered rows need single-line path, function, constant, and reason"
+            )));
+        }
+        let finding = GrandfatheredFinding {
+            path: row.path,
+            function: row.function,
+            constant: row.constant,
+        };
+        if !grandfathered.insert(finding.clone()) {
+            return Err(LintError::new(format!(
+                "{path}: duplicate grandfathered row for {}::{} {}",
+                finding.path, finding.function, finding.constant
+            )));
+        }
+    }
+    Ok(ParsedLedger {
+        rule: raw.rule,
+        grandfathered,
+    })
+}
+
+pub fn grandfathered_findings(
+    repository: &Repository,
+    path: &str,
+    expected_rule: &str,
+) -> Result<BTreeSet<GrandfatheredFinding>, LintError> {
+    let content = repository.read_required_utf8(
+        &crate::RepoPath::from_trusted(path),
+        format!("missing migration-ledger record: {path}"),
+    )?;
+    let ledger = parse_ledger(path, &content)?;
+    if ledger.rule != expected_rule {
         return Err(LintError::new(format!(
-            "{path}: migration-ledger records may contain only the rule field"
+            "{path}: rule must be {expected_rule}"
         )));
     }
-    Ok(rule.to_owned())
+    Ok(ledger.grandfathered)
 }
 
 #[cfg(test)]

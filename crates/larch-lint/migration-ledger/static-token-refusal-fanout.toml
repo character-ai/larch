@@ -1,0 +1,73 @@
+rule = "static-token-refusal-fanout"
+
+[[grandfathered]]
+path = "crates/larch-core/src/audit_umbrella.rs"
+function = "validate_snapshot"
+constant = "INVALID_AUDIT_SNAPSHOT"
+reason = "Existing audit snapshot validation collapses legacy malformed-input branches."
+
+[[grandfathered]]
+path = "crates/larch-core/src/audit_umbrella.rs"
+function = "validate_audit_proposal"
+constant = "INVALID_AUDIT_PROPOSAL"
+reason = "Existing audit proposal validation collapses legacy malformed-input branches."
+
+[[grandfathered]]
+path = "crates/larch-core/src/audit_umbrella.rs"
+function = "validate_proposal_leaves"
+constant = "INVALID_AUDIT_PROPOSAL"
+reason = "Existing audit leaf validation collapses legacy malformed-input branches."
+
+[[grandfathered]]
+path = "crates/larch-core/src/issue/umbrella.rs"
+function = "parse"
+constant = "INVALID_COMPLETION_SENTINEL"
+reason = "Existing completion-sentinel parsing collapses legacy malformed-input branches."
+
+[[grandfathered]]
+path = "crates/larch-core/src/issue/umbrella.rs"
+function = "expected_leaf"
+constant = "INVALID_PROPOSAL_RECORD"
+reason = "Existing proposal-leaf parsing collapses legacy malformed-input branches."
+
+[[grandfathered]]
+path = "crates/larch-core/src/issue/umbrella.rs"
+function = "parse_proposal"
+constant = "INVALID_PROPOSAL_RECORD"
+reason = "Existing proposal parsing collapses legacy malformed-input branches."
+
+[[grandfathered]]
+path = "crates/larch-core/src/issue/umbrella.rs"
+function = "parse_drafted_proposal"
+constant = "INVALID_PROPOSAL_RECORD"
+reason = "Existing drafted-proposal parsing collapses legacy malformed-input branches."
+
+[[grandfathered]]
+path = "crates/larch-core/src/issue/umbrella.rs"
+function = "prepared_edges"
+constant = "INVALID_PREPARED_DEPENDENCIES"
+reason = "Existing prepared-edge parsing collapses legacy malformed-input branches."
+
+[[grandfathered]]
+path = "crates/larch-core/src/issue/umbrella.rs"
+function = "parse_dependency_index"
+constant = "INVALID_PREPARED_DEPENDENCIES"
+reason = "Existing dependency-index parsing collapses legacy malformed-input branches."
+
+[[grandfathered]]
+path = "crates/larch-core/src/issue/umbrella.rs"
+function = "prepare_proposal_from_batch"
+constant = "INVALID_PREPARED_PARTITION"
+reason = "Existing prepared-partition validation collapses legacy malformed-input branches."
+
+[[grandfathered]]
+path = "crates/larch-core/src/issue/umbrella.rs"
+function = "reconcile_in_flight"
+constant = "AMBIGUOUS_IN_FLIGHT_RECOVERY"
+reason = "Existing in-flight reconciliation collapses legacy ambiguous-state branches."
+
+[[grandfathered]]
+path = "crates/larch-core/src/issue/umbrella.rs"
+function = "verify_graph_state"
+constant = "INCOMPLETE_GRAPH_STATE"
+reason = "Existing graph verification collapses legacy incomplete-state branches."
