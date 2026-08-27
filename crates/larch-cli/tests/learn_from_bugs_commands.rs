@@ -767,6 +767,7 @@ fn filing_dependency_translation_is_ready_for_issue_without_repair() {
     fixture.write("out/proposal-batch-map.tsv", "first\t1\nsecond\t2\n");
     fixture.write("out/proposal-deps.tsv", "first\tsecond\n");
     let output = fixture.path("out/intra-batch-deps.tsv");
+    let preview = fixture.path("out/issue-preview/edges.env");
     let mut command = fixture.command();
     command.args([
         "learn-from-bugs",
@@ -788,10 +789,105 @@ fn filing_dependency_translation_is_ready_for_issue_without_repair() {
             .expect("UTF-8 dependencies"),
         "--output",
         output.to_str().expect("UTF-8 output"),
+        "--preview-edges-output",
+        preview.to_str().expect("UTF-8 preview output"),
     ]);
     command.assert().success();
     assert_eq!(
         fs::read_to_string(output).expect("dependency output"),
         "1\t2\n"
+    );
+    assert_eq!(
+        fs::read_to_string(&preview).expect("preview decisions"),
+        "ITEM_1_VERDICT=CREATE\nITEM_2_VERDICT=CREATE\nITEM_2_BLOCKED_BY=ITEM_1\n"
+    );
+
+    let preview_root = fs::canonicalize(fixture.path("out/issue-preview"))
+        .expect("canonical preview directory");
+    let parse_output = preview_root.join("parse-output.env");
+    let mut parse = fixture.command();
+    parse.args([
+        "issue",
+        "parse-input",
+        "--input-file",
+        fixture
+            .path("out/batch-issues.md")
+            .to_str()
+            .expect("UTF-8 input"),
+        "--output-dir",
+        preview_root.to_str().expect("UTF-8 output directory"),
+    ]);
+    fs::write(&parse_output, stdout(&parse.assert().success())).expect("parse output");
+
+    let preview = fs::canonicalize(preview).expect("canonical preview decisions");
+    let mut dry_run = fixture.command();
+    dry_run.args([
+        "issue",
+        "create-batch",
+        "--parse-output",
+        parse_output.to_str().expect("UTF-8 parse output"),
+        "--edges-file",
+        preview.to_str().expect("UTF-8 preview decisions"),
+        "--repo",
+        "owner/repo",
+        "--operator-invoked",
+        "--dry-run",
+    ]);
+    let preview_output = stdout(&dry_run.assert().success());
+    for expected in [
+        "ISSUE_1_TITLE=First issue\n",
+        "ISSUE_1_DRY_RUN_DEPS=true\n",
+        "ISSUE_2_TITLE=Second issue\n",
+        "ISSUE_2_BLOCKED_BY=ITEM_1\n",
+        "ISSUE_2_DRY_RUN_DEPS=true\n",
+        "ISSUES_CREATED=2\n",
+        "ISSUES_FAILED=0\n",
+    ] {
+        assert!(preview_output.contains(expected), "{preview_output}");
+    }
+}
+
+#[test]
+fn filing_dependency_failure_retains_a_create_only_preview() {
+    let fixture = Fixture::create();
+    fixture.write(
+        "out/batch-issues.md",
+        "### First issue\n\nfirst body\n\n### Second issue\n\nsecond body\n",
+    );
+    fixture.write("out/proposal-batch-map.tsv", "first\t1\n");
+    fixture.write("out/proposal-deps.tsv", "");
+    let preview = fixture.path("out/issue-preview/edges.env");
+    let mut command = fixture.command();
+    command.args([
+        "learn-from-bugs",
+        "filing-deps",
+        "--input-file",
+        fixture
+            .path("out/batch-issues.md")
+            .to_str()
+            .expect("UTF-8 input"),
+        "--proposal-map-file",
+        fixture
+            .path("out/proposal-batch-map.tsv")
+            .to_str()
+            .expect("UTF-8 map"),
+        "--proposal-deps-file",
+        fixture
+            .path("out/proposal-deps.tsv")
+            .to_str()
+            .expect("UTF-8 dependencies"),
+        "--output",
+        fixture
+            .path("out/intra-batch-deps.tsv")
+            .to_str()
+            .expect("UTF-8 output"),
+        "--preview-edges-output",
+        preview.to_str().expect("UTF-8 preview output"),
+    ]);
+    let failed = command.assert().code(1);
+    assert!(stderr(&failed).contains("does not cover batch item(s): 2"));
+    assert_eq!(
+        fs::read_to_string(preview).expect("fallback preview decisions"),
+        "ITEM_1_VERDICT=CREATE\nITEM_2_VERDICT=CREATE\n"
     );
 }

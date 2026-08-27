@@ -22,7 +22,7 @@ use larch_core::DONE_PREFIX as DONE_TITLE_PREFIX;
 use larch_core::{
     BUG_PREFIX, FILE_CONFLICT_DEFAULT_CLUSTER_CAP, FILE_CONFLICT_DEFAULT_GLOBAL_CAP,
     GUIDELINE_HEADING_RE, GitHubIssue, GitHubIssueSearch, GitHubIssueState, GitHubService,
-    INVARIANT_HEADING_RE, bug_title_match, parse_issue_input, plan_file_conflict_deps,
+    INVARIANT_HEADING_RE, ParsedInput, bug_title_match, parse_issue_input, plan_file_conflict_deps,
     private_atomic_write, render_deps_tsv,
 };
 use regex::Regex;
@@ -77,8 +77,8 @@ const STATE_PUBLISH_PROGRAM: &str = "learn-from-bugs state-publish";
 const STATE_PUBLISH_USAGE: &str = "usage: learn-from-bugs state-publish [-h] --root ROOT --repo REPO --run-dir\n                                     RUN_DIR --search SEARCH --state STATE\n                                     --selected-count SELECTED_COUNT\n                                     --highest-closed-issue-number-scanned\n                                     HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED --run-date\n                                     RUN_DATE --scan-started-at SCAN_STARTED_AT\n                                     --proposals-file PROPOSALS_FILE\n                                     [--base-proposals-file BASE_PROPOSALS_FILE]";
 const STATE_PUBLISH_HELP: &str = "usage: learn-from-bugs state-publish [-h] --root ROOT --repo REPO --run-dir\n                                     RUN_DIR --search SEARCH --state STATE\n                                     --selected-count SELECTED_COUNT\n                                     --highest-closed-issue-number-scanned\n                                     HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED --run-date\n                                     RUN_DATE --scan-started-at SCAN_STARTED_AT\n                                     --proposals-file PROPOSALS_FILE\n                                     [--base-proposals-file BASE_PROPOSALS_FILE]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT\n  --repo REPO\n  --run-dir RUN_DIR\n  --search SEARCH\n  --state STATE\n  --selected-count SELECTED_COUNT\n  --highest-closed-issue-number-scanned HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED\n  --run-date RUN_DATE\n  --scan-started-at SCAN_STARTED_AT\n  --proposals-file PROPOSALS_FILE\n  --base-proposals-file BASE_PROPOSALS_FILE\n";
 const FILING_DEPS_PROGRAM: &str = "learn-from-bugs filing-deps";
-const FILING_DEPS_USAGE: &str = "usage: learn-from-bugs filing-deps [-h] --input-file INPUT_FILE\n                                    --proposal-map-file PROPOSAL_MAP_FILE\n                                    --proposal-deps-file PROPOSAL_DEPS_FILE\n                                    --output OUTPUT";
-const FILING_DEPS_HELP: &str = "usage: learn-from-bugs filing-deps [-h] --input-file INPUT_FILE\n                                    --proposal-map-file PROPOSAL_MAP_FILE\n                                    --proposal-deps-file PROPOSAL_DEPS_FILE\n                                    --output OUTPUT\n\noptions:\n  -h, --help            show this help message and exit\n  --input-file INPUT_FILE\n  --proposal-map-file PROPOSAL_MAP_FILE\n  --proposal-deps-file PROPOSAL_DEPS_FILE\n  --output OUTPUT\n";
+const FILING_DEPS_USAGE: &str = "usage: learn-from-bugs filing-deps [-h] --input-file INPUT_FILE\n                                    --proposal-map-file PROPOSAL_MAP_FILE\n                                    --proposal-deps-file PROPOSAL_DEPS_FILE\n                                    --output OUTPUT\n                                    [--preview-edges-output PREVIEW_EDGES_OUTPUT]";
+const FILING_DEPS_HELP: &str = "usage: learn-from-bugs filing-deps [-h] --input-file INPUT_FILE\n                                    --proposal-map-file PROPOSAL_MAP_FILE\n                                    --proposal-deps-file PROPOSAL_DEPS_FILE\n                                    --output OUTPUT\n                                    [--preview-edges-output PREVIEW_EDGES_OUTPUT]\n\noptions:\n  -h, --help            show this help message and exit\n  --input-file INPUT_FILE\n  --proposal-map-file PROPOSAL_MAP_FILE\n  --proposal-deps-file PROPOSAL_DEPS_FILE\n  --output OUTPUT\n  --preview-edges-output PREVIEW_EDGES_OUTPUT\n";
 
 const DEFAULT_SEARCH_SUFFIX: &str = " in:title";
 const DEFAULT_STATE: &str = "closed";
@@ -86,6 +86,7 @@ const DEFAULT_LIMIT: i64 = 50;
 const STATE_RELPATH: &str = "learn-from-bugs/state.json";
 const DIGEST_CHUNK_CHAR_LIMIT: usize = 38_000;
 const TITLE_ONLY_PREFIX_MAX: usize = 40;
+const ORIGIN_SIGNAL_CHAR_LIMIT: usize = 180;
 const FILING_DEPS_MAX_BYTES: u64 = 64 * 1024;
 const PROSE_ONLY_MARKER: &str = "prose-only prevention: unlikely to stick";
 
@@ -171,6 +172,14 @@ static ORIGIN_REFS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     .into_iter()
     .map(|pattern| Regex::new(pattern).expect("origin reference regex compiles"))
     .collect()
+});
+static EXPLICIT_ORIGIN_LINE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^[ \t]*Origin[ \t]*:[ \t]*(.*?)[ \t]*$")
+        .expect("explicit origin line regex compiles")
+});
+static EXPLICIT_REGRESSION_ORIGIN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^regression[ \t]+#([1-9][0-9]*)$")
+        .expect("explicit regression origin regex compiles")
 });
 static UNMARKED_GUIDELINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^#{2,3}\s+(.+?)(?:\s+#+)?\s*$").expect("fallback heading regex"));
@@ -1081,6 +1090,7 @@ pub fn filing_deps(arguments: &[OsString]) -> ExitCode {
         "--proposal-map-file",
         "--proposal-deps-file",
         "--output",
+        "--preview-edges-output",
     ];
     if let Some(code) =
         help_explicit_argument(arguments, false, FILING_DEPS_USAGE, FILING_DEPS_PROGRAM)
@@ -1134,16 +1144,49 @@ pub fn filing_deps(arguments: &[OsString]) -> ExitCode {
         Ok(value) => path_from_argument(&value),
         Err(code) => return code,
     };
+    let preview_output = option_text(&parsed, "--preview-edges-output")
+        .filter(|value| !value.is_empty())
+        .map(|value| path_from_argument(&value));
     if let Some(error) = strict_unrecognized(arguments, OPTIONS, &[]) {
         return usage_refusal(FILING_DEPS_USAGE, FILING_DEPS_PROGRAM, &error);
     }
-    let result = filing_dependencies(&input, &proposal_map, &proposal_deps)
-        .and_then(|edges| plain_atomic_write(&output, &render_deps_tsv(&edges)));
-    if let Err(error) = result {
+    if let Err(error) = run_filing_deps(
+        &input,
+        &proposal_map,
+        &proposal_deps,
+        &output,
+        preview_output.as_deref(),
+    ) {
         eprintln!("{FILING_DEPS_PROGRAM}: {error}");
         return ExitCode::from(1);
     }
     ExitCode::SUCCESS
+}
+
+fn run_filing_deps(
+    input: &Path,
+    proposal_map: &Path,
+    proposal_deps: &Path,
+    output: &Path,
+    preview_output: Option<&Path>,
+) -> Result<(), String> {
+    let input_text = read_regular_text(input, "batch input", false)?;
+    let parsed = validated_filing_input(&input_text)?;
+    if let Some(path) = preview_output {
+        plain_atomic_write(
+            path,
+            &render_filing_preview_decisions(parsed.items.len(), &[]),
+        )?;
+    }
+    let plan = filing_dependencies(&parsed, proposal_map, proposal_deps)?;
+    plain_atomic_write(output, &render_deps_tsv(&plan.edges))?;
+    if let Some(path) = preview_output {
+        plain_atomic_write(
+            path,
+            &render_filing_preview_decisions(plan.item_count, &plan.edges),
+        )?;
+    }
+    Ok(())
 }
 
 fn help_requested(arguments: &[OsString], allow_abbreviations: bool) -> bool {
@@ -1373,6 +1416,7 @@ struct Origin {
     kind: &'static str,
     reference: Option<u64>,
     unknown_reason: Option<&'static str>,
+    signal: String,
 }
 
 fn build_digest(issue: &GitHubIssue) -> Digest {
@@ -1636,6 +1680,9 @@ fn squeeze(value: &str, cap: usize) -> String {
 }
 
 fn classify_origin(title: &str, prefix: &str, classification: Option<&BugClass>) -> Origin {
+    if let Some(origin) = explicit_origin(prefix) {
+        return origin;
+    }
     let ordered = diagnostic_sections(prefix);
     let structured = ordered.iter().any(|(name, _)| {
         matches!(
@@ -1660,113 +1707,235 @@ fn classify_origin(title: &str, prefix: &str, classification: Option<&BugClass>)
     if !structured && prefix.trim().chars().count() >= TITLE_ONLY_PREFIX_MAX {
         sources.push(prefix.to_owned());
     }
-    if let Some(reference) = first_origin_reference(&sources) {
-        return Origin {
-            kind: "regression",
-            reference: Some(reference),
-            unknown_reason: None,
-        };
+    if let Some(origin) = heuristic_origin(&sources, classification) {
+        return origin;
     }
-    if sources.iter().any(|source| SPEC_GAP_PROSE.is_match(source)) {
-        return Origin {
-            kind: "spec-gap",
-            reference: None,
-            unknown_reason: None,
-        };
-    }
-    if sources
-        .iter()
-        .any(|source| REGRESSION_PROSE.is_match(source))
-    {
-        return Origin {
-            kind: "regression",
-            reference: None,
-            unknown_reason: None,
-        };
-    }
-    if sources
-        .iter()
-        .any(|source| has_unnegated_regression(source))
-    {
-        return Origin {
-            kind: "regression",
-            reference: None,
-            unknown_reason: None,
-        };
-    }
-    if has_origin_phrase(
-        &sources,
-        &["never designed", "was never told", "no handling for"],
-    ) || classification
-        .is_some_and(|class| matches!(class.kind.as_str(), "CONFIGURATION_GAP" | "DESIGN_GAP"))
-    {
-        return Origin {
-            kind: "spec-gap",
-            reference: None,
-            unknown_reason: None,
-        };
-    }
-    if has_origin_phrase(
-        &sources,
-        &[
-            "first time this path ran",
-            "first live run of",
-            "newly added",
-        ],
-    ) || classification.is_some_and(|class| class.kind == "IMPLEMENTATION_BUG")
-    {
-        return Origin {
-            kind: "new-code",
-            reference: None,
-            unknown_reason: None,
-        };
-    }
-    let signal = ordered
+    let has_classification_signal = ordered
         .iter()
         .any(|(name, _)| name == "classification" || name.starts_with("root cause"));
     Origin {
         kind: "unknown",
         reference: None,
-        unknown_reason: Some(if signal || classification.is_some() {
+        unknown_reason: Some(if has_classification_signal || classification.is_some() {
             "inconclusive"
         } else {
             "no-classification-signal"
         }),
+        signal: rejected_origin_signal(title, &ordered, classification),
     }
 }
 
-fn has_origin_phrase(sources: &[String], phrases: &[&str]) -> bool {
-    sources.iter().any(|source| {
+fn heuristic_origin(sources: &[String], classification: Option<&BugClass>) -> Option<Origin> {
+    if let Some((reference, signal)) = first_origin_reference(sources) {
+        return Some(Origin {
+            kind: "regression",
+            reference: Some(reference),
+            unknown_reason: None,
+            signal,
+        });
+    }
+    if let Some(signal) = first_regex_signal(sources, &SPEC_GAP_PROSE) {
+        return Some(Origin {
+            kind: "spec-gap",
+            reference: None,
+            unknown_reason: None,
+            signal,
+        });
+    }
+    if let Some(signal) = first_regex_signal(sources, &REGRESSION_PROSE) {
+        return Some(Origin {
+            kind: "regression",
+            reference: None,
+            unknown_reason: None,
+            signal,
+        });
+    }
+    if let Some(signal) = first_unnegated_regression(sources) {
+        return Some(Origin {
+            kind: "regression",
+            reference: None,
+            unknown_reason: None,
+            signal,
+        });
+    }
+    if let Some(signal) = first_origin_phrase(
+        sources,
+        &["never designed", "was never told", "no handling for"],
+    ) {
+        return Some(Origin {
+            kind: "spec-gap",
+            reference: None,
+            unknown_reason: None,
+            signal: signal.to_owned(),
+        });
+    }
+    if let Some(class) = classification
+        && matches!(class.kind.as_str(), "CONFIGURATION_GAP" | "DESIGN_GAP")
+    {
+        return Some(Origin {
+            kind: "spec-gap",
+            reference: None,
+            unknown_reason: None,
+            signal: class.kind.clone(),
+        });
+    }
+    if let Some(signal) = first_origin_phrase(
+        sources,
+        &[
+            "first time this path ran",
+            "first live run of",
+            "newly added",
+        ],
+    ) {
+        return Some(Origin {
+            kind: "new-code",
+            reference: None,
+            unknown_reason: None,
+            signal: signal.to_owned(),
+        });
+    }
+    if let Some(class) = classification
+        && class.kind == "IMPLEMENTATION_BUG"
+    {
+        return Some(Origin {
+            kind: "new-code",
+            reference: None,
+            unknown_reason: None,
+            signal: class.kind.clone(),
+        });
+    }
+    None
+}
+
+fn explicit_origin(prefix: &str) -> Option<Origin> {
+    let positioned = line_starts(prefix);
+    let lines = positioned.iter().map(|(_, line)| *line).collect::<Vec<_>>();
+    let fenced = fenced_indices(&lines);
+    let matches = lines
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !fenced.contains(index))
+        .filter_map(|(_, line)| {
+            EXPLICIT_ORIGIN_LINE
+                .captures(line)
+                .map(|captures| (line.trim(), captures.get(1).expect("origin value").as_str()))
+        })
+        .collect::<Vec<_>>();
+    let [(line, value)] = matches.as_slice() else {
+        return (!matches.is_empty()).then(|| Origin {
+            kind: "unknown",
+            reference: None,
+            unknown_reason: Some("inconclusive"),
+            signal: "rejected: multiple Origin lines".to_owned(),
+        });
+    };
+    if value.eq_ignore_ascii_case("new-code") {
+        return Some(Origin {
+            kind: "new-code",
+            reference: None,
+            unknown_reason: None,
+            signal: (*line).to_owned(),
+        });
+    }
+    if value.eq_ignore_ascii_case("spec-gap") {
+        return Some(Origin {
+            kind: "spec-gap",
+            reference: None,
+            unknown_reason: None,
+            signal: (*line).to_owned(),
+        });
+    }
+    if let Some(captures) = EXPLICIT_REGRESSION_ORIGIN.captures(value)
+        && let Some(reference) = captures
+            .get(1)
+            .and_then(|number| number.as_str().parse::<u64>().ok())
+    {
+        return Some(Origin {
+            kind: "regression",
+            reference: Some(reference),
+            unknown_reason: None,
+            signal: (*line).to_owned(),
+        });
+    }
+    Some(Origin {
+        kind: "unknown",
+        reference: None,
+        unknown_reason: Some("inconclusive"),
+        signal: format!("rejected: {}", squeeze(line, ORIGIN_SIGNAL_CHAR_LIMIT)),
+    })
+}
+
+fn first_origin_phrase(sources: &[String], phrases: &[&'static str]) -> Option<&'static str> {
+    sources.iter().find_map(|source| {
         let lower = source.to_lowercase();
-        phrases.iter().any(|phrase| lower.contains(phrase))
+        phrases
+            .iter()
+            .copied()
+            .find(|phrase| lower.contains(phrase))
     })
 }
 
-fn has_unnegated_regression(source: &str) -> bool {
-    BARE_REGRESSION.find_iter(source).any(|candidate| {
-        !NEGATED_REGRESSION
-            .find_iter(source)
-            .any(|negated| negated.start() <= candidate.start() && candidate.end() <= negated.end())
+fn first_regex_signal(sources: &[String], pattern: &Regex) -> Option<String> {
+    sources.iter().find_map(|source| {
+        pattern
+            .find(source)
+            .map(|matched| squeeze(matched.as_str(), ORIGIN_SIGNAL_CHAR_LIMIT))
     })
 }
 
-fn first_origin_reference(sources: &[String]) -> Option<u64> {
+fn first_unnegated_regression(sources: &[String]) -> Option<String> {
+    sources.iter().find_map(|source| {
+        BARE_REGRESSION.find_iter(source).find_map(|candidate| {
+            (!NEGATED_REGRESSION.find_iter(source).any(|negated| {
+                negated.start() <= candidate.start() && candidate.end() <= negated.end()
+            }))
+            .then(|| candidate.as_str().to_owned())
+        })
+    })
+}
+
+fn first_origin_reference(sources: &[String]) -> Option<(u64, String)> {
     for source in sources {
-        let mut best: Option<(usize, u64)> = None;
+        let mut best: Option<(usize, u64, String)> = None;
         for pattern in ORIGIN_REFS.iter() {
             if let Some(captures) = pattern.captures(source)
                 && let (Some(whole), Some(number)) = (captures.get(0), captures.get(1))
                 && let Ok(number) = number.as_str().parse()
-                && best.is_none_or(|(start, _)| whole.start() < start)
+                && best
+                    .as_ref()
+                    .is_none_or(|(start, _, _)| whole.start() < *start)
             {
-                best = Some((whole.start(), number));
+                best = Some((
+                    whole.start(),
+                    number,
+                    squeeze(whole.as_str(), ORIGIN_SIGNAL_CHAR_LIMIT),
+                ));
             }
         }
-        if let Some((_, number)) = best {
-            return Some(number);
+        if let Some((_, number, signal)) = best {
+            return Some((number, signal));
         }
     }
     None
+}
+
+fn rejected_origin_signal(
+    title: &str,
+    sections: &[(String, String)],
+    classification: Option<&BugClass>,
+) -> String {
+    let phrase = classification
+        .map(|class| class.kind.as_str())
+        .or_else(|| {
+            sections
+                .iter()
+                .filter(|(name, _)| name == "classification" || name.starts_with("root cause"))
+                .flat_map(|(_, body)| body.lines())
+                .map(str::trim)
+                .find(|line| !line.is_empty())
+        })
+        .unwrap_or(title);
+    format!("rejected: {}", squeeze(phrase, ORIGIN_SIGNAL_CHAR_LIMIT))
 }
 
 fn ascii_json_string(value: &str) -> String {
@@ -1826,12 +1995,13 @@ fn serialize_digest(digest: &Digest) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     let origin = format!(
-        "{{\"kind\": {}, \"ref\": {}}}",
+        "{{\"kind\": {}, \"ref\": {}, \"signal\": {}}}",
         ascii_json_string(digest.origin.kind),
         digest
             .origin
             .reference
-            .map_or_else(|| "null".to_owned(), |value| value.to_string())
+            .map_or_else(|| "null".to_owned(), |value| value.to_string()),
+        ascii_json_string(&digest.origin.signal)
     );
     let mut fields = vec![
         format!("\"number\": {}", digest.number),
@@ -2446,22 +2616,7 @@ fn proposal_line(proposal: &Proposal) -> String {
 }
 
 fn checked_proposal_line(checked: &CheckedProposal) -> String {
-    let proposal = &checked.proposal;
-    let evidence = checked
-        .adoption_evidence
-        .as_deref()
-        .map_or_else(|| "null".to_owned(), ascii_json_string);
-    format!(
-        "{{\"id\": {}, \"type\": {}, \"target\": {}, \"run_date\": {}, \"status\": {}, \"filed_issue\": {}, \"adoption_evidence\": {evidence}}}\n",
-        ascii_json_string(&proposal.id),
-        ascii_json_string(&proposal.kind),
-        ascii_json_string(&proposal.target),
-        ascii_json_string(&proposal.run_date),
-        ascii_json_string(&proposal.status),
-        proposal
-            .filed_issue
-            .map_or_else(|| "null".to_owned(), |number| number.to_string()),
-    )
+    proposal_line(&checked.proposal)
 }
 
 #[allow(clippy::too_many_lines, clippy::cast_precision_loss)] // Exact Python one-decimal summary wire.
@@ -2621,19 +2776,49 @@ fn validate_report_contract(report: &str, headline: &str) -> Result<(), String> 
     Ok(())
 }
 
-fn filing_dependencies(
-    input_file: &Path,
-    proposal_map_file: &Path,
-    proposal_deps_file: &Path,
-) -> Result<Vec<(usize, usize)>, String> {
-    let input = read_regular_text(input_file, "batch input", false)?;
-    let parsed = parse_issue_input(&input);
+struct FilingDependencyPlan {
+    item_count: usize,
+    edges: Vec<(usize, usize)>,
+}
+
+fn validated_filing_input(input: &str) -> Result<ParsedInput, String> {
+    let parsed = parse_issue_input(input);
     if parsed.items.is_empty() {
         return Err("batch input has no issue items".to_owned());
     }
     if parsed.items.iter().any(|item| item.malformed) {
         return Err("batch input contains a malformed issue item".to_owned());
     }
+    Ok(parsed)
+}
+
+fn render_filing_preview_decisions(item_count: usize, edges: &[(usize, usize)]) -> String {
+    let mut blockers = BTreeMap::<usize, Vec<usize>>::new();
+    for (blocker, blocked) in edges {
+        blockers.entry(*blocked).or_default().push(*blocker);
+    }
+    let mut lines = Vec::with_capacity(item_count.saturating_mul(2));
+    for index in 1..=item_count {
+        lines.push(format!("ITEM_{index}_VERDICT=CREATE"));
+        if let Some(item_blockers) = blockers.get(&index) {
+            lines.push(format!(
+                "ITEM_{index}_BLOCKED_BY={}",
+                item_blockers
+                    .iter()
+                    .map(|blocker| format!("ITEM_{blocker}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ));
+        }
+    }
+    format!("{}\n", lines.join("\n"))
+}
+
+fn filing_dependencies(
+    parsed: &ParsedInput,
+    proposal_map_file: &Path,
+    proposal_deps_file: &Path,
+) -> Result<FilingDependencyPlan, String> {
     let mapping = proposal_batch_map(proposal_map_file, parsed.items.len())?;
     let declared = declared_filing_edges(proposal_deps_file, &mapping)?;
     let plan = plan_file_conflict_deps(
@@ -2659,7 +2844,10 @@ fn filing_dependencies(
             "filing dependency output exceeds {FILE_CONFLICT_DEFAULT_GLOBAL_CAP} rows"
         ));
     }
-    Ok(combined.into_iter().collect())
+    Ok(FilingDependencyPlan {
+        item_count: parsed.items.len(),
+        edges: combined.into_iter().collect(),
+    })
 }
 
 fn read_regular_text(path: &Path, label: &str, reject_cr: bool) -> Result<String, String> {

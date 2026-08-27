@@ -494,11 +494,11 @@ fn classification_and_table_parsers_handle_fences_and_fallbacks() {
             "introduced by #9 then incomplete fix of #2".to_owned(),
             "introduced in #7".to_owned(),
         ]),
-        Some(9)
+        Some((9, "introduced by #9".to_owned()))
     );
     assert_eq!(
         first_origin_reference(&["persists after #42".to_owned()]),
-        Some(42)
+        Some((42, "persists after #42".to_owned()))
     );
     assert_eq!(first_origin_reference(&["no reference".to_owned()]), None);
 }
@@ -560,6 +560,49 @@ fn origin_classification_handles_all_fallbacks() {
             "{title}"
         );
     }
+}
+
+#[test]
+fn explicit_origin_line_overrides_heuristics_and_records_rejections() {
+    let new_code = classify_origin(
+        "[BUG] explicit origin",
+        "## Root cause analysis\n\nOrigin: new-code\n\nintroduced by #41",
+        None,
+    );
+    assert_eq!(
+        (new_code.kind, new_code.reference, new_code.signal.as_str()),
+        ("new-code", None, "Origin: new-code")
+    );
+
+    let regression = classify_origin(
+        "[BUG] explicit regression",
+        "## Root cause analysis\n\nOrigin: regression #42\n\nnewly added",
+        None,
+    );
+    assert_eq!(
+        (
+            regression.kind,
+            regression.reference,
+            regression.signal.as_str()
+        ),
+        ("regression", Some(42), "Origin: regression #42")
+    );
+
+    let rejected = classify_origin(
+        "[BUG] invalid explicit origin",
+        "## Root cause analysis\n\nOrigin: legacy-code\n\nintroduced by #43",
+        None,
+    );
+    assert_eq!(rejected.kind, "unknown");
+    assert_eq!(rejected.unknown_reason, Some("inconclusive"));
+    assert_eq!(rejected.signal, "rejected: Origin: legacy-code");
+
+    let fenced = classify_origin(
+        "[BUG] fenced origin",
+        "## Root cause analysis\n\n```text\nOrigin: new-code\n```\nintroduced by #44",
+        None,
+    );
+    assert_eq!((fenced.kind, fenced.reference), ("regression", Some(44)));
 }
 
 #[test]
@@ -683,6 +726,7 @@ fn digest_wire_escapes_and_includes_optional_fields() {
             kind: "unknown",
             reference: None,
             unknown_reason: Some("inconclusive"),
+            signal: "rejected: fixture".to_owned(),
         },
         classification: Some(BugClass {
             kind: "DESIGN_GAP".to_owned(),
@@ -690,7 +734,9 @@ fn digest_wire_escapes_and_includes_optional_fields() {
         }),
     };
     let wire = serialize_digest(&digest);
-    assert!(wire.contains("\"origin\": {\"kind\": \"unknown\", \"ref\": null}"));
+    assert!(wire.contains(
+        "\"origin\": {\"kind\": \"unknown\", \"ref\": null, \"signal\": \"rejected: fixture\"}"
+    ));
     assert!(wire.contains("\"class\": {\"kind\": \"DESIGN_GAP\", \"surface\": \"CLI\"}"));
 }
 
@@ -714,6 +760,7 @@ fn digest_record(
             kind,
             reference,
             unknown_reason,
+            signal: kind.to_owned(),
         },
         classification: None,
     }
@@ -1346,6 +1393,12 @@ fn proposal_refresh_uses_the_typed_issue_service_and_records_both_evidence() {
         .expect("proposal refresh");
         assert_eq!(checked[0].proposal.status, "adopted");
         assert_eq!(checked[0].adoption_evidence.as_deref(), Some("both"));
+        let durable: Value = serde_json::from_str(&checked_proposal_line(&checked[0]))
+            .expect("checked proposal JSON");
+        let fields = durable.as_object().expect("checked proposal object");
+        assert_eq!(fields.len(), 6);
+        assert!(!fields.contains_key("adoption_evidence"));
+        assert!(render_adoption_summary(&checked).contains("`lint-delta`: `both`"));
     });
     assert_eq!(server.finish().expect("requests").len(), 1);
 }
