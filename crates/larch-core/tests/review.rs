@@ -962,7 +962,35 @@ fn successful_plan_review_round() -> larch_core::review::PlanReviewRoundInput {
 }
 
 #[test]
-fn plan_review_round_runner_matches_python_terminal_transitions() {
+fn healthy_zero_finding_plan_review_round_is_complete() {
+    use larch_core::review::{
+        PlanReviewTallyOutcome, PlanReviewVoterOutcome, run_plan_review_round,
+    };
+
+    let mut input = successful_plan_review_round();
+    input.collection.record_count = 8;
+    input.collection.ok_count = 8;
+    input.collection.failure_count = 0;
+    input.aggregation.reason = "insufficient-input".to_owned();
+    input.aggregation.aggregated = false;
+    input.ballot.has_canonical_items = false;
+    input.voter = PlanReviewVoterOutcome::default();
+    input.tally = PlanReviewTallyOutcome::default();
+
+    let state = run_plan_review_round(1, &input);
+
+    assert_eq!(state.exit_code, 0);
+    assert_eq!(state.loop_status, "complete");
+    assert_eq!(state.tally_status, "skipped-empty-findings");
+    assert_eq!(state.aggregator_status, "skipped-empty-input");
+    assert_eq!(state.accepted_count, 0);
+    assert!(!state.degraded_panel);
+    assert_eq!(state.reason, "zero-findings");
+    assert_eq!(state.rounds_completed, Some(1));
+}
+
+#[test]
+fn plan_review_round_runner_handles_terminal_transitions() {
     use larch_core::review::{
         PlanReviewRoundState, classify_round_loop_status, run_plan_review_round,
     };
@@ -987,8 +1015,10 @@ fn plan_review_round_runner_matches_python_terminal_transitions() {
     let mut pruned_empty = normal.clone();
     pruned_empty.panel.panel_pruned_empty = true;
     let state = run_plan_review_round(1, &pruned_empty);
-    assert_state(state.clone(), 0, "zero-findings-degraded-panel");
+    assert_state(state.clone(), 0, "complete");
+    assert_eq!(state.tally_status, "skipped-pruned-empty");
     assert_eq!(state.aggregator_status, "skipped-pruned-empty");
+    assert_eq!(state.rounds_completed, Some(1));
 
     let mut empty_failed_collector = normal.clone();
     empty_failed_collector.collection.exit_code = 1;
@@ -1014,12 +1044,28 @@ fn plan_review_round_runner_matches_python_terminal_transitions() {
     assert_state(run_plan_review_round(1, &ballot_failed), 2, "tally-error");
 
     let mut zero_ballot = normal.clone();
+    zero_ballot.aggregation.reason = "insufficient-input".to_owned();
+    zero_ballot.aggregation.aggregated = false;
     zero_ballot.ballot.has_canonical_items = false;
-    assert_state(
-        run_plan_review_round(1, &zero_ballot),
-        0,
-        "zero-findings-degraded-panel",
-    );
+    let state = run_plan_review_round(1, &zero_ballot);
+    assert_state(state.clone(), 0, "complete");
+    assert_eq!(state.tally_status, "skipped-empty-findings");
+    assert_eq!(state.aggregator_status, "skipped-empty-input");
+    assert_eq!(state.reason, "zero-findings");
+
+    let mut degraded_zero_ballot = zero_ballot.clone();
+    degraded_zero_ballot.collection.failure_count = 1;
+    let state = run_plan_review_round(1, &degraded_zero_ballot);
+    assert_state(state.clone(), 0, "zero-findings-degraded-panel");
+    assert!(state.degraded_panel);
+    assert_eq!(state.reason, "zero-findings-degraded-panel");
+
+    let mut nonzero_collector_zero_ballot = zero_ballot;
+    nonzero_collector_zero_ballot.collection.exit_code = 1;
+    let state = run_plan_review_round(1, &nonzero_collector_zero_ballot);
+    assert_state(state.clone(), 0, "zero-findings-degraded-panel");
+    assert!(state.degraded_panel);
+    assert_eq!(state.reason, "zero-findings-degraded-panel");
 
     let mut voter_failed = normal.clone();
     voter_failed.voter.dispatch_ok = false;
@@ -1047,8 +1093,9 @@ fn plan_review_round_runner_matches_python_terminal_transitions() {
         "degraded-empty-collector",
     );
 
+    assert_eq!(classify_round_loop_status(0, 1, false, false), "complete");
     assert_eq!(
-        classify_round_loop_status(0, 1, true, false, "ok"),
+        classify_round_loop_status(0, 1, true, false),
         "zero-findings-degraded-panel"
     );
 }
