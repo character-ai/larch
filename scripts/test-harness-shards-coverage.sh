@@ -552,8 +552,8 @@ run_self_case() {
     aggregate-in-shard)
       # Recipe-less aggregate combining pytest + Bash must not be a shard leaf.
       {
-        printf 'test-write-final-report: write-final-report-py-harness write-final-report-bash-harness\n'
-        printf 'write-final-report-py-harness:\n'
+        printf 'test-write-final-report: write-final-report-rust-harness write-final-report-bash-harness\n'
+        printf 'write-final-report-rust-harness:\n'
         printf '\tpytest -q python/tests/report/test_final_report.py\n'
       } >> "$fixture"
       awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma test-write-final-report"); print }' "$fixture" > "$fixture.tmp"
