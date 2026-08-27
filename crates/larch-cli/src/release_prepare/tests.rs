@@ -186,6 +186,38 @@ mod release_prepare_tests {
                 "Release v1.2.3 plugin projection",
             ],
         );
+        repository
+            .write(
+                "plugin/.claude-plugin/plugin.json",
+                br#"{"version":"1.2.3"}"#,
+            )
+            .expect("projected plugin manifest");
+        checked_git(&repository, ["add", "plugin"]);
+        checked_git(&repository, ["commit", "--quiet", "--amend", "--no-edit"]);
+        checked_git(&repository, ["tag", "--force", "v1.2.3"]);
+        checked_git(&repository, ["switch", "main"]);
+        repository
+    }
+
+    fn one_parent_projection_baseline_repository() -> GitRepository {
+        let repository = release_repository();
+        checked_git(&repository, ["switch", "--detach", "v1.2.3"]);
+        repository
+            .write(
+                "plugin/.claude-plugin/plugin.json",
+                br#"{"version":"1.2.3"}"#,
+            )
+            .expect("projected plugin manifest");
+        checked_git(&repository, ["add", "plugin"]);
+        checked_git(
+            &repository,
+            [
+                "commit",
+                "--quiet",
+                "-m",
+                "Release v1.2.3 plugin projection",
+            ],
+        );
         checked_git(&repository, ["tag", "--force", "v1.2.3"]);
         checked_git(&repository, ["switch", "main"]);
         repository
@@ -387,9 +419,7 @@ mod release_prepare_tests {
             .expect("prepare release with explicit bump");
     }
 
-    #[test]
-    fn prepare_uses_a_projection_tags_first_parent_as_the_release_window_base() {
-        let fixture = projection_baseline_repository();
+    fn assert_prepare_uses_projection_tags_first_parent(fixture: GitRepository) {
         let repository = GixRepository::open(fixture.root()).expect("open repository");
         let baseline = resolve(&repository, "v1.2.3").expect("projection baseline");
         let main = resolve(&repository, "origin/main").expect("origin/main");
@@ -428,6 +458,18 @@ mod release_prepare_tests {
         assert_eq!(
             fs::read_to_string(output.path().join("pr-list.tsv")).expect("release rows"),
             "42\tFeature\trelease-note\tauthor\thttps://github.com/o/r/pull/42\n"
+        );
+    }
+
+    #[test]
+    fn prepare_uses_a_two_parent_projection_tags_first_parent() {
+        assert_prepare_uses_projection_tags_first_parent(projection_baseline_repository());
+    }
+
+    #[test]
+    fn prepare_uses_a_one_parent_projection_tags_first_parent() {
+        assert_prepare_uses_projection_tags_first_parent(
+            one_parent_projection_baseline_repository(),
         );
     }
 
@@ -1034,6 +1076,49 @@ mod release_prepare_tests {
     }
 
     #[test]
+    fn reconcile_notes_accepts_a_one_parent_projection_baseline() {
+        let fixture = one_parent_projection_baseline_repository();
+        let repository = GixRepository::open(fixture.root()).expect("open repository");
+        let source = resolve(&repository, "HEAD").expect("source").to_hex();
+        let prepare_list = tempfile::NamedTempFile::new().expect("prepare list");
+        let output = tempfile::tempdir().expect("output directory");
+        let output_root = TemporaryRoot::resolve(Some(output.path())).expect("temporary root");
+        let service = FakeReleaseService {
+            pulls: BTreeMap::from([(42, pull_request(42, "Feature"))]),
+            ..FakeReleaseService::default()
+        };
+        let arguments = ReconcileNotesArguments {
+            repository: GitHubRepositoryRef::new("o", "r").expect("repository reference"),
+            baseline_tag: "v1.2.3".to_owned(),
+            source_commit: source,
+            pr_list: prepare_list.path().to_path_buf(),
+            exclude_pr: 0,
+            out_dir: output.path().to_path_buf(),
+        };
+
+        LarchRuntime::current_thread()
+            .expect("test runtime")
+            .block_on(reconcile_notes_with_service(
+                &arguments,
+                &output_root,
+                &repository,
+                &service,
+                &Cancellation::new(),
+            ))
+            .expect("reconcile from one-parent projection tag");
+
+        let expected = "42\tFeature\trelease-note\tauthor\thttps://github.com/o/r/pull/42\n";
+        assert_eq!(
+            fs::read_to_string(output.path().join("pr-list.tsv")).expect("full list"),
+            expected
+        );
+        assert_eq!(
+            fs::read_to_string(output.path().join("added-pr-list.tsv")).expect("added list"),
+            expected
+        );
+    }
+
+    #[test]
     fn reconcile_notes_maps_resolve_failures() {
         let fixture = release_repository();
         let repository = GixRepository::open(fixture.root()).expect("open repository");
@@ -1090,9 +1175,13 @@ mod release_prepare_tests {
             );
         }
 
+        fixture
+            .write("side-branch.txt", b"not a projection\n")
+            .expect("side-branch change");
+        checked_git(&fixture, ["add", "side-branch.txt"]);
         checked_git(
             &fixture,
-            ["commit", "--allow-empty", "--quiet", "-m", "orphan-base"],
+            ["commit", "--quiet", "-m", "non-projection baseline"],
         );
         checked_git(&fixture, ["tag", "v0.0.1"]);
         checked_git(&fixture, ["reset", "--hard", "--quiet", "HEAD~1"]);
