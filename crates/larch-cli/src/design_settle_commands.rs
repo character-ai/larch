@@ -31,6 +31,7 @@ use crate::{
 
 const SETTLE_LABEL: &str = "design-step35-settle";
 const DEDUP_REVISE_ACTION: &str = "dedup-revise";
+const SETTLE_REPAIR_ACTION: &str = "settle-repair";
 const PAUSE_ACTION: &str = "pause";
 const DIALECTIC_WARNING: &str = "**\u{26A0} design-step35-settle: dialectic-clear-stale failed after {where}; stale clarifier artifacts may linger (Gate C fingerprint binding still gates debate).**";
 const STEP5B_PREPARE_LABEL: &str = "design-step5b-prepare.sh";
@@ -617,6 +618,7 @@ fn gate_b_dedup(
         return Some(1);
     }
     if child.code != 0 {
+        println!("SETTLE_NEXT_ACTION={SETTLE_REPAIR_ACTION}");
         eprintln!(
             "{SETTLE_LABEL}: post-rewrite dedup failed with rc {}",
             child.code

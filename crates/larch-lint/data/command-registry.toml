@@ -6401,7 +6401,7 @@ rust = ["design postplan-emit", "design render-gate", "design step2b-postplan", 
 [[callers]]
 path = "skills/design/references/approval-gates-gate-c.md"
 kind = "skill"
-rust = ["architectural-guidelines persist-design-assessment", "architectural-guidelines present-note", "architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design dialectic-manual", "design read-result-env", "design render-gate", "design step35-settle", "plan-review filter-gate-b-skipped", "plan-review preview"]
+rust = ["architectural-guidelines persist-design-assessment", "architectural-guidelines present-note", "architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design dialectic-manual", "design read-result-env", "design render-gate", "design step35-settle", "plan-review filter-gate-b-skipped", "plan-review gate-b-dedup", "plan-review preview"]
 
 [[callers]]
 path = "skills/design/references/approval-gates.md"
