@@ -151,6 +151,10 @@ fn seed_tracked_tree(repository: &TempRepo) {
         b"# no retained exceptions\n",
     );
     repository.write(
+        "crates/larch-lint/migration-ledger/static-token-refusal-fanout.toml",
+        b"rule = \"static-token-refusal-fanout\"\n",
+    );
+    repository.write(
         "crates/larch-lint/config/skill-structure-pins.jsonl",
         b"# fixture manifest\n",
     );

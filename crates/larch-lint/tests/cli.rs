@@ -123,6 +123,9 @@ fn rules_lists_registered_rules_in_name_order() {
             "unreachable-branch\tDetect branches contradicted by earlier same-value returns\n",
         ))
         .stdout(predicate::str::contains(
+            "static-token-refusal-fanout\tFlag functions that return one static refusal token from three or more distinct branches\n",
+        ))
+        .stdout(predicate::str::contains(
             "status-routing\tRequire explicit Option, Result, and status-enum variant routing instead of boolean shortcuts\n",
         ))
         .stdout(predicate::str::contains(
