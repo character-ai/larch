@@ -8,11 +8,7 @@ use std::{
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
 
-use crate::{
-    command_registry::CommandRegistryAnalysis,
-    runner::LintError,
-    syntax::parse_bash,
-};
+use crate::{command_registry::CommandRegistryAnalysis, runner::LintError, syntax::parse_bash};
 
 /// A lazily materialized immutable fact set for one repository snapshot.
 ///
@@ -609,8 +605,7 @@ mod tests {
     #[test]
     fn snapshot_reuses_contents_and_parsed_syntax() {
         let temporary = tempfile::tempdir().expect("tempdir");
-        std::fs::write(temporary.path().join("notes.md"), "before\n")
-            .expect("write text fixture");
+        std::fs::write(temporary.path().join("notes.md"), "before\n").expect("write text fixture");
         std::fs::write(
             temporary.path().join("script.sh"),
             "printf '%s\\n' before\n",
