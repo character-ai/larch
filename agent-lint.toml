@@ -252,9 +252,6 @@ exclude = [
   # from skills/implement/SKILL.md.
   "skills/implement/scripts/hook-stop-fail-close.sh",
   "skills/implement/scripts/hook-stop-fail-close.md",
-  # skills/design/scripts/dedup-plan-lines.py remains as a documented
-  # compatibility utility; it is not part of the Rust Step 3 loop cutover.
-  "skills/design/scripts/dedup-plan-lines.py",
   # structured invoker was ported to Rust (#8592;
   # crates/larch-cli/src/design_log_publish_commands.rs).
   # scripts/pre-commit-shellcheck.sh is the parallel shellcheck wrapper invoked
@@ -469,7 +466,6 @@ exclude = [
   "scripts/test-token-vendor-scrapers.md",
   "skills/research/scripts/test-research-angle-prompts.md",
   "skills/implement/scripts/test-implement-relevant-checks-anti-halt.md",
-  "skills/design/scripts/dedup-plan-lines.md",
   "scripts/test-external-tool-registry.md",
   # agents/_implementer-base.md is a source-of-truth prompt fragment consumed
   # by generated implementer prompts, not an invokable agent with frontmatter.
