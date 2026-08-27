@@ -7,12 +7,10 @@
 //! | Rust-owned verb set | fresh TOML walk, shared command-registry importer | Reuse [`crate::command_registry::rust_owned_selectors`]. |
 //! | `python/cli.py` selector scan | local regex, shared extract_selectors | Reuse [`crate::command_registry::python_cli_selectors`]. |
 //! | Shell and prompt argv discovery | line substrings, shared shell/Markdown parsers | Reuse [`crate::syntax::shell_commands`] and [`crate::syntax::markdown_shell_commands`]. |
-//! | Python child-process discovery | local tree walk, production cargo guard | Reuse [`super::production_cargo_run::python_subprocess_call_lines`]. |
 //! | Command closure proof | fresh ledger/parser, command-registry rule | Reuse the syntax-aware closure projection from [`crate::command_registry`]. |
 //! | Retained Python ownership | fresh issue-module scan, issue-python-free rule | Reuse the retained-module ownership projection from [`super::issue_python_free`]. |
 //! | GitHub service closure | fresh Markdown parser, service-ownership rule | Reuse the narrow inventory query from [`super::service_ownership`]. |
 //! | Git inventory closure | fresh Markdown parser, Git ownership rule | Reuse the narrow inventory query from [`super::git_ownership`]. |
-//! | Disposition retire modules | new TSV, shared ledger reader | Read the #8095 disposition TSV; derive `python/larch/lint/lint_<verb>.py` for unregistered `retire` rows. |
 
 use std::{collections::BTreeSet, path::Path};
 
@@ -23,7 +21,7 @@ use crate::{
 
 use super::{
     git_ownership, issue_python_free,
-    production_cargo_run::{executable_index, python_subprocess_call_lines},
+    production_cargo_run::executable_index,
     service_ownership,
 };
 
@@ -153,7 +151,7 @@ impl Rule for DeveloperToolingCrateProcessRule {
         for path in developer_tooling_paths(repository, &residual) {
             let path_text = path.as_str();
             let source = repository.read_utf8(path)?;
-            for hit in crate_process_hits(repository, path, &source)? {
+            for hit in crate_process_hits(path, &source)? {
                 if documented_process_exception(path_text, &hit.program, &residual) {
                     continue;
                 }
@@ -271,7 +269,7 @@ fn is_developer_tooling_surface(path: &str) -> bool {
         return !OTHER_DOMAIN_SKILL_PREFIXES
             .iter()
             .any(|prefix| path.starts_with(prefix))
-            && matches!(extension(path), Some("md" | "sh" | "py"));
+            && matches!(extension(path), Some("md" | "sh"));
     }
     false
 }
@@ -287,7 +285,7 @@ fn is_non_test_runtime_script(path: &str) -> bool {
     !name.starts_with("test-")
         && !name.starts_with("test_")
         && !path.contains("/fixtures/")
-        && matches!(extension(path), Some("sh" | "py"))
+        && matches!(extension(path), Some("sh"))
 }
 
 fn extension(path: &str) -> Option<&str> {
@@ -308,16 +306,11 @@ fn residual_bash_paths(repository: &Repository) -> Result<BTreeSet<String>, Lint
         .collect())
 }
 
-fn crate_process_hits(
-    repository: &Repository,
-    path: &RepoPath,
-    source: &str,
-) -> Result<Vec<ProcessHit>, LintError> {
+fn crate_process_hits(path: &RepoPath, source: &str) -> Result<Vec<ProcessHit>, LintError> {
     let path_text = path.as_str();
     match extension(path_text) {
         Some("sh") => shell_process_hits(path_text, syntax::shell_commands(source, 0)?),
         Some("md") => shell_process_hits(path_text, syntax::markdown_shell_commands(source)?),
-        Some("py") => python_process_hits(repository, path, source),
         Some("yml" | "yaml") => yaml_process_hits(path_text, source),
         _ if path_text == MAKEFILE_PATH => makefile_process_hits(path_text, source),
         _ => Ok(Vec::new()),
@@ -340,26 +333,6 @@ fn shell_process_hits(
             })
         })
         .collect()
-}
-
-fn python_process_hits(
-    repository: &Repository,
-    path: &RepoPath,
-    source: &str,
-) -> Result<Vec<ProcessHit>, LintError> {
-    let syntax = repository.python_syntax(path)?;
-    let mut hits = Vec::new();
-    for expected in CRATE_OWNED_PROGRAMS {
-        for line in python_subprocess_call_lines(source, &syntax, |words| {
-            prohibited_program(words).as_deref() == Some(expected)
-        }) {
-            hits.push(ProcessHit {
-                line: line_u32(path.as_str(), line)?,
-                program: expected.to_owned(),
-            });
-        }
-    }
-    Ok(hits)
 }
 
 fn makefile_process_hits(path: &str, source: &str) -> Result<Vec<ProcessHit>, LintError> {
@@ -550,7 +523,7 @@ mod tests {
             ".claude/skills/release/SKILL.md"
         ));
         assert!(!is_developer_tooling_surface("skills/design/SKILL.md"));
-        assert!(!is_developer_tooling_surface("python/larch/cli.py"));
+        assert!(!is_developer_tooling_surface("crates/larch-cli/src/main.rs"));
 
         let residual = BTreeSet::from(["skills/design/scripts/runtime-helper.sh".to_owned()]);
         assert!(is_manifest_runtime_surface(
@@ -604,13 +577,12 @@ mod tests {
 
     #[test]
     fn closure_rejects_a_retained_python_module_owner() {
-        let findings =
-            retained_module_closure_findings(["python/larch/issue/legacy_governance.py"], 7685);
+        let findings = retained_module_closure_findings(["retired/issue/legacy_governance"], 7685);
 
         assert_eq!(findings.len(), 1);
         assert_eq!(
             findings[0].to_string(),
-            "python/larch/issue/legacy_governance.py:1: planning issue #7685 retains Python module ownership"
+            "retired/issue/legacy_governance:1: planning issue #7685 retains Python module ownership"
         );
     }
 

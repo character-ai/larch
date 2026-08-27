@@ -86,28 +86,3 @@ fn codex_exec_auth_keeps_reasoned_suppressions_and_ignores_comments() {
         .stdout("")
         .stderr("");
 }
-
-#[test]
-fn codex_exec_auth_scans_python_dispatches() {
-    let repository = TempRepo::new();
-    repository.write(
-        "python/new_launcher.py",
-        b"import subprocess\nsubprocess.run([\"codex\", \"exec\", \"--full-auto\"])\n",
-    );
-    repository.write(
-        "python/larch/agents/agents.py",
-        b"child = [\"codex\", \"exec\", \"--full-auto\"]\n",
-    );
-    repository.commit_all();
-
-    TempRepo::command_from(repository.path())
-        .args(["rule", "codex-exec-auth"])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::contains(
-            "python/new_launcher.py:2: unwired Python Codex dispatch",
-        ))
-        .stdout(predicate::str::contains(
-            "python/larch/agents/agents.py:1: unwired Python Codex dispatch",
-        ));
-}

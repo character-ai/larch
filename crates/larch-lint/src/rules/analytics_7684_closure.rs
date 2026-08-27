@@ -228,9 +228,9 @@ mod tests {
     #[test]
     fn reports_retained_analytics_module_ownership() {
         assert_eq!(
-            retained_module_closure_findings(["python/larch/issue/_report.py"]),
+            retained_module_closure_findings(["retired/issue/_report"]),
             vec![Finding::new(
-                "python/larch/issue/_report.py",
+                "retired/issue/_report",
                 1,
                 format!("planning issue #{PLANNING_ISSUE} retains Python module ownership"),
             )]

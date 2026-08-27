@@ -7,7 +7,6 @@
 //! | Markdown fences | Reuse `MarkdownDocument` fence-state support. |
 //! | Shell commands | Reuse the shared tree-sitter Bash parser, retaining only the larch-specific launcher match. |
 //! | Rust process builders | Reuse `command_arguments` static builder analysis. |
-//! | Python process builders | Reuse the repository UTF-8 snapshot and narrow line grammar retained by the Python owner. |
 
 use std::{collections::BTreeSet, path::Path, sync::LazyLock};
 
@@ -27,16 +26,10 @@ const DESCRIPTION: &str = "Require shared auth wiring for raw Codex dispatches";
 const SUPPRESSION_TOKEN: &str = "lint-codex-exec-auth";
 const MESSAGE: &str =
     "unwired Codex dispatch without auth wiring; use scripts/larch.sh agent launch-codex-exec";
-const PYTHON_MESSAGE: &str =
-    "unwired Python Codex dispatch without auth wiring; use scripts/larch.sh agent launch-codex-exec or # lint-codex-exec-auth: ok <reason>";
 
 static CODEX_EXEC: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(^|[^A-Za-z0-9_])["'\\]?codex["'\\]?\s+exec"#)
         .expect("Codex command expression is valid")
-});
-static PYTHON_CODEX_EXEC: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(['\"]codex['\"]\s*,\s*['\"]exec['\"]|['\"]codex\s+exec\b)"#)
-        .expect("Python Codex command expression is valid")
 });
 
 pub static METADATA: RuleMetadata = RuleMetadata::new(
@@ -70,8 +63,6 @@ impl Rule for CodexExecAuthRule {
                 findings.extend(check_markdown(path.as_str(), &source)?);
             } else if has_lowercase_extension(path.as_str(), "rs") {
                 findings.extend(check_rust(path.as_str(), &source)?);
-            } else if is_python_path(path.as_str()) {
-                findings.extend(check_python(path.as_str(), &source)?);
             }
         }
         findings.sort();
@@ -92,16 +83,6 @@ fn is_shell_path(path: &str) -> bool {
 
 fn is_markdown_path(path: &str) -> bool {
     (path.starts_with("skills/") || path.starts_with(".claude/skills/")) && has_lowercase_extension(path, "md")
-}
-
-fn is_python_path(path: &str) -> bool {
-    path.starts_with("python/")
-        && !path.starts_with("larch-logs/")
-        && has_lowercase_extension(path, "py")
-        && !Path::new(path)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name.starts_with("test_"))
 }
 
 fn check_shell(
@@ -206,24 +187,6 @@ fn check_rust(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
             }
         })
         .collect()
-}
-
-fn check_python(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
-    let mut findings = Vec::new();
-    for (index, line) in source.lines().enumerate() {
-        if line.trim_start().starts_with('#') {
-            continue;
-        }
-        if reason(line, SUPPRESSION_TOKEN)?.is_some() {
-            continue;
-        }
-        let line_number = u32::try_from(index + 1)
-            .map_err(|_| LintError::new(format!("{path}: line number exceeds u32")))?;
-        if PYTHON_CODEX_EXEC.is_match(line) {
-            findings.push(Finding::new(path, line_number, PYTHON_MESSAGE));
-        }
-    }
-    Ok(findings)
 }
 
 struct RustCommandVisitor<'syntax> {

@@ -388,57 +388,6 @@ mod tests {
 }
 
 #[test]
-fn rejects_retired_git_python_entrypoints_and_calls() {
-    let repository = TempRepo::new();
-    prepare_repository(&repository);
-    repository.write(
-        "python/larch/git/git.py",
-        b"def commit_main() -> int:\n    return 0\n",
-    );
-    repository.write(
-        "python/larch/consumer.py",
-        b"from larch.git.git import commit_main\ncommit_main()\n",
-    );
-    repository.commit_all();
-
-    TempRepo::command_from(repository.path())
-        .args(["rule", "git-ownership"])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::contains(
-            "python/larch/git/git.py:1: retired Git Python runtime source returned",
-        ))
-        .stderr("");
-}
-
-#[test]
-fn rejects_retired_push_rebase_state_machine_symbols() {
-    let repository = TempRepo::new();
-    prepare_repository(&repository);
-    repository.write(
-        "python/larch/git/rebase.py",
-        b"class RebasePushResult:\n    pass\n\ndef rebase_push() -> RebasePushResult:\n    return RebasePushResult()\n",
-    );
-    repository.write(
-        "python/larch/consumer.py",
-        b"from larch.git.rebase import rebase_push\nrebase_push()\n",
-    );
-    repository.commit_all();
-
-    TempRepo::command_from(repository.path())
-        .args(["rule", "git-ownership"])
-        .assert()
-        .code(1)
-        .stdout(predicate::str::contains(
-            "retired push rebase Python state-machine symbol: RebasePushResult",
-        ))
-        .stdout(predicate::str::contains(
-            "retired push rebase Python state-machine symbol: rebase_push",
-        ))
-        .stderr("");
-}
-
-#[test]
 fn rejects_new_cli_subcommands_and_request_families() {
     let repository = TempRepo::new();
     prepare_repository(&repository);
@@ -495,8 +444,8 @@ fn rejects_operation_matrix_drift_without_a_baseline() {
     let repository = TempRepo::new();
     prepare_repository(&repository);
     repository.write(
-        "python/larch/state/git_probe.py",
-        b"import subprocess\nsubprocess.run([\"git\", \"status\"], check=False)\n",
+        "scripts/sessionstart-health.sh",
+        b"#!/usr/bin/env bash\ngit status\n",
     );
     repository.commit_all();
 
@@ -505,7 +454,7 @@ fn rejects_operation_matrix_drift_without_a_baseline() {
         .assert()
         .code(1)
         .stdout(predicate::str::contains(
-            "production Git surface is missing from the matrix: python/larch/state/git_probe.py",
+            "production Git surface is missing from the matrix: scripts/sessionstart-health.sh",
         ))
         .stdout(predicate::str::contains("later-domain\t#7677\tstatus"))
         .stderr("");
