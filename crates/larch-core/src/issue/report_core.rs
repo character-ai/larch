@@ -1,11 +1,11 @@
 //! Deterministic issue categorization and coverage indexes.
 //!
-//! Library parity for the shared analysis half of Python `larch.issue._report`
-//! and the `larch.issue._util` predicates it depends on. This leaf ports no
-//! command: the backlog analysis commands stay Python-owned until their cutover
-//! leaf moves them, chart and Markdown rendering stay with the reporting
-//! umbrella, and the waste-signature and reviewer/persona sections ship with
-//! the command leaves that render them.
+//! Rust-owned shared analysis for the backlog commands. Its categorization and
+//! coverage behavior remains byte-compatible with the retired Python
+//! `larch.issue._report` implementation and the `larch.issue._util` predicates
+//! it used. Chart and Markdown rendering stay with the Rust reporting owner,
+//! while waste-signature and reviewer/persona sections stay with their command
+//! owners.
 
 use chrono::{DateTime, NaiveDate, Utc};
 use regex::Regex;

@@ -469,8 +469,8 @@ Every larch-owned Claude, Codex, and Cursor binary launch enters through
 a typed `ProcessRequest` from the closed `VendorProgram` enum and the
 `ExternalProcessRunner` port. `TokioProcessRunner` in
 `crates/larch-adapters/src/process.rs` is the sole production spawn owner.
-Skills, hooks, scripts, and Python modules do not construct vendor processes,
-and the retired Python agent package is not a fallback.
+Skills, hooks, and scripts do not construct vendor processes. The retired
+Python agent package is not a fallback.
 
 The adapter clears the ambient child environment and restores only reviewed
 common keys. Vendor credentials never enter that common allowlist. A launch

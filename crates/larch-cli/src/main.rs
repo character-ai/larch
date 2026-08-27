@@ -438,7 +438,7 @@ enum Domain {
     /// Inspect recent first-parent merges for possible unfiled bugs.
     #[command(subcommand, name = "validate-merged")]
     ValidateMerged(ValidateMergedCommand),
-    /// Narrow provider transports used by Python-owned run-log workflows.
+    /// Narrow provider transports used by Rust-owned run-log workflows.
     #[command(subcommand)]
     ObjectStore(ObjectStoreCommand),
     /// Fixed-endpoint connectivity helpers.

@@ -1,6 +1,6 @@
 //! Typed, streaming run-log corpus readers.
-//! Library parity for read-only Python batch/corpus selection; Python remains
-//! the production owner until consumer cutovers move.
+//! Rust owns production batch and corpus selection with byte-compatible
+//! behavior for the retired Python readers.
 use crate::{ManifestRecord, RunLogLayout, RunLogSlug};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde_json::{Map, Value};

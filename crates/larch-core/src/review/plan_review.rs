@@ -1,8 +1,8 @@
 //! Side-effect-free parity contracts for plan-review rounds.
 //!
-//! Python remains the production owner until the later command-cutover leaf.
-//! This module keeps the shared wire layout, finding normalization, and round
-//! state transitions in one Rust owner for that future boundary.
+//! This Rust module owns the shared wire layout, finding normalization, and
+//! round state transitions while preserving byte-compatible behavior with the
+//! retired Python implementation.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
