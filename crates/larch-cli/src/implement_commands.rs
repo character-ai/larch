@@ -32,7 +32,7 @@ use crate::{
     },
     bootstrap_support::write_session_text,
     implement_child_seam::delegate_larch_with_environment,
-    launcher_support::read_confined_bytes_checked,
+    launcher_support::read_optional_confined_utf8_checked,
     oos_commands::atomic_write,
     scout_commands::filter_manifest_paths,
     tracking_issue_commands::adoption_sentinel_identity,
@@ -998,17 +998,9 @@ pub fn read_kv_or(path: &Path, key: &str, default: &str) -> String {
 /// Read the strict, session-confined parent identity written before lifecycle adoption.
 fn read_lifecycle_parent_context(tmpdir: &Path) -> Result<Option<String>, String> {
     let path = tmpdir.join(LIFECYCLE_PARENT_CONTEXT_FILE);
-    match fs::symlink_metadata(&path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(format!("cannot inspect {}: {error}", path.display())),
-        Ok(metadata) if !metadata.file_type().is_file() => {
-            return Err(format!("{} is not a regular file", path.display()));
-        }
-        Ok(_) => {}
-    }
-    let bytes = read_confined_bytes_checked(&path)?;
-    let text = String::from_utf8(bytes)
-        .map_err(|error| format!("{} is not valid UTF-8: {error}", path.display()))?;
+    let Some(text) = read_optional_confined_utf8_checked(&path)? else {
+        return Ok(None);
+    };
     let document = KvDocument::parse(&text, ParseOptions::environment())
         .map_err(|error| format!("{} is malformed: {error}", path.display()))?;
     let [row] = document.rows() else {
