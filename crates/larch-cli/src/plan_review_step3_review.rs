@@ -16,7 +16,7 @@ use clap::Subcommand;
 use larch_adapters::validate_design_tmpdir;
 use larch_core::{
     ChildEnvironment, ProcessOutput, cleanup_cache_sessions_root, parse_allowlisted_env_line,
-    private_atomic_write,
+    private_atomic_write, redact_secrets_only,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -33,6 +33,7 @@ const BUDGET_S: u32 = 21_600;
 const ADAPT_TIMEOUT: Duration = Duration::from_secs(600);
 const RUN_TIMEOUT: Duration = Duration::from_secs(21_600);
 const ORPHAN_TIMEOUT_S: &str = "7200";
+const LOOP_STDERR_SUMMARY_MAX_CHARS: usize = 1_024;
 const ALLOWED_PHASES: &[&str] = &[
     "awaiting-apply",
     "awaiting-revise",
@@ -699,11 +700,12 @@ fn run_child(root: &Path, parsed: &Step3ReviewArgs) -> ExitCode {
     if fs::write(&stderr_log, run.stderr()).is_err() {
         return finish(ExitCode::from(1));
     }
+    forward_loop_stderr(run.stderr());
     if fs::write(stdout_file.path(), run.stdout()).is_err() {
         return finish(ExitCode::from(1));
     }
     let loop_rc = run.status().code().unwrap_or(1);
-    let _ = nested(
+    let normalized = nested(
         &[
             OsString::from("plan-review"),
             OsString::from("normalize-status"),
@@ -717,7 +719,88 @@ fn run_child(root: &Path, parsed: &Step3ReviewArgs) -> ExitCode {
         ADAPT_TIMEOUT,
         parsed,
     );
+    let normalize_failed = match normalized {
+        Ok(output) => {
+            let _ = std::io::stderr().write_all(output.stderr());
+            !output.status().success()
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            true
+        }
+    };
+    if loop_rc == 2 || !fresh_result_env(root) {
+        let reason = if loop_rc == 2 {
+            "plan-review-run-exit-2-see-plan-review-loop-stderr.log"
+        } else if normalize_failed {
+            "normalize-status-failed-see-plan-review-loop-stderr.log"
+        } else {
+            "normalize-status-missing-result-see-plan-review-loop-stderr.log"
+        };
+        if let Err(code) = synthesize_loop_failure(root, reason, parsed) {
+            return finish(code);
+        }
+    }
     finish(publish_merge(root, &parsed.merge_result_env, parsed))
+}
+
+fn fresh_result_env(root: &Path) -> bool {
+    let result = root.join(".step3-review-result.env");
+    result.is_file() && !result.is_symlink()
+}
+
+fn synthesize_loop_failure(
+    root: &Path,
+    reason: &str,
+    parsed: &Step3ReviewArgs,
+) -> Result<(), ExitCode> {
+    match nested(
+        &[
+            OsString::from("plan-review"),
+            OsString::from("prelaunch-failure"),
+            OsString::from("--design-tmpdir"),
+            root.as_os_str().into(),
+            OsString::from("--reason"),
+            OsString::from(reason),
+        ],
+        ADAPT_TIMEOUT,
+        parsed,
+    ) {
+        Ok(output) => {
+            let _ = std::io::stderr().write_all(output.stderr());
+            if output.status().success() && fresh_result_env(root) {
+                Ok(())
+            } else {
+                Err(ExitCode::from(1))
+            }
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            Err(ExitCode::from(1))
+        }
+    }
+}
+
+fn forward_loop_stderr(stderr: &[u8]) {
+    if let Some(summary) = loop_stderr_summary(stderr) {
+        eprintln!("plan-review loop stderr: {summary}");
+    }
+}
+
+fn loop_stderr_summary(stderr: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(stderr);
+    let first = text.lines().find(|line| !line.trim().is_empty())?.trim();
+    let redacted = redact_secrets_only(first);
+    let redacted = redacted.trim().replace(['\n', '\r'], " ");
+    if redacted.is_empty() {
+        return None;
+    }
+    let mut chars = redacted.chars();
+    let mut summary: String = chars.by_ref().take(LOOP_STDERR_SUMMARY_MAX_CHARS).collect();
+    if chars.next().is_some() {
+        summary.push_str(" [truncated; full log: plan-review-loop-stderr.log]");
+    }
+    Some(summary)
 }
 
 fn quarantine_sidecar(root: &Path) -> Result<Option<PathBuf>, ExitCode> {
@@ -943,9 +1026,9 @@ fn usage_die(program: &str, error: &str) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::{
-        PROG, ResumeState, canonical_file, parse_step3_review, plan_fingerprint, positive,
-        read_round_count, resume_state_validate, resume_state_write, split_adapter_suffix,
-        step3_review, validate_resume, write_resume,
+        PROG, ResumeState, canonical_file, loop_stderr_summary, parse_step3_review,
+        plan_fingerprint, positive, read_round_count, resume_state_validate, resume_state_write,
+        split_adapter_suffix, step3_review, validate_resume, write_resume,
     };
     use crate::{
         design_step0_commands::entrypoint,
@@ -961,10 +1044,14 @@ mod tests {
     use tempfile::TempDir;
 
     fn output(code: i32, stdout: &str) -> ProcessOutput {
+        output_with_stderr(code, stdout, "")
+    }
+
+    fn output_with_stderr(code: i32, stdout: &str, stderr: &str) -> ProcessOutput {
         ProcessOutput::new(
             ProcessStatus::new(code == 0, Some(code)),
             stdout.as_bytes().to_vec(),
-            Vec::new(),
+            stderr.as_bytes().to_vec(),
             false,
             false,
         )
@@ -1296,7 +1383,108 @@ mod tests {
             row.windows(2).any(|pair| pair == ["plan-review", "run"])
                 && row.windows(2).any(|pair| pair == ["--starting-round", "1"])
         }));
+        assert!(rows.iter().any(|row| {
+            row.windows(2)
+                .any(|pair| pair == ["plan-review", "prelaunch-failure"])
+                && row.windows(2).any(|pair| {
+                    pair == [
+                        "--reason",
+                        "normalize-status-missing-result-see-plan-review-loop-stderr.log",
+                    ]
+                })
+        }));
         assert!(!root.join(".step3-review-result.env").is_file());
+    }
+
+    #[test]
+    fn child_synthesizes_route_for_loop_configuration_failure() {
+        let (_sandbox, root) = design();
+        fs::write(root.join("plan-review-scope-anchor.txt"), "anchor\n").expect("anchor");
+        let merge = root.join("merge.env");
+        let recovery_root = root.clone();
+        install_larch(move |args, _env| {
+            let text: Vec<String> = args
+                .iter()
+                .map(|value| value.to_string_lossy().into_owned())
+                .collect();
+            if text
+                .windows(2)
+                .any(|pair| pair == ["scope-anchor", "validate"])
+            {
+                return Ok(output(0, "OK=true\n"));
+            }
+            if text.windows(2).any(|pair| pair == ["plan-review", "run"]) {
+                return Ok(output_with_stderr(
+                    2,
+                    "",
+                    "cli.py plan-review run: --new-process-group failed\n",
+                ));
+            }
+            if text
+                .windows(2)
+                .any(|pair| pair == ["plan-review", "normalize-status"])
+            {
+                return Ok(output(1, ""));
+            }
+            if text
+                .windows(2)
+                .any(|pair| pair == ["plan-review", "prelaunch-failure"])
+            {
+                assert!(text.windows(2).any(|pair| {
+                    pair == [
+                        "--reason",
+                        "plan-review-run-exit-2-see-plan-review-loop-stderr.log",
+                    ]
+                }));
+                fs::write(
+                    recovery_root.join(".step3-review-result.env"),
+                    "NEXT_ACTION=final-summary:failed-judge-panel\nSTEP3_REVIEW_LOOP_STATUS=panel-init-failed\nLOOP_STATUS=panel-init-failed\nROUNDS_COMPLETED=0\nREASON=plan-review-run-exit-2-see-plan-review-loop-stderr.log\n",
+                )
+                .expect("terminal result");
+                return Ok(output(0, ""));
+            }
+            if text
+                .windows(2)
+                .any(|pair| pair == ["bgjob", "write-merge-result-env"])
+            {
+                let path = text
+                    .windows(2)
+                    .find(|pair| pair[0] == "--path")
+                    .map(|pair| PathBuf::from(&pair[1]))
+                    .expect("path");
+                let source = text
+                    .windows(2)
+                    .find(|pair| pair[0] == "--source")
+                    .map(|pair| PathBuf::from(&pair[1]))
+                    .expect("source");
+                fs::copy(source, path).expect("publish merge");
+                return Ok(output(0, ""));
+            }
+            Ok(output(0, ""))
+        });
+        let _guard = HookGuard;
+        let merge_path = merge.display().to_string();
+        let code = step3_review(&step3_args(
+            &root,
+            &["--bgjob-child", "--merge-result-env", &merge_path],
+        ));
+        assert_eq!(code, std::process::ExitCode::SUCCESS);
+        assert_eq!(
+            fs::read_to_string(root.join("plan-review-loop-stderr.log")).expect("loop stderr"),
+            "cli.py plan-review run: --new-process-group failed\n"
+        );
+        let result = fs::read_to_string(merge).expect("merge result");
+        assert!(result.contains("NEXT_ACTION=final-summary:failed-judge-panel\n"));
+        assert!(result.contains("LOOP_STATUS=panel-init-failed\n"));
+        assert!(result.contains("REASON=plan-review-run-exit-2-see-plan-review-loop-stderr.log\n"));
+    }
+
+    #[test]
+    fn loop_stderr_summary_forwards_one_bounded_line() {
+        assert_eq!(
+            loop_stderr_summary(b"\ncli.py plan-review run: failed\nsecond line\n").as_deref(),
+            Some("cli.py plan-review run: failed")
+        );
     }
 
     #[test]

@@ -14,6 +14,7 @@ use larch_core::{
     RegistryEntry, RenderOptions, collect_process_group_members_checked, identity_to_json,
     read_entry, read_process_identity, result_env_path, write_entry_at,
 };
+use predicates::prelude::PredicateBooleanExt as _;
 use std::{
     fs,
     os::unix::fs::{PermissionsExt as _, symlink},
@@ -417,6 +418,30 @@ fn write_merge_result_env_rejects_malformed_inputs_before_mutation() {
         .assert()
         .code(1)
         .stderr(predicates::str::contains("missing one of LOOP_STATUS"));
+
+    fs::remove_file(&source).expect("remove source");
+    let canonical_source = source
+        .parent()
+        .expect("source parent")
+        .canonicalize()
+        .expect("canonical source parent")
+        .join(source.file_name().expect("source name"));
+    sandbox
+        .larch()
+        .args(["bgjob", "write-merge-result-env"])
+        .arg("--path")
+        .arg(&destination)
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .arg("--source")
+        .arg(&source)
+        .assert()
+        .code(1)
+        .stderr(predicates::str::contains(format!(
+            "merge result source is missing: {}",
+            canonical_source.display()
+        )))
+        .stderr(predicates::str::contains("source is unsafe").not());
 }
 
 #[test]

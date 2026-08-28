@@ -241,6 +241,16 @@ fn write_merge_result_env_body(arguments: &WriteMergeResultEnvArguments) -> Resu
         arguments.rows.clone()
     } else {
         let source = validate_merge_result_env(Path::new(&arguments.source), &tmpdir)?;
+        match fs::symlink_metadata(&source) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(BgjobError::Invalid(format!(
+                    "merge result source is missing: {}",
+                    source.display()
+                )));
+            }
+            Err(error) => return Err(BgjobError::Io(error.to_string())),
+        }
         let (bytes, _) = read_confined_regular_tail(
             &source,
             &tmpdir,

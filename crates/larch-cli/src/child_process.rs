@@ -19,6 +19,20 @@ use larch_core::{
 const HOST_UTILITY_SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
 const HOST_UTILITY_OUTPUT_LIMIT: usize = 16 * 1024;
 
+/// Create a detached session, or accept a process group the shared runner
+/// already assigned to this child.
+///
+/// # Errors
+/// Returns the `setsid` error when the caller does not already lead its own
+/// process group.
+pub fn ensure_owned_process_group() -> Result<(), nix::errno::Errno> {
+    match nix::unistd::setsid() {
+        Ok(_) => Ok(()),
+        Err(nix::errno::Errno::EPERM) if nix::unistd::getpgrp() == nix::unistd::getpid() => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
 /// Build one bounded, captured child request for an approved program.
 ///
 /// # Errors
