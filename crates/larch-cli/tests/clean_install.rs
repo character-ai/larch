@@ -3554,6 +3554,63 @@ fn bootstrap_invoke_tracking_path_defers_unpublished_sentinel_and_activates_leas
     );
 }
 
+/// Failed lease activation must preserve both captured child streams in the
+/// redacted tracking diagnostic.
+#[cfg(unix)]
+#[test]
+fn bootstrap_invoke_tracking_path_preserves_rename_failure_detail() {
+    assert_tracking_child_failure_detail(
+        ".bootstrap-test-rename-failure",
+        "rename-failure-8358",
+        "tracking-issue rename failed: FAILED=true",
+        "ERROR=implementation-lease-base-mismatch",
+    );
+}
+
+/// The sibling post-admission read branch must preserve captured child output
+/// through the same redacted tracking diagnostic.
+#[cfg(unix)]
+#[test]
+fn bootstrap_invoke_tracking_path_preserves_post_admission_read_failure_detail() {
+    assert_tracking_child_failure_detail(
+        ".bootstrap-test-post-admission-read-failure",
+        "post-admission-failure-8358",
+        "tracking-issue post-admission read failed: FAILED=true",
+        "ERROR=post-admission-read-failed",
+    );
+}
+
+#[cfg(unix)]
+fn assert_tracking_child_failure_detail(
+    marker: &str,
+    run_id: &str,
+    summary: &str,
+    error: &str,
+) {
+    let tracking = tracking_bootstrap_fixture();
+    fs::write(tracking.session.join(marker), "").expect("mark fixture child failure");
+
+    let output = invoke_tracking_bootstrap(&tracking, run_id, "true", "true", None, false);
+
+    assert!(
+        output.status.success(),
+        "tracking bootstrap failed: {}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("IMPLEMENT_BAIL_REASON=tracking-init-failed\n"),
+        "stdout: {stdout}"
+    );
+    let diagnostic = fs::read_to_string(tracking.session.join("tracking-init-failed.stderr.log"))
+        .expect("read tracking failure diagnostic");
+    assert!(
+        diagnostic.contains(summary),
+        "diagnostic: {diagnostic}"
+    );
+    assert!(diagnostic.contains(error), "diagnostic: {diagnostic}");
+}
+
 /// A closed issue is not adopted or mutated, but still gets a durable cleanup
 /// route for the caller.
 #[cfg(unix)]
@@ -4213,11 +4270,21 @@ if [ -n "$bootstrap_session" ]; then
       ;;
     tracking-issue:rename)
       if [ "$bootstrap_tracking" = true ]; then
+        if [ -f "$bootstrap_session/.bootstrap-test-rename-failure" ]; then
+          printf '%s\n' 'FAILED=true'
+          printf '%s\n' 'ERROR=implementation-lease-base-mismatch' >&2
+          exit 64
+        fi
         exit 0
       fi
       ;;
     tracking-issue:read)
       if [ "$bootstrap_tracking" = true ]; then
+        if [ -f "$bootstrap_session/.bootstrap-test-post-admission-read-failure" ]; then
+          printf '%s\n' 'FAILED=true'
+          printf '%s\n' 'ERROR=post-admission-read-failed' >&2
+          exit 64
+        fi
         body_out=''
         shift 2
         while [ "$#" -gt 0 ]; do

@@ -1191,7 +1191,10 @@ fn activate_tracking_lease(state: &mut BootstrapState, options: &BootstrapOption
         ])
         .map_err(|error| format!("tracking-issue rename failed: {error}"))?;
         if !renamed.status().success() {
-            return Err("tracking-issue rename failed".to_owned());
+            return Err(child_failure_detail(
+                "tracking-issue rename failed",
+                &renamed,
+            ));
         }
         activated = true;
         write_session_file(&state.implement_tmpdir, post_body, "").map_err(|error| {
@@ -1210,7 +1213,10 @@ fn activate_tracking_lease(state: &mut BootstrapState, options: &BootstrapOption
         ])
         .map_err(|error| format!("tracking-issue post-admission read failed: {error}"))?;
         if !post.status().success() || !regular_file(&post_body) {
-            return Err("tracking-issue post-admission read failed".to_owned());
+            return Err(child_failure_detail(
+                "tracking-issue post-admission read failed",
+                &post,
+            ));
         }
         if !governance_gate(
             &state.issue_number_resolved,
@@ -1253,6 +1259,21 @@ fn activate_tracking_lease(state: &mut BootstrapState, options: &BootstrapOption
             .unwrap_or_default(),
     );
     false
+}
+
+fn child_failure_detail(summary: &str, output: &ProcessOutput) -> String {
+    let stdout = String::from_utf8_lossy(output.stdout());
+    let stderr = String::from_utf8_lossy(output.stderr());
+    let detail = [stdout.trim(), stderr.trim()]
+        .into_iter()
+        .filter(|stream| !stream.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if detail.is_empty() {
+        summary.to_owned()
+    } else {
+        format!("{summary}: {detail}")
+    }
 }
 
 fn governance_gate(
