@@ -78,7 +78,7 @@ impl Rule for SkillRunLifecycleRule {
         findings.extend(ownership_findings);
         findings.extend(check_registered_skills(&prompts, &ownership));
         for prompt in &prompts {
-            findings.extend(check_prompt(prompt));
+            findings.extend(check_prompt(prompt, &ownership));
             findings.extend(check_prompt_ownership(repository, prompt, &ownership)?);
             findings.extend(check_child_handoffs(prompt));
         }
@@ -271,7 +271,7 @@ fn check_registered_skills(
         .collect()
 }
 
-fn check_prompt(prompt: &Prompt) -> Vec<Finding> {
+fn check_prompt(prompt: &Prompt, ownership: &BTreeMap<String, Ownership>) -> Vec<Finding> {
     let path = prompt.path.as_str();
     let markers: Vec<_> = prompt
         .text
@@ -305,14 +305,29 @@ fn check_prompt(prompt: &Prompt) -> Vec<Finding> {
             format!("shared lifecycle declaration must reference {SHARED_REFERENCE} exactly once"),
         );
     }
-    let instruction = format!(
-        "{LIFECYCLE_INSTRUCTION_PREFIX}{}{LIFECYCLE_INSTRUCTION_SUFFIX}",
-        prompt.skill
-    );
+    let externally_owned = ownership
+        .get(&prompt.skill)
+        .or_else(|| ownership.get("*"))
+        .is_some_and(|row| has_external_owner(prompt, row));
+    let instruction = if externally_owned {
+        format!(
+            "**MANDATORY: Follow `${{CLAUDE_PLUGIN_ROOT}}/skills/shared/run-lifecycle.md` with declared skill `{0}`. The `{0}` row in `${{CLAUDE_PLUGIN_ROOT}}/skills/shared/run-lifecycle-ownership.tsv` has specialized owners. Do NOT run the shared contract's generic `run-log lifecycle-start` or terminal commands. Pass a leading `--lifecycle-parent-context` only through Step 0 to the registered start owner.**",
+            prompt.skill
+        )
+    } else {
+        format!(
+            "{LIFECYCLE_INSTRUCTION_PREFIX}{}{LIFECYCLE_INSTRUCTION_SUFFIX}",
+            prompt.skill
+        )
+    };
     if prompt.text.matches(&instruction).count() != 1 {
         return prompt_finding(
             path,
-            "shared lifecycle declaration must include its exact mandatory instruction once",
+            if externally_owned {
+                "externally owned lifecycle must include its exact specialized mandatory instruction once"
+            } else {
+                "shared lifecycle declaration must include its exact mandatory instruction once"
+            },
         );
     }
     if let Some(tools) = prompt
@@ -327,6 +342,14 @@ fn check_prompt(prompt: &Prompt) -> Vec<Finding> {
         return prompt_finding(path, "shared lifecycle declaration requires Bash permission");
     }
     Vec::new()
+}
+
+fn has_external_owner(prompt: &Prompt, ownership: &Ownership) -> bool {
+    let prompt_path = Path::new(prompt.path.as_str());
+    let shared_path = Path::new(SHARED_CONTRACT);
+    [&ownership.start, &ownership.terminal]
+        .into_iter()
+        .any(|owner| owner != prompt_path && owner != shared_path)
 }
 
 fn valid_skill(skill: &str) -> bool {

@@ -13,7 +13,7 @@ argument-hint: "[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch, Skill
 ---
 
-**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `implement`.**
+**MANDATORY: Follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `implement`. The `implement` row in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle-ownership.tsv` has specialized owners. Do NOT run the shared contract's generic `run-log lifecycle-start` or terminal commands. Pass a leading `--lifecycle-parent-context` only through Step 0 to the registered start owner.**
 # Implement Skill
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
