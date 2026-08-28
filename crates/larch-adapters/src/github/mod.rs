@@ -13,7 +13,10 @@ pub use attestation::{
 };
 
 pub use issue_mutation::{IssueCreateFailure, IssueMutationOwner};
-pub use mutation_auth::{LiveMutationDecision, LiveMutationRequest, check_live_mutation_auth};
+pub use mutation_auth::{
+    LIVE_MUTATION_REFUSAL_PREFIX, LiveMutationDecision, LiveMutationRequest,
+    check_live_mutation_auth,
+};
 pub use operations::{
     AuditPullRequest, AuditRunsService, CompanionIssue, CreatedPullRequest, DependencyEdge,
     DependencyMutation, DependencyMutationReceipt, DependencyRef, DependencySecurityCheck,

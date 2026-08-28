@@ -641,7 +641,7 @@ Print: `> **🔶 /design 6: cleanup**`
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step6
 ```
 
-Remove `$DESIGN_TMPDIR` only after the Step 5 machine footer when `PLAN_WRITE_OK=true`, `STANDALONE_HEAVY_FAILED` is unset/false, and either no log publish was attempted (`SESSION_ID` empty) or `PUBLISH_OK=true`. Otherwise preserve it for inspection, log-publish retry, or redaction diagnostics. When `PLAN_WRITE_OK=false`, skip cleanup. When publish failed after plan write, point operators at `design-log-publish.failure.log`, populated `execution-issues.md`, and recovery notes from `scripts/larch.sh design log-publish`; do not run cleanup when `SESSION_ID` is non-empty and `PUBLISH_OK=false`.
+Remove `$DESIGN_TMPDIR` only after the Step 5 machine footer when `PLAN_WRITE_OK=true`, `STANDALONE_HEAVY_FAILED` is unset/false, and either no log publish was attempted (`SESSION_ID` empty) or `PUBLISH_OK=true`. Otherwise preserve it for inspection, log-publish retry, or redaction diagnostics. When `PLAN_WRITE_OK=false`, skip cleanup. When publish failed after plan write, point operators at `design-publish-tail.failure.log`, populated `execution-issues.md`, and recovery notes from `scripts/larch.sh design log-publish`; do not run cleanup when `SESSION_ID` is non-empty and `PUBLISH_OK=false`.
 
 After Step 6 completes or is intentionally skipped, emit the cached final-summary body (plus cached sidecars when allowed) as the final assistant text. No tool call, machine footer, warning, or recap may follow.
 

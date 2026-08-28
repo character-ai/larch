@@ -28,8 +28,9 @@ use crate::{
     github_repository_resolution::repository_ref,
     github_service::{ServiceFailure, with_github_service},
     issue_mutation_support::{
-        EXIT_MUTATION_REFUSED, MUTATION_REFUSAL_REASON, MUTATION_REFUSAL_STATUS,
-        authorization_request, authorized, create_with_rollback, flat_error, sanitized_line,
+        EXIT_MUTATION_REFUSED, MUTATION_REFUSAL_STATUS, authorization_request, authorized,
+        create_with_rollback, flat_error, format_mutation_refusal_reason,
+        is_mutation_refusal_reason, sanitized_line,
     },
 };
 use chrono::Utc;
@@ -264,7 +265,7 @@ fn plan_create_with_body(
     );
     if let Err(reason) = authorized(&authorization) {
         return Err(CreateFailure::new(
-            &format!("{MUTATION_REFUSAL_REASON}:{reason}"),
+            &format_mutation_refusal_reason(reason),
             EXIT_MUTATION_REFUSED,
         ));
     }
@@ -402,7 +403,7 @@ fn create_refusal(
             );
         }
     }
-    let code = if failure.error.reason() == MUTATION_REFUSAL_REASON {
+    let code = if is_mutation_refusal_reason(failure.error.reason()) {
         EXIT_MUTATION_REFUSED
     } else if failure.error.reason() == "redaction-failed" {
         3
@@ -410,7 +411,7 @@ fn create_refusal(
         2
     };
     let message = if code == EXIT_MUTATION_REFUSED {
-        format!("{MUTATION_REFUSAL_REASON}:{MUTATION_REFUSAL_REASON}")
+        format_mutation_refusal_reason(failure.error.reason())
     } else if code == 3 {
         format!("redaction:{}", failure.error.reason())
     } else {

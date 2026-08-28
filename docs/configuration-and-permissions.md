@@ -635,7 +635,7 @@ On non-zero helper exit, `/implement` skips OOS batch filing and surfaces:
 
 `/design` can publish larch bug reports for terminal failures and escalation-success runs. Tier A uses full local context in larch dev clones. Tier B files bounded public reports to the upstream larch repository and excludes design plans, issue bodies, feature descriptions, paths, repo names, URLs, logs, and `source-env.sh` content.
 
-The gate files at most one issue per run. It skips operator-action and `cancelled-*` outcomes, writes a chat-visible operator-action audit, and records the skip in the run log. Dry run writes local artifacts without calling GitHub. Fallback-print-required writes `design-failure-chat-print.md` for manual filing.
+The gate files at most one issue per run. It skips operator-action and `cancelled-*` outcomes, writes a chat-visible operator-action audit, and records the skip in the run log. Dry run writes local artifacts without calling GitHub. Fallback-print-required writes `design-failure-chat-print.md` for manual filing. An authorization fallback keeps the `unauthorized-mutation:reporter-unauthorized` prefix and appends the bounded failing gate leg.
 
 Escalation-success is allowed only for `approved` and `approved-partition`. Step 3 main-agent vote/apply and postplan-operator handoffs are escalation evidence. Step 3 panel degradation is non-terminal evidence. Step 2b.5 decompose-panel retry exhaustion is terminal `failed-judge-panel`.
 

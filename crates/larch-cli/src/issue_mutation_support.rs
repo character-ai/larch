@@ -9,7 +9,10 @@
 //! diagnostic is published.
 
 use larch_adapters::{
-    github::{IssueCreateFailure, IssueMutationOwner, LiveMutationRequest, OctocrabGitHubService},
+    github::{
+        IssueCreateFailure, IssueMutationOwner, LIVE_MUTATION_REFUSAL_PREFIX, LiveMutationRequest,
+        OctocrabGitHubService,
+    },
     runtime::Cancellation,
 };
 use larch_core::{
@@ -22,7 +25,7 @@ pub const EXIT_MUTATION_REFUSED: u8 = 5;
 /// Row a caller reads to tell a refused mutation from any other failure.
 pub const MUTATION_REFUSAL_STATUS: &str = "mutation-refused";
 /// Reason token every refused live mutation prefixes its detail with.
-pub const MUTATION_REFUSAL_REASON: &str = "unauthorized-mutation";
+pub const MUTATION_REFUSAL_REASON: &str = LIVE_MUTATION_REFUSAL_PREFIX;
 /// Environment override that denies session-inherited authorization in tests.
 const MUTATION_TEST_DENY_KEY: &str = "LARCH_ISSUE_MUTATION_DENY";
 
@@ -93,6 +96,40 @@ pub fn authorized(request: &LiveMutationRequest<'_>) -> Result<(), &'static str>
     }
 }
 
+/// Return whether a reason is one complete live-mutation refusal token.
+#[must_use]
+pub fn is_mutation_refusal_reason(reason: &str) -> bool {
+    reason == MUTATION_REFUSAL_REASON
+        || reason
+            .strip_prefix(MUTATION_REFUSAL_REASON)
+            .is_some_and(|suffix| suffix.starts_with(':'))
+}
+
+/// Preserve a detailed refusal token, or prefix a legacy bare detail once.
+#[must_use]
+pub fn format_mutation_refusal_reason(reason: &str) -> String {
+    if is_mutation_refusal_reason(reason) {
+        reason.to_owned()
+    } else {
+        format!("{MUTATION_REFUSAL_REASON}:{reason}")
+    }
+}
+
+/// Add the reporter attribution while retaining the gate's refusal leg.
+#[must_use]
+pub fn format_reporter_mutation_refusal(reason: &str) -> String {
+    let reason = format_mutation_refusal_reason(reason);
+    let detail = reason
+        .strip_prefix(MUTATION_REFUSAL_REASON)
+        .and_then(|suffix| suffix.strip_prefix(':'))
+        .unwrap_or_default();
+    if detail.is_empty() {
+        format!("{MUTATION_REFUSAL_REASON}:reporter-unauthorized")
+    } else {
+        format!("{MUTATION_REFUSAL_REASON}:reporter-unauthorized:{detail}")
+    }
+}
+
 /// Strip C0 controls and DEL from one line, as the Python emitters did.
 ///
 /// A diagnostic reaches these rows from GitHub and from operator input, so a
@@ -127,7 +164,10 @@ pub fn flat_error(message: &str, limit: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{authorization_request, authorized, flat_error, sanitized_line};
+    use super::{
+        authorization_request, authorized, flat_error, format_mutation_refusal_reason,
+        format_reporter_mutation_refusal, is_mutation_refusal_reason, sanitized_line,
+    };
 
     #[test]
     fn a_diagnostic_is_collapsed_redacted_bounded_and_control_free() {
@@ -148,6 +188,25 @@ mod tests {
         assert!(
             authorized(&authorization_request("", "", "", false)).is_err(),
             "a line with neither operator mode nor a session context must refuse"
+        );
+    }
+
+    #[test]
+    fn refusal_formatter_adds_the_public_prefix_once() {
+        assert!(is_mutation_refusal_reason(
+            "unauthorized-mutation:run-id-mismatch"
+        ));
+        assert_eq!(
+            format_mutation_refusal_reason("unauthorized-mutation:run-id-mismatch"),
+            "unauthorized-mutation:run-id-mismatch"
+        );
+        assert_eq!(
+            format_mutation_refusal_reason("test-denied"),
+            "unauthorized-mutation:test-denied"
+        );
+        assert_eq!(
+            format_reporter_mutation_refusal("unauthorized-mutation:run-id-mismatch"),
+            "unauthorized-mutation:reporter-unauthorized:run-id-mismatch"
         );
     }
 }

@@ -6,6 +6,7 @@
 
 use crate::{
     github_repository_resolution::parse_github_remote_url,
+    issue_mutation_support::{format_mutation_refusal_reason, format_reporter_mutation_refusal},
     stall_recovery_file_report::{FileReportArguments, execute as execute_file_report},
 };
 use chrono::{SecondsFormat, Utc};
@@ -426,7 +427,10 @@ pub fn dedup_tier_a_report(globals: &Options, options: &Options) -> ExitCode {
     let (authorized, reason) = live_mutation_authorization(&root, &context, &run_id);
     if !authorized {
         println!("STALL_RECOVERY_REPORT_STATUS=mutation-refused");
-        println!("STALL_RECOVERY_REPORT_FALLBACK_REASON=unauthorized-mutation:{reason}");
+        println!(
+            "STALL_RECOVERY_REPORT_FALLBACK_REASON={}",
+            format_mutation_refusal_reason(reason)
+        );
         return ExitCode::SUCCESS;
     }
     let Some(repo) = current_repo_slug() else {
@@ -882,11 +886,12 @@ fn emit_chat_print_filing_status(
         return;
     }
     let run_id = read_run_id(root, Some(&paths.session_env));
-    let (authorized, _reason) = live_mutation_authorization(root, &paths.session_env, &run_id);
+    let (authorized, reason) = live_mutation_authorization(root, &paths.session_env, &run_id);
     if !authorized {
         println!("STALL_RECOVERY_REPORT_STATUS=fallback-print-required");
         println!(
-            "STALL_RECOVERY_REPORT_FALLBACK_REASON=unauthorized-mutation:reporter-unauthorized"
+            "STALL_RECOVERY_REPORT_FALLBACK_REASON={}",
+            format_reporter_mutation_refusal(reason)
         );
         return;
     }

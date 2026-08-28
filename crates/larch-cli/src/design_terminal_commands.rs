@@ -23,7 +23,8 @@ use std::{
 use larch_adapters::github::{IssueMutationOwner, LiveMutationRequest, check_live_mutation_auth};
 use larch_adapters::validate_design_tmpdir;
 use larch_core::{
-    GitHubCloseReason, KvDocument, ParseOptions, cleanup_cache_sessions_root, redact_outbound,
+    GitHubCloseReason, KvDocument, ParseOptions, cleanup_cache_sessions_root,
+    parse_allowlisted_env_line, redact_outbound,
 };
 
 use crate::{
@@ -37,6 +38,7 @@ use crate::{
     design_step1_commands::append_failure_args,
     github_repository_resolution::repository_ref,
     github_service::with_github_service,
+    issue_mutation_support::format_reporter_mutation_refusal,
     runtime_entrypoint::run_verified_larch_with_timeout,
     voter_calibration_commands::resolve_like_python,
 };
@@ -49,7 +51,6 @@ const RECONCILE_PUBLISH_TAIL_MARKER: &str = "<!-- larch-reconcile:failed-publish
 const BGJOB_TMP_SUBDIR: &str = "bgjob";
 const BGJOB_RESULT_ENV_SUFFIX: &str = ".result.env";
 const DESIGN_PUBLISH_RESULT_FILE: &str = ".design-publish-result.env";
-const LIVE_MUTATION_REFUSAL_REASON: &str = "unauthorized-mutation";
 const ENV_FINAL_SUMMARY_PATH: &str = "FINAL_SUMMARY_PATH";
 const ENV_FINAL_SUMMARY_READY: &str = "FINAL_SUMMARY_READY";
 const LARCH_FINAL_SUMMARY_BEGIN_MARKER: &str = "LARCH_FINAL_SUMMARY_BEGIN";
@@ -183,6 +184,24 @@ fn read_env_value(path: &Path, key: &str, default: &str) -> String {
                 value.to_owned()
             };
         }
+    }
+    default.to_owned()
+}
+
+/// Read one generated `source-env.sh` assignment in plain or `export` form.
+fn read_source_env_value(path: &Path, key: &str, default: &str) -> String {
+    let Some(text) = read_env_text(path) else {
+        return default.to_owned();
+    };
+    for line in text.lines() {
+        let Some((_key, value)) = parse_allowlisted_env_line(line, &[key], None, true) else {
+            continue;
+        };
+        return if value.is_empty() {
+            default.to_owned()
+        } else {
+            value
+        };
     }
     default.to_owned()
 }
@@ -1092,7 +1111,12 @@ impl FailureCtx<'_> {
 
     fn tier_a_forked(&self) -> bool {
         for name in ["ship-pr-state.sh", "finalize-state.sh", "source-env.sh"] {
-            let value = read_env_value(&self.path(name), "FORKED_TARGET", "");
+            let path = self.path(name);
+            let value = if name == "source-env.sh" {
+                read_source_env_value(&path, "FORKED_TARGET", "")
+            } else {
+                read_env_value(&path, "FORKED_TARGET", "")
+            };
             if !value.is_empty() {
                 return matches!(value.as_str(), "true" | "1" | "yes" | "TRUE" | "True");
             }
@@ -1108,7 +1132,7 @@ impl FailureCtx<'_> {
                 return value;
             }
         }
-        let root = read_env_value(&self.path("source-env.sh"), "REPO_ROOT", "");
+        let root = read_source_env_value(&self.path("source-env.sh"), "REPO_ROOT", "");
         if !root.is_empty() {
             return root;
         }
@@ -1701,7 +1725,7 @@ fn file_tier_a_after_compose(ctx: &FailureCtx, body_file: &Path) {
     } else {
         None
     };
-    let run_id = read_env_value(&source_env, "LARCH_RUN_ID", "");
+    let run_id = read_source_env_value(&source_env, "LARCH_RUN_ID", "");
     let decision = check_live_mutation_auth(&LiveMutationRequest {
         context_file,
         operator_mode: false,
@@ -1710,10 +1734,7 @@ fn file_tier_a_after_compose(ctx: &FailureCtx, body_file: &Path) {
         test_deny: false,
     });
     if !decision.is_authorized() {
-        append_fallback(
-            ctx,
-            &format!("{LIVE_MUTATION_REFUSAL_REASON}:reporter-unauthorized"),
-        );
+        append_fallback(ctx, &format_reporter_mutation_refusal(decision.reason()));
         return;
     }
     let mut dedup_argv = ctx.base();
@@ -2048,7 +2069,7 @@ fn reconcile_post_recovery_comment(
     } else {
         None
     };
-    let run_id = read_env_value(&source_env, "LARCH_RUN_ID", "");
+    let run_id = read_source_env_value(&source_env, "LARCH_RUN_ID", "");
     let decision = check_live_mutation_auth(&LiveMutationRequest {
         context_file,
         operator_mode: false,
@@ -2587,8 +2608,9 @@ mod tests {
 
     use super::{
         FailureCtx, SummaryCtx, classify_input, clean_status_token, failure_report_with,
-        is_terminal_publish_outcome, kv_last_value, ledger_row_has_escalation_evidence,
-        preferred_bgjob_result_input, read_result_env, reconcile_failed_publish_tail_report,
+        file_tier_a_after_compose, is_terminal_publish_outcome, kv_last_value,
+        ledger_row_has_escalation_evidence, preferred_bgjob_result_input, read_result_env,
+        read_source_env_value, reconcile_failed_publish_tail_report,
         resolve_read_result_env_source, resolve_report_repo, stage_terminal_state_with,
         step_final_summary_with, upsert_final_summary_from_disk, valid_var_name,
         validated_publish_state, validated_salvage_publish_result,
@@ -2785,6 +2807,55 @@ mod tests {
             "owner/name"
         );
         assert_eq!(resolve_report_repo("not-a-url", "fallback"), "fallback");
+    }
+
+    #[test]
+    fn source_env_reader_decodes_the_generated_export_form() {
+        let session = design_dir();
+        let source = session.root().join("source-env.sh");
+        fs::write(
+            &source,
+            "#!/usr/bin/env bash\nexport LARCH_RUN_ID='design-run-1'\n",
+        )
+        .expect("source env");
+        assert_eq!(
+            read_source_env_value(&source, "LARCH_RUN_ID", ""),
+            "design-run-1"
+        );
+    }
+
+    #[test]
+    fn tier_a_reporter_authorizes_the_generated_source_env() {
+        let session = tempfile::Builder::new()
+            .prefix("claude-design-reporter-")
+            .tempdir()
+            .expect("design session");
+        let root = session.path().canonicalize().expect("canonical session");
+        fs::write(
+            root.join("source-env.sh"),
+            "#!/usr/bin/env bash\nexport LARCH_LIVE_MUTATION_OK='true'\nexport LARCH_RUN_ID='design-run-1'\n",
+        )
+        .expect("source env");
+        let body = root.join("design-failure-issue-input.md");
+        fs::write(&body, "### [BUG] offline reporter fixture\n").expect("body");
+        let runner = VerbRunner::new().on(
+            "dedup-tier-a-report",
+            0,
+            "STALL_RECOVERY_REPORT_STATUS=dry-run\n",
+        );
+        let ctx = FailureCtx {
+            runner: &runner,
+            plugin_root: root.clone(),
+            design_tmpdir: root.clone(),
+            outcome: "failed-publish-tail".to_owned(),
+            repo: "character-ai/larch".to_owned(),
+        };
+
+        file_tier_a_after_compose(&ctx, &body);
+
+        let result =
+            fs::read_to_string(root.join("design-failure-compose.env")).expect("compose result");
+        assert_eq!(result, "STALL_RECOVERY_REPORT_STATUS=dry-run\n");
     }
 
     #[test]
@@ -3283,6 +3354,11 @@ mod tests {
         let runner = VerbRunner::new().on("is-larch-dev-clone", 0, "LARCH_DEV_CLONE=true\n");
         let code = failure_report_with(&fr_args(root, "failed-plan-write"), &runner);
         assert_eq!(code, ok());
+        let compose =
+            fs::read_to_string(root.join("design-failure-compose.env")).expect("compose outcome");
+        assert!(compose.contains(
+            "STALL_RECOVERY_REPORT_FALLBACK_REASON=unauthorized-mutation:reporter-unauthorized:root-not-canonical\n"
+        ));
     }
 
     // ------------------------------------------------ stage optional token/paths

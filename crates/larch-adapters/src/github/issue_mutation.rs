@@ -156,7 +156,7 @@ impl<'service> IssueMutationOwner<'service> {
     ///
     /// # Errors
     ///
-    /// Returns `unauthorized-mutation`, `redaction-failed`,
+    /// Returns `unauthorized-mutation:<reason>`, `redaction-failed`,
     /// `assignee-read-failed`, `create-failed`, or `invalid-read-back` inside
     /// an [`IssueCreateFailure`] that names the orphan issue when one exists.
     pub async fn create(
@@ -941,7 +941,7 @@ mod tests {
             .await
             .expect_err("unauthorized mutation must fail");
 
-        assert_eq!(reason(error), "unauthorized-mutation");
+        assert_eq!(reason(error), "unauthorized-mutation:no-context");
         assert!(server.finish().expect("stub finished").is_empty());
     }
 
@@ -1287,7 +1287,7 @@ mod tests {
             .await
             .expect_err("unauthorized create must fail");
 
-        assert_eq!(failure.error.reason(), "unauthorized-mutation");
+        assert_eq!(failure.error.reason(), "unauthorized-mutation:no-context");
         assert_eq!(failure.orphan, None);
         assert!(server.finish().expect("stub finished").is_empty());
     }
@@ -1501,7 +1501,7 @@ mod tests {
             )
             .await
             .expect_err("authorization must fail");
-        assert_eq!(error.reason(), "unauthorized-mutation");
+        assert_eq!(error.reason(), "unauthorized-mutation:no-context");
         assert!(server.finish().expect("stub finished").is_empty());
 
         let (bad_echo_service, server) = service(vec![
@@ -1796,7 +1796,7 @@ mod tests {
             .await
             .expect_err("unauthorized close must fail");
 
-        assert_eq!(error.reason(), "unauthorized-mutation");
+        assert_eq!(error.reason(), "unauthorized-mutation:no-context");
         assert!(server.finish().expect("stub finished").is_empty());
     }
 

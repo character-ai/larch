@@ -22,8 +22,8 @@ use crate::{
     github_repository_resolution::repository_ref,
     github_service::{ServiceFailure, with_github_service},
     issue_mutation_support::{
-        EXIT_MUTATION_REFUSED, MUTATION_REFUSAL_REASON, MUTATION_REFUSAL_STATUS,
-        authorization_request, authorized, flat_error,
+        EXIT_MUTATION_REFUSED, MUTATION_REFUSAL_STATUS, authorization_request, authorized,
+        flat_error, format_mutation_refusal_reason,
     },
 };
 use chrono::DateTime;
@@ -69,7 +69,7 @@ impl EdgeFailure {
     /// Build the refusal a failed authorization check publishes.
     fn refused(reason: &str) -> Self {
         Self::new(
-            &format!("{MUTATION_REFUSAL_REASON}:{reason}"),
+            &format_mutation_refusal_reason(reason),
             EXIT_MUTATION_REFUSED,
         )
     }
