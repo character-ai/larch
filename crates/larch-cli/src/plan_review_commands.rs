@@ -1694,6 +1694,7 @@ mod loop_implementation {
 
     use crate::{
         argparse_compat::{ParsedCommandLine, missing, parse_required_with_help as parsed, parse_required_with_help_allow_unknown as parsed_known, parse_with_flags, python_repr, usage_error},
+        child_process::ensure_owned_process_group,
         plan_quality_commands::clear_oversize_override_authority,
         runtime_entrypoint::{
             plugin_root, run_verified_larch, run_verified_larch_with_environment,
@@ -1713,7 +1714,6 @@ mod loop_implementation {
         review::{BoundaryMode, FINDINGS_CLASSIFICATION_HEADER, MERGE_KEYS, PlanReviewAggregationOutcome, PlanReviewBallotOutcome, PlanReviewCollectorRecord, PlanReviewManifestSlot, PlanReviewReviewerStatus, PlanReviewRoundArtifacts, PlanReviewRoundInput, PlanReviewRoundState, PlanReviewRoundSummary, PlanReviewStructuredFinding, PlanReviewTallyOutcome, PlanReviewVoterOutcome, STEP3_NORMALIZE_ALLOW_KEYS, STEP3_ROUND_TALLY_KEYS, applied_finding_keys_before, ballot_blocks, finding_dedup_key, merge_already_addressed_finding_keys, merge_step3_round_tally, normalize_collected_findings, parse_blocks, parse_plan_review_accepted_findings, render_reviewer_status_table, render_reviewer_status_tsv, replace_applied_finding_keys, reviewer_status_rows, run_plan_review_round, step3_loop_status_to_loop_status, step3_next_action, step3_status_from_loop_status},
     };
     use regex::Regex;
-    use nix::unistd::setsid;
     use serde_json::Value;
     use sha2::{Digest as _, Sha256};
     use std::{
@@ -2152,7 +2152,7 @@ mod loop_implementation {
             for(key,value)in values{emit_kv(&key,&value);}
             return ExitCode::SUCCESS;
         }
-        if parsed.flag("--new-process-group")&&setsid().is_err(){eprintln!("cli.py plan-review run: --new-process-group failed");return ExitCode::from(2);}
+        if parsed.flag("--new-process-group")&&ensure_owned_process_group().is_err(){eprintln!("cli.py plan-review run: --new-process-group failed");return ExitCode::from(2);}
         let approve=json_bool_value(&root.join("run-params.json"),"approve_requested",false);
         let mut round=start.parse::<u64>().ok().unwrap_or_else(||read_count(&root)+1);
         let mut degraded=false;

@@ -1,8 +1,10 @@
 #[rustfmt::skip]
 mod tests {
 #![allow(clippy::cognitive_complexity, clippy::literal_string_with_formatting_args)] // Each test keeps one frozen filesystem transaction and embedded shell fixture readable end to end.
-use std::{fs, path::{Path, PathBuf}, process::{Command, Output}};
+use std::{fs, num::NonZeroUsize, path::{Path, PathBuf}, process::{Command, Output}, time::Duration};
 #[cfg(unix)] use std::os::unix::fs::{PermissionsExt as _, symlink};
+use larch_adapters::{TokioProcessRunner, runtime::{Cancellation, LarchRuntime}};
+use larch_core::{ExternalProcessRunner as _, ExternalProgram, LarchProgram, ProcessRequest};
 use tempfile::TempDir;
 
 fn repo() -> PathBuf { Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().expect("repo root") }
@@ -20,6 +22,21 @@ fn err(output:&Output)->String { String::from_utf8_lossy(&output.stderr).into_ow
 fn text(path:impl AsRef<Path>)->String { fs::read_to_string(path).expect("read text") }
 fn write_executable_plan(root:&Path) { fs::write(root.join("plan.txt"),"# Plan\n## Files to modify/create\n### UPDATED: README.md\n## Closed decisions and ownership\nKeep the existing owner.\n## Ordered implementation\n1. Apply the change.\n## Acceptance\nThe focused checks pass.\n## Breaking changes and migration\nNone.\n## Approach\nUse the existing command owner.\ndifficulty: TRIVIAL\ndiff_lines: 1\n").expect("plan"); }
 #[cfg(unix)] fn script(path:&Path, body:&str) { fs::write(path,format!("#!/usr/bin/env bash\nset -eu\n{body}\n")).expect("write script"); let mut mode=fs::metadata(path).expect("metadata").permissions(); mode.set_mode(0o755); fs::set_permissions(path,mode).expect("chmod"); }
+
+#[cfg(unix)]
+#[test]
+fn shared_runner_process_group_allows_loop_commands_to_proceed() {
+    let sandbox=TempDir::new().expect("sandbox"); let root=design(&sandbox); fs::write(root.join("review-round-count.txt"),"2\n").expect("round count");
+    let plugin=TempDir::new().expect("plugin root"); fs::create_dir(plugin.path().join("bin")).expect("bin"); fs::copy(env!("CARGO_BIN_EXE_larch"),plugin.path().join("bin/larch")).expect("test larch binary");
+    let request=ProcessRequest::new(ExternalProgram::Larch(LarchProgram::binary(plugin.path()).expect("larch program")),["plan-review","run","--design-tmpdir",root.to_str().expect("design path"),"--mode","loop","--new-process-group","--no-preview"],repo(),Duration::from_secs(10),Duration::from_secs(1),NonZeroUsize::new(64*1024).expect("output limit")).expect("process request");
+    let runtime=LarchRuntime::current_thread().expect("runtime"); let runner=TokioProcessRunner::default(); let output=runtime.block_on(runner.run(request,&Cancellation::new())).expect("shared runner output");
+    assert!(output.status().success(),"{}",String::from_utf8_lossy(output.stderr())); assert!(String::from_utf8_lossy(output.stdout()).contains("LOOP_STATUS=cap-reached\n"));
+
+    let implementation=sandbox.path().join("implement"); fs::create_dir(&implementation).expect("implement tmpdir");
+    let request=ProcessRequest::new(ExternalProgram::Larch(LarchProgram::binary(plugin.path()).expect("larch program")),["review-and-fix","step5","--implement-tmpdir",implementation.to_str().expect("implement path"),"--mode","loop","--new-process-group"],repo(),Duration::from_secs(10),Duration::from_secs(1),NonZeroUsize::new(64*1024).expect("output limit")).expect("process request");
+    let output=runtime.block_on(runner.run(request,&Cancellation::new())).expect("shared runner output"); let stderr=String::from_utf8_lossy(output.stderr());
+    assert_eq!(output.status().code(),Some(2)); assert!(stderr.contains("session-env not readable"),"{stderr}"); assert!(!stderr.contains("--new-process-group failed"),"{stderr}");
+}
 
 #[test]
 fn real_dispatcher_stages_panel_init_failure() {
