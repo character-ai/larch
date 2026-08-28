@@ -155,11 +155,27 @@ fn run_after_infrastructure(
     {
         phase_plan(state, options)?;
     }
-    if state.implement_bail_reason.is_empty() && state.stall_tracking != "true" && !options.resume()
+    if state.implement_bail_reason.is_empty()
+        && state.stall_tracking != "true"
+        && needs_coder_selection(state, options)
     {
         phase_coder(state, options);
     }
     Ok(())
+}
+
+fn needs_coder_selection(state: &BootstrapState, options: &BootstrapOptions) -> bool {
+    if !options.resume() {
+        return true;
+    }
+    let tmpdir = Path::new(&state.implement_tmpdir);
+    let mut prior_routing = BTreeMap::new();
+    restore_resume_coder(
+        &mut prior_routing,
+        &tmpdir.join("bootstrap-routing.env"),
+        tmpdir,
+    );
+    prior_routing.get("coder").is_none_or(String::is_empty)
 }
 
 fn phase_tracking(
@@ -2221,8 +2237,8 @@ fn resolve_repo_root() -> Option<PathBuf> {
 mod tests {
     use super::{
         ContinuationFailure, append_force_bypass, bootstrap_next, coder_order_for_tier,
-        emit_failure, normalize_1r_probe_output, phase_coder, read_regular_text,
-        strip_plan_provenance_headers, valid_receipt_scope_drift,
+        emit_failure, needs_coder_selection, normalize_1r_probe_output, phase_coder,
+        read_regular_text, strip_plan_provenance_headers, valid_receipt_scope_drift,
     };
     use crate::bootstrap_commands::{BootstrapOptions, BootstrapState, InvokeMode};
     use larch_core::ReceiptRefreshStage;
@@ -2311,6 +2327,27 @@ mod tests {
         );
         assert_eq!(coder_order_for_tier("HARD"), &["codex", "cursor", "claude"]);
         assert_eq!(coder_order_for_tier(""), &["codex", "cursor", "claude"]);
+    }
+
+    #[test]
+    fn resume_selects_a_coder_only_when_prior_routing_has_none() {
+        let temporary = tempfile::tempdir().expect("temporary bootstrap session");
+        let state = BootstrapState {
+            implement_tmpdir: temporary.path().display().to_string(),
+            ..BootstrapState::default()
+        };
+        let mut options = test_options();
+
+        assert!(needs_coder_selection(&state, &options));
+        options.mode = InvokeMode::Resume;
+        assert!(needs_coder_selection(&state, &options));
+
+        fs::write(
+            temporary.path().join("bootstrap-routing.env"),
+            "coder=cursor\n",
+        )
+        .expect("write prior coder routing");
+        assert!(!needs_coder_selection(&state, &options));
     }
 
     #[test]
