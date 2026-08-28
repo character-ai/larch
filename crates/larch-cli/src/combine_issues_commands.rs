@@ -32,7 +32,10 @@ use crate::{
     blocker_commands::resolve_repo_for,
     github_repository_resolution::repository_ref,
     github_service::with_github_service,
-    issue_mutation_support::{authorization_request, authorized, create_with_rollback, flat_error},
+    issue_mutation_support::{
+        authorization_request, authorized, create_with_rollback, flat_error,
+        format_mutation_refusal_reason,
+    },
 };
 
 const USAGE_EXIT: u8 = 2;
@@ -1642,7 +1645,7 @@ fn ensure_authorized(arguments: &MutationArguments) -> Result<(), String> {
         &arguments.trusted_root,
         arguments.operator_invoked,
     ))
-    .map_err(|reason| format!("unauthorized-mutation:{reason}"))
+    .map_err(format_mutation_refusal_reason)
 }
 
 fn combined_comment(source: u64, combined: u64) -> String {

@@ -4952,7 +4952,7 @@ mod service_tests {
             .expect_err("gate refusal");
         assert_eq!(
             error,
-            GitHubOperationError::MutationRefused("unauthorized-mutation")
+            GitHubOperationError::MutationRefused("unauthorized-mutation:no-context")
         );
         server.join().expect("stub completed");
     }
@@ -4983,7 +4983,7 @@ mod service_tests {
                 .merge_pull_request(&Cancellation::new(), &denied_request(), &request)
                 .await
                 .expect_err("mutation gate runs before a network read"),
-            GitHubOperationError::MutationRefused("unauthorized-mutation")
+            GitHubOperationError::MutationRefused("unauthorized-mutation:no-context")
         );
         server.join().expect("stub completed");
 
@@ -5300,7 +5300,7 @@ mod service_tests {
                 .add_sub_issue(&Cancellation::new(), &denied_request(), sub_issue_edge())
                 .await
                 .expect_err("live mutation gate runs before a read"),
-            GitHubOperationError::MutationRefused("unauthorized-mutation")
+            GitHubOperationError::MutationRefused("unauthorized-mutation:no-context")
         );
         server.join().expect("stub completed");
     }
@@ -5440,7 +5440,7 @@ mod service_tests {
                 .add_blocked_by(&cancellation, &denied, edge)
                 .await
                 .expect_err("unauthorized request is refused before any read"),
-            GitHubOperationError::MutationRefused("unauthorized-mutation")
+            GitHubOperationError::MutationRefused("unauthorized-mutation:no-context")
         );
         server.join().expect("stub completed");
     }

@@ -11,12 +11,18 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use larch_core::{KvDocument, ParseOptions, allowed_session_roots};
+use larch_core::{allowed_session_roots, parse_allowlisted_env_line};
 
 const AUTH_KEY: &str = "LARCH_LIVE_MUTATION_OK";
 const RUN_ID_KEY: &str = "LARCH_RUN_ID";
-const REFUSAL_REASON: &str = "unauthorized-mutation";
-const TEST_DENIED_REASON: &str = "test-denied";
+/// Stable prefix on every refused live-mutation reason.
+pub const LIVE_MUTATION_REFUSAL_PREFIX: &str = "unauthorized-mutation";
+const NO_CONTEXT_REASON: &str = "unauthorized-mutation:no-context";
+const ROOT_NOT_CANONICAL_REASON: &str = "unauthorized-mutation:root-not-canonical";
+const CONTEXT_PARENT_MISMATCH_REASON: &str = "unauthorized-mutation:context-parent-mismatch";
+const AUTH_FLAG_FALSE_REASON: &str = "unauthorized-mutation:auth-flag-false";
+const RUN_ID_MISMATCH_REASON: &str = "unauthorized-mutation:run-id-mismatch";
+const TEST_DENIED_REASON: &str = "unauthorized-mutation:test-denied";
 const OPERATOR_REASON: &str = "operator";
 const SESSION_REASON: &str = "session";
 const MAX_RUN_ID: usize = 128;
@@ -44,7 +50,7 @@ impl LiveMutationDecision {
         matches!(self, Self::Authorized(_))
     }
 
-    /// Stable reason string preserved from the Python contract.
+    /// Stable route or refusal reason string.
     #[must_use]
     pub const fn reason(self) -> &'static str {
         match self {
@@ -78,27 +84,38 @@ pub fn check_live_mutation_auth(request: &LiveMutationRequest<'_>) -> LiveMutati
     if request.test_deny {
         return LiveMutationDecision::Refused(TEST_DENIED_REASON);
     }
-    if authorize_session(request) {
-        LiveMutationDecision::Authorized(LiveMutationMode::Session)
-    } else {
-        LiveMutationDecision::Refused(REFUSAL_REASON)
+    match authorize_session(request) {
+        Ok(()) => LiveMutationDecision::Authorized(LiveMutationMode::Session),
+        Err(reason) => LiveMutationDecision::Refused(reason),
     }
 }
 
-fn authorize_session(request: &LiveMutationRequest<'_>) -> bool {
-    let (Some(context), Some(root)) = (request.context_file, request.trusted_root) else {
-        return false;
+fn authorize_session(request: &LiveMutationRequest<'_>) -> Result<(), &'static str> {
+    let Some(context) = request.context_file else {
+        return Err(NO_CONTEXT_REASON);
     };
-    if !is_regular_file(context)
-        || !is_canonical_mutation_session_root(root)
-        || !context_parent_is_root(context, root)
-    {
-        return false;
+    let Some(root) = request.trusted_root else {
+        return Err(ROOT_NOT_CANONICAL_REASON);
+    };
+    if !is_regular_file(context) {
+        return Err(NO_CONTEXT_REASON);
+    }
+    if !is_canonical_mutation_session_root(root) {
+        return Err(ROOT_NOT_CANONICAL_REASON);
+    }
+    if !context_parent_is_root(context, root) {
+        return Err(CONTEXT_PARENT_MISMATCH_REASON);
     }
     let Some((auth_value, context_run_id)) = read_context(context) else {
-        return false;
+        return Err(AUTH_FLAG_FALSE_REASON);
     };
-    auth_value == "true" && is_safe_run_id(&context_run_id) && request.run_id == context_run_id
+    if auth_value != "true" {
+        return Err(AUTH_FLAG_FALSE_REASON);
+    }
+    if !is_safe_run_id(&context_run_id) || request.run_id != context_run_id {
+        return Err(RUN_ID_MISMATCH_REASON);
+    }
+    Ok(())
 }
 
 fn is_regular_file(path: &Path) -> bool {
@@ -168,16 +185,17 @@ const fn is_identifier_byte(byte: u8) -> bool {
 
 fn read_context(path: &Path) -> Option<(String, String)> {
     let contents = fs::read_to_string(path).ok()?;
-    let document = KvDocument::parse(&contents, ParseOptions::legacy()).ok()?;
     let mut auth_value = String::new();
     let mut run_id = String::new();
-    for row in document.rows() {
-        let key = row.key().trim();
-        let key = key.strip_prefix("export ").map_or(key, str::trim_start);
-        let value = row.value().trim().trim_matches(|c| c == '\'' || c == '"');
-        match key {
-            AUTH_KEY => value.clone_into(&mut auth_value),
-            RUN_ID_KEY => value.clone_into(&mut run_id),
+    for line in contents.lines() {
+        let Some((key, value)) =
+            parse_allowlisted_env_line(line, &[AUTH_KEY, RUN_ID_KEY], None, true)
+        else {
+            continue;
+        };
+        match key.as_str() {
+            AUTH_KEY => auth_value = value,
+            RUN_ID_KEY => run_id = value,
             _ => {}
         }
     }
@@ -243,7 +261,10 @@ mod tests {
         let mut input = request(Some(&context), Some(&root), "run1");
         input.test_deny = true;
         let decision = check_live_mutation_auth(&input);
-        assert_eq!(decision, LiveMutationDecision::Refused("test-denied"));
+        assert_eq!(
+            decision,
+            LiveMutationDecision::Refused("unauthorized-mutation:test-denied")
+        );
     }
 
     #[test]
@@ -266,15 +287,15 @@ mod tests {
         let workspace = TestWorkspace::new().expect("workspace");
         assert_eq!(
             check_live_mutation_auth(&request(None, None, "run1")),
-            LiveMutationDecision::Refused("unauthorized-mutation")
+            LiveMutationDecision::Refused("unauthorized-mutation:no-context")
         );
         let (root, context) = session(
             &workspace,
             "LARCH_LIVE_MUTATION_OK=false\nLARCH_RUN_ID=run1\n",
         );
-        assert!(
-            !check_live_mutation_auth(&request(Some(&context), Some(&root), "run1"))
-                .is_authorized()
+        assert_eq!(
+            check_live_mutation_auth(&request(Some(&context), Some(&root), "run1")),
+            LiveMutationDecision::Refused("unauthorized-mutation:auth-flag-false")
         );
     }
 
@@ -285,9 +306,9 @@ mod tests {
             &workspace,
             "LARCH_LIVE_MUTATION_OK=true\nLARCH_RUN_ID=run1\n",
         );
-        assert!(
-            !check_live_mutation_auth(&request(Some(&context), Some(&root), "run2"))
-                .is_authorized()
+        assert_eq!(
+            check_live_mutation_auth(&request(Some(&context), Some(&root), "run2")),
+            LiveMutationDecision::Refused("unauthorized-mutation:run-id-mismatch")
         );
 
         let unsafe_workspace = TestWorkspace::new().expect("workspace");
@@ -300,13 +321,13 @@ mod tests {
                 "LARCH_LIVE_MUTATION_OK=true\nLARCH_RUN_ID=bad id\n",
             )
             .expect("context");
-        assert!(
-            !check_live_mutation_auth(&request(
+        assert_eq!(
+            check_live_mutation_auth(&request(
                 Some(&unsafe_context),
                 Some(&unsafe_root),
                 "bad id"
-            ))
-            .is_authorized()
+            )),
+            LiveMutationDecision::Refused("unauthorized-mutation:run-id-mismatch")
         );
     }
 
@@ -320,9 +341,9 @@ mod tests {
                 "LARCH_LIVE_MUTATION_OK=true\nLARCH_RUN_ID=run1\n",
             )
             .expect("context");
-        assert!(
-            !check_live_mutation_auth(&request(Some(&context), Some(&wrong), "run1"))
-                .is_authorized()
+        assert_eq!(
+            check_live_mutation_auth(&request(Some(&context), Some(&wrong), "run1")),
+            LiveMutationDecision::Refused("unauthorized-mutation:root-not-canonical")
         );
 
         let (root, _) = session(
@@ -335,8 +356,9 @@ mod tests {
                 "LARCH_LIVE_MUTATION_OK=true\nLARCH_RUN_ID=run1\n",
             )
             .expect("nested context");
-        assert!(
-            !check_live_mutation_auth(&request(Some(&nested), Some(&root), "run1")).is_authorized()
+        assert_eq!(
+            check_live_mutation_auth(&request(Some(&nested), Some(&root), "run1")),
+            LiveMutationDecision::Refused("unauthorized-mutation:context-parent-mismatch")
         );
     }
 
@@ -362,9 +384,9 @@ mod tests {
             "this checkout sits inside an allowlisted session root, so the case cannot run"
         );
 
-        assert!(
-            !check_live_mutation_auth(&request(Some(&context), Some(&outside), "run1"))
-                .is_authorized()
+        assert_eq!(
+            check_live_mutation_auth(&request(Some(&context), Some(&outside), "run1")),
+            LiveMutationDecision::Refused("unauthorized-mutation:root-not-canonical")
         );
     }
 
@@ -383,8 +405,9 @@ mod tests {
             .expect("target");
         let link = root.join("source-env.sh");
         symlink(&target, &link).expect("symlink");
-        assert!(
-            !check_live_mutation_auth(&request(Some(&link), Some(&root), "run1")).is_authorized()
+        assert_eq!(
+            check_live_mutation_auth(&request(Some(&link), Some(&root), "run1")),
+            LiveMutationDecision::Refused("unauthorized-mutation:no-context")
         );
     }
 }

@@ -301,6 +301,13 @@ the `XDG_CACHE_HOME` or `HOME` cache root. A caller-supplied `TMPDIR` does not
 widen that set. `crates/larch-adapters/src/github/issue_mutation.rs` owns every
 live issue mutation. Unauthorized calls fail before any GitHub request,
 emit the documented refusal result, and do not retry through another route.
+Every refusal keeps the `unauthorized-mutation` prefix and adds one bounded,
+static reason: `no-context`, `root-not-canonical`,
+`context-parent-mismatch`, `auth-flag-false`, `run-id-mismatch`, or the
+test-only `test-denied`. These reasons expose no path or context-file content.
+Generated session context is decoded through the shared allowlisted shell
+assignment parser, including its `export KEY=value` form, before the run
+identity is compared.
 `issue create-one` applies the check in the Rust owner before the create request
 is built. `issue create-batch` validates the same route before it reads any
 remote state, then reuses the authorized create and dependency owners for each

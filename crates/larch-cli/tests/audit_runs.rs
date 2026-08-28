@@ -233,7 +233,7 @@ fn title_matching_nudge_and_prior_close_keep_their_command_wires() {
     assert_eq!(refused.status.code(), Some(5));
     assert_eq!(
         String::from_utf8(refused.stdout).expect("UTF-8 close-priors output"),
-        "CLOSE_PRIORS_REFUSED=true\nREASON=unauthorized-mutation:unauthorized-mutation\n"
+        "CLOSE_PRIORS_REFUSED=true\nREASON=unauthorized-mutation:no-context\n"
     );
 }
 
@@ -313,7 +313,7 @@ fn cutover_verbs_keep_usage_and_refusal_wires() {
     assert_eq!(refused.status.code(), Some(5));
     assert_eq!(
         String::from_utf8(refused.stdout).expect("UTF-8 comment output"),
-        "COMMENT_REFUSED=true\nREASON=unauthorized-mutation:unauthorized-mutation\n"
+        "COMMENT_REFUSED=true\nREASON=unauthorized-mutation:no-context\n"
     );
 }
 

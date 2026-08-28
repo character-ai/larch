@@ -25,7 +25,9 @@ use crate::{
         CreateIssueOutcome, CreateTextSpec, cleanup_created_issue, create_issue_text,
     },
     issue_dependency_commands::{EdgeAuthorization, apply_blocked_by, in_process_edge_with_id},
-    issue_mutation_support::{authorization_request, authorized, flat_error},
+    issue_mutation_support::{
+        authorization_request, authorized, flat_error, format_mutation_refusal_reason,
+    },
 };
 
 const USAGE: &str = "Usage: issue create-batch --parse-output PATH --edges-file PATH --repo OWNER/REPO [--title-prefix PREFIX] [--label LABEL]... [--operator-invoked | --context-file PATH --run-id ID --trusted-root PATH] [--dry-run]";
@@ -185,7 +187,7 @@ impl BatchOptions {
             &self.trusted_root,
             self.operator_invoked,
         ))
-        .map_err(|reason| format!("unauthorized-mutation:{reason}"))
+        .map_err(format_mutation_refusal_reason)
     }
 
     fn edge_authorization(&self) -> EdgeAuthorization<'_> {

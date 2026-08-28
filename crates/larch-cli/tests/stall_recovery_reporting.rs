@@ -354,7 +354,7 @@ fn filing_commands_refuse_mutation_before_their_helpers_run() {
     );
     assert!(
         chat_stdout.contains(
-            "STALL_RECOVERY_REPORT_FALLBACK_REASON=unauthorized-mutation:reporter-unauthorized"
+            "STALL_RECOVERY_REPORT_FALLBACK_REASON=unauthorized-mutation:reporter-unauthorized:no-context"
         ),
         "{chat_stdout}"
     );
@@ -375,7 +375,7 @@ fn filing_commands_refuse_mutation_before_their_helpers_run() {
     let dedup_stdout = String::from_utf8_lossy(&dedup.stdout);
     assert!(dedup_stdout.contains("STALL_RECOVERY_REPORT_STATUS=mutation-refused"));
     assert!(dedup_stdout.contains(
-        "STALL_RECOVERY_REPORT_FALLBACK_REASON=unauthorized-mutation:unauthorized-mutation"
+        "STALL_RECOVERY_REPORT_FALLBACK_REASON=unauthorized-mutation:no-context"
     ));
 }
 

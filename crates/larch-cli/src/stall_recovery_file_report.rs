@@ -3,7 +3,10 @@
 use crate::{
     github_repository_resolution::repository_ref,
     github_service::{ServiceFailure, with_github_service},
-    issue_mutation_support::{authorization_request, authorized, create_with_rollback},
+    issue_mutation_support::{
+        authorization_request, authorized, create_with_rollback, format_mutation_refusal_reason,
+        is_mutation_refusal_reason,
+    },
 };
 use larch_adapters::{
     github::{IssueMutationOwner, OctocrabGitHubService},
@@ -116,7 +119,7 @@ impl FileReportOutcome {
         Self {
             status: "mutation-refused",
             url: String::new(),
-            fallback_reason: format!("unauthorized-mutation:{reason}"),
+            fallback_reason: format_mutation_refusal_reason(reason),
         }
     }
 
@@ -253,7 +256,7 @@ fn prepare(mut arguments: FileReportArguments) -> Preparation {
             authorization_request(&mutation_context, &arguments.run_id, &trusted_root, false);
         if let Err(reason) = authorized(&authorization) {
             let reason = match reason {
-                "test-denied" => "test-denied",
+                reason if reason.ends_with(":test-denied") => "test-denied",
                 _ if mutation_context.is_empty() => "no-context-file",
                 _ if arguments.run_id.is_empty() => "missing-run-id",
                 _ if trusted_root.is_empty() => "missing-trusted-root",
@@ -432,8 +435,8 @@ async fn comment_on_duplicate(
         .await
     {
         Ok(comment) => FileReportOutcome::success("dedup-comment", comment.url),
-        Err(error) if error.reason() == "unauthorized-mutation" => {
-            FileReportOutcome::mutation_refused("invalid-context-file")
+        Err(error) if is_mutation_refusal_reason(error.reason()) => {
+            FileReportOutcome::mutation_refused(error.reason())
         }
         Err(error) if error.reason() == "invalid-read-back" => {
             FileReportOutcome::fallback("comment-url-missing")
@@ -480,8 +483,8 @@ async fn create_report(
     };
     match create_with_rollback(service, cancellation, &authorization, &request).await {
         Ok(created) => FileReportOutcome::success("filed", created.url),
-        Err((failure, _rollback)) if failure.error.reason() == "unauthorized-mutation" => {
-            FileReportOutcome::mutation_refused("invalid-context-file")
+        Err((failure, _rollback)) if is_mutation_refusal_reason(failure.error.reason()) => {
+            FileReportOutcome::mutation_refused(failure.error.reason())
         }
         Err((failure, _rollback))
             if failure.error.reason() == "invalid-read-back" && failure.orphan.is_none() =>

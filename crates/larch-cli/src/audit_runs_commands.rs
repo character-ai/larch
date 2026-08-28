@@ -63,8 +63,8 @@ use crate::{
     github_repository_resolution::{RemoteRepoResult, repository_ref, resolve_remote_repo},
     github_service::with_github_service,
     issue_mutation_support::{
-        EXIT_MUTATION_REFUSED, MUTATION_REFUSAL_REASON, authorization_request, authorized,
-        flat_error,
+        EXIT_MUTATION_REFUSED, authorization_request, authorized, flat_error,
+        format_mutation_refusal_reason,
     },
     learn_from_bugs_commands::audit_scan_boundary,
     run_log_publication_commands::synchronized_corpus_root,
@@ -669,7 +669,7 @@ pub fn close_priors(arguments: &[OsString]) -> ExitCode {
     let authorization = authorization_request("", "", "", parsed.flag("--operator-invoked"));
     if let Err(reason) = authorized(&authorization) {
         println!("CLOSE_PRIORS_REFUSED=true");
-        println!("REASON={MUTATION_REFUSAL_REASON}:{reason}");
+        println!("REASON={}", format_mutation_refusal_reason(reason));
         return ExitCode::from(EXIT_MUTATION_REFUSED);
     }
     let repo = parsed.value("--repo").map_or_else(
@@ -1357,7 +1357,7 @@ pub fn comment(arguments: &[OsString]) -> ExitCode {
     let authorization = authorization_request("", "", "", parsed.flag("--operator-invoked"));
     if let Err(reason) = authorized(&authorization) {
         println!("COMMENT_REFUSED=true");
-        println!("REASON={MUTATION_REFUSAL_REASON}:{reason}");
+        println!("REASON={}", format_mutation_refusal_reason(reason));
         return ExitCode::from(EXIT_MUTATION_REFUSED);
     }
     let repo = string_option(&parsed, "--repo");
