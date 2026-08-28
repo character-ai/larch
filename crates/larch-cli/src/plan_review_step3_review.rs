@@ -2,6 +2,7 @@
 //! bgjob parent/child that used to live in `design-step3-review.sh`.
 
 use std::{
+    collections::BTreeMap,
     env,
     ffi::{OsStr, OsString},
     fs,
@@ -34,6 +35,20 @@ const ADAPT_TIMEOUT: Duration = Duration::from_secs(600);
 const RUN_TIMEOUT: Duration = Duration::from_secs(21_600);
 const ORPHAN_TIMEOUT_S: &str = "7200";
 const LOOP_STDERR_SUMMARY_MAX_CHARS: usize = 1_024;
+const FORWARDED_DESIGN_SESSION_ENVIRONMENT: &[ChildEnvironment] = &[
+    ChildEnvironment::DesignTmpdir,
+    ChildEnvironment::SessionTmpdir,
+    ChildEnvironment::SessionId,
+    ChildEnvironment::Repo,
+    ChildEnvironment::RepoRoot,
+    ChildEnvironment::IssueNumber,
+    ChildEnvironment::CodexBinaryFound,
+    ChildEnvironment::CursorBinaryFound,
+    ChildEnvironment::LarchExternalHealthCheckTimeout,
+    ChildEnvironment::ClaudePluginRoot,
+    ChildEnvironment::LarchClaudeSourceFile,
+    ChildEnvironment::LarchRunId,
+];
 const ALLOWED_PHASES: &[&str] = &[
     "awaiting-apply",
     "awaiting-revise",
@@ -90,6 +105,7 @@ struct Step3ReviewArgs {
     resume: ResumeState,
     issue_number: String,
     repo: String,
+    nested_environment: BTreeMap<ChildEnvironment, OsString>,
 }
 
 /// Dispatch `plan-review resume-state {validate,write}`.
@@ -348,6 +364,10 @@ fn parse_step3_review(arguments: &[OsString]) -> Result<Step3ReviewArgs, ExitCod
         design_tmpdir: env::var("DESIGN_TMPDIR").unwrap_or_default(),
         issue_number: env::var("ISSUE_NUMBER").unwrap_or_default(),
         repo: env::var("REPO").unwrap_or_default(),
+        nested_environment: FORWARDED_DESIGN_SESSION_ENVIRONMENT
+            .iter()
+            .filter_map(|key| env::var_os(key.name()).map(|value| (*key, value)))
+            .collect(),
         public_args: public.clone(),
         ..Step3ReviewArgs::default()
     };
@@ -497,25 +517,23 @@ fn resolve_session_env(parsed: &mut Step3ReviewArgs) -> Result<(), ExitCode> {
     Ok(())
 }
 
-const SESSION_ENV_KEYS: &[&str] = &[
-    "DESIGN_TMPDIR",
-    "ISSUE_NUMBER",
-    "REPO",
-    "CLAUDE_PLUGIN_ROOT",
-];
-
 fn apply_export_rows(bytes: &[u8], parsed: &mut Step3ReviewArgs) {
     let text = String::from_utf8_lossy(bytes);
     for line in text.lines() {
-        let Some((key, value)) = parse_allowlisted_env_line(line, SESSION_ENV_KEYS, None, true)
-        else {
+        let Some((key, value)) = FORWARDED_DESIGN_SESSION_ENVIRONMENT.iter().find_map(|key| {
+            parse_allowlisted_env_line(line, &[key.name()], None, true)
+                .map(|(_, value)| (*key, value))
+        }) else {
             continue;
         };
-        match key.as_str() {
-            "DESIGN_TMPDIR" => parsed.design_tmpdir = value,
-            "ISSUE_NUMBER" => parsed.issue_number = value,
-            "REPO" => parsed.repo = value,
-            "CLAUDE_PLUGIN_ROOT" => parsed.plugin_root = value,
+        let _ = parsed
+            .nested_environment
+            .insert(key, OsString::from(&value));
+        match key {
+            ChildEnvironment::DesignTmpdir => parsed.design_tmpdir = value,
+            ChildEnvironment::IssueNumber => parsed.issue_number = value,
+            ChildEnvironment::Repo => parsed.repo = value,
+            ChildEnvironment::ClaudePluginRoot => parsed.plugin_root = value,
             _ => {}
         }
     }
@@ -983,20 +1001,30 @@ fn nested(
     timeout: Duration,
     parsed: &Step3ReviewArgs,
 ) -> Result<ProcessOutput, String> {
-    let mut environment = Vec::new();
+    let mut environment = parsed.nested_environment.clone();
     if !parsed.design_tmpdir.is_empty() {
-        environment.push((
+        let _ = environment.insert(
             ChildEnvironment::DesignTmpdir,
             OsString::from(&parsed.design_tmpdir),
-        ));
+        );
     }
     if !parsed.plugin_root.is_empty() {
-        environment.push((
+        let _ = environment.insert(
             ChildEnvironment::ClaudePluginRoot,
             OsString::from(&parsed.plugin_root),
-        ));
+        );
     }
-    delegate_larch_with_options(arguments, &environment, timeout)
+    if !parsed.session_env_path.is_empty() {
+        let _ = environment.insert(
+            ChildEnvironment::SessionEnvPath,
+            OsString::from(&parsed.session_env_path),
+        );
+    }
+    delegate_larch_with_options(
+        arguments,
+        &environment.into_iter().collect::<Vec<_>>(),
+        timeout,
+    )
 }
 
 fn forward_exit(output: &ProcessOutput) -> ExitCode {
@@ -1036,6 +1064,7 @@ mod tests {
     };
     use larch_core::{ProcessOutput, ProcessStatus};
     use std::{
+        collections::BTreeMap,
         ffi::OsString,
         fs,
         path::{Path, PathBuf},
@@ -1394,6 +1423,145 @@ mod tests {
                 })
         }));
         assert!(!root.join(".step3-review-result.env").is_file());
+    }
+
+    #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "the end-to-end child fixture pins the complete environment boundary"
+    )]
+    fn child_forwards_design_session_environment_to_review_loop() {
+        let (sandbox, root) = design();
+        fs::write(root.join("plan-review-scope-anchor.txt"), "anchor\n").expect("anchor");
+        let session_tmpdir = sandbox.path().join("session");
+        fs::create_dir(&session_tmpdir).expect("session tmpdir");
+        let session_env = sandbox.path().join("session-env.sh");
+        fs::write(&session_env, "export DESIGN_TMPDIR=/unresolved\n").expect("session env");
+        let merge = root.join("merge.env");
+        let captured = Arc::new(Mutex::new(None::<BTreeMap<String, String>>));
+        let captured_loop = Arc::clone(&captured);
+        let loop_root = root.clone();
+        let resolved = format!(
+            "export DESIGN_TMPDIR={}\n\
+             export SESSION_TMPDIR={}\n\
+             export SESSION_ID=session-9052\n\
+             export REPO=character-ai/larch\n\
+             export REPO_ROOT={}\n\
+             export ISSUE_NUMBER=9052\n\
+             export CODEX_BINARY_FOUND=true\n\
+             export CURSOR_BINARY_FOUND=true\n\
+             export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=17\n\
+             export CLAUDE_PLUGIN_ROOT={}\n\
+             export LARCH_CLAUDE_SOURCE_FILE={}/source.jsonl\n\
+             export LARCH_RUN_ID=run-9052\n\
+             export LARCH_LIVE_MUTATION_OK=true\n",
+            root.display(),
+            session_tmpdir.display(),
+            root.display(),
+            root.display(),
+            root.display(),
+        );
+        install_larch(move |args, environment| {
+            let text: Vec<String> = args
+                .iter()
+                .map(|value| value.to_string_lossy().into_owned())
+                .collect();
+            if text.iter().any(|value| value == "--resolve-session-env") {
+                return Ok(output(0, &resolved));
+            }
+            if text
+                .windows(2)
+                .any(|pair| pair == ["scope-anchor", "validate"])
+            {
+                return Ok(output(0, "OK=true\n"));
+            }
+            if text.windows(2).any(|pair| pair == ["plan-review", "run"]) {
+                *captured_loop.lock().expect("lock") = Some(
+                    environment
+                        .iter()
+                        .map(|(key, value)| {
+                            (key.name().to_owned(), value.to_string_lossy().into_owned())
+                        })
+                        .collect(),
+                );
+                fs::write(
+                    loop_root.join(".step3-review-result.env"),
+                    "NEXT_ACTION=step3b\nSTEP3_REVIEW_LOOP_STATUS=complete\nLOOP_STATUS=complete\n",
+                )
+                .expect("loop result");
+                return Ok(output(0, ""));
+            }
+            if text
+                .windows(2)
+                .any(|pair| pair == ["plan-review", "normalize-status"])
+            {
+                return Ok(output(0, ""));
+            }
+            if text
+                .windows(2)
+                .any(|pair| pair == ["bgjob", "write-merge-result-env"])
+            {
+                let path = text
+                    .windows(2)
+                    .find(|pair| pair[0] == "--path")
+                    .map(|pair| PathBuf::from(&pair[1]))
+                    .expect("path");
+                let source = text
+                    .windows(2)
+                    .find(|pair| pair[0] == "--source")
+                    .map(|pair| PathBuf::from(&pair[1]))
+                    .expect("source");
+                fs::copy(source, path).expect("publish merge");
+                return Ok(output(0, ""));
+            }
+            Ok(output(0, ""))
+        });
+        let _guard = HookGuard;
+        let code = step3_review(&step3_args(
+            &root,
+            &[
+                "--session-env-path",
+                &session_env.display().to_string(),
+                "--bgjob-child",
+                "--merge-result-env",
+                &merge.display().to_string(),
+            ],
+        ));
+        assert_eq!(code, std::process::ExitCode::SUCCESS);
+        let environment = captured.lock().expect("lock").clone().expect("loop env");
+        let canonical_root = root.canonicalize().expect("canonical design root");
+        let expected = BTreeMap::from([
+            (
+                "DESIGN_TMPDIR".to_owned(),
+                canonical_root.display().to_string(),
+            ),
+            (
+                "SESSION_TMPDIR".to_owned(),
+                session_tmpdir.display().to_string(),
+            ),
+            ("SESSION_ID".to_owned(), "session-9052".to_owned()),
+            ("REPO".to_owned(), "character-ai/larch".to_owned()),
+            ("REPO_ROOT".to_owned(), root.display().to_string()),
+            ("ISSUE_NUMBER".to_owned(), "9052".to_owned()),
+            ("CODEX_BINARY_FOUND".to_owned(), "true".to_owned()),
+            ("CURSOR_BINARY_FOUND".to_owned(), "true".to_owned()),
+            (
+                "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT".to_owned(),
+                "17".to_owned(),
+            ),
+            ("CLAUDE_PLUGIN_ROOT".to_owned(), root.display().to_string()),
+            (
+                "LARCH_CLAUDE_SOURCE_FILE".to_owned(),
+                root.join("source.jsonl").display().to_string(),
+            ),
+            ("LARCH_RUN_ID".to_owned(), "run-9052".to_owned()),
+            (
+                "SESSION_ENV_PATH".to_owned(),
+                session_env.display().to_string(),
+            ),
+        ]);
+        assert_eq!(environment, expected);
+        assert!(!environment.contains_key("LARCH_LIVE_MUTATION_OK"));
     }
 
     #[test]
