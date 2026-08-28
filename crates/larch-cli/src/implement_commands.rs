@@ -13,6 +13,7 @@
 use std::{
     env,
     ffi::OsString,
+    fmt::Write as _,
     fs,
     io::Write as _,
     os::unix::ffi::OsStrExt as _,
@@ -20,13 +21,18 @@ use std::{
     process::ExitCode,
 };
 
-use larch_core::{ChildEnvironment, ProcessOutput, binary_on_path, emit_kv, shell_quote};
+use larch_core::{
+    ChildEnvironment, KvDocument, ParseOptions, ProcessOutput, binary_on_path, emit_kv, kv_text,
+    shell_quote,
+};
 
 use crate::{
     argparse_compat::{
         ParsedCommandLine, choice_error, parse_with_flags, usage_error, write_stdout,
     },
+    bootstrap_support::write_session_text,
     implement_child_seam::delegate_larch_with_environment,
+    launcher_support::read_optional_confined_utf8_checked,
     oos_commands::atomic_write,
     scout_commands::filter_manifest_paths,
     tracking_issue_commands::adoption_sentinel_identity,
@@ -51,6 +57,9 @@ const CLONE_TAG_MAX_BYTES: usize = 32;
 const DIFFICULTY_VALUES: [&str; 3] = ["TRIVIAL", "MODERATE", "HARD"];
 /// Empty dynamic-archetype manifest written whenever normalization refuses.
 const EMPTY_SCOUT_MANIFEST: &str = "{\"archetypes\":[]}\n";
+/// Durable parent identity used when a nested Step 0 resumes without argv context.
+const LIFECYCLE_PARENT_CONTEXT_FILE: &str = "lifecycle-parent-context.env";
+const LIFECYCLE_PARENT_CONTEXT_KEY: &str = "LIFECYCLE_PARENT_CONTEXT";
 
 const HELP_FLAGS: [&str; 2] = ["-h", "--help"];
 
@@ -331,7 +340,10 @@ pub fn step0_bootstrap(arguments: &[OsString]) -> ExitCode {
             eprintln!("bootstrap invoke: --mode resume requires exported IMPLEMENT_TMPDIR");
             return ExitCode::from(2);
         };
-        request.apply_resume_rehydration(tmpdir);
+        if let Err(message) = request.apply_resume_rehydration(tmpdir) {
+            eprintln!("step-0-bootstrap: {message}");
+            return ExitCode::from(2);
+        }
     }
     if request.forked_target == "true"
         && request.upstream_repo.is_empty()
@@ -433,10 +445,15 @@ impl BootstrapRequest {
     }
 
     /// Fill each absent optional flag from its own durable resume artifact.
-    fn apply_resume_rehydration(&mut self, tmpdir: &Path) {
+    fn apply_resume_rehydration(&mut self, tmpdir: &Path) -> Result<(), String> {
         let session = tmpdir.join("session-env.sh");
         let run_flags = tmpdir.join("run-flags.sh");
         let seed = tmpdir.join("ship-seed-input.env");
+        if self.lifecycle_parent_context.is_empty()
+            && let Some(context) = read_lifecycle_parent_context(tmpdir)?
+        {
+            self.lifecycle_parent_context = context;
+        }
         if self.preflight_tmpdir.is_empty() {
             let file = tmpdir.join("preflight-tmpdir.env");
             if file.is_file() {
@@ -481,6 +498,7 @@ impl BootstrapRequest {
         if self.run_id.is_empty() {
             self.run_id = read_kv_first(&session, "RUN_ID");
         }
+        Ok(())
     }
 
     /// Adopt the fork identity a `--forked` run needs, echoing its envelope.
@@ -593,8 +611,8 @@ impl BootstrapRequest {
     ) -> i32 {
         let run_id = first_nonempty(&kv_value(invoke_stdout, "RUN_ID"), &self.run_id);
         let issue = first_nonempty(&kv_value(invoke_stdout, "ISSUE_NUMBER"), &self.issue_number);
-        let log_root =
-            PathBuf::from(kv_value(invoke_stdout, "IMPLEMENT_TMPDIR")).join("larch-logs");
+        let implement_tmpdir = kv_value(invoke_stdout, "IMPLEMENT_TMPDIR");
+        let log_root = PathBuf::from(&implement_tmpdir).join("larch-logs");
         let repo_root = env::current_dir().unwrap_or_default();
         let mut arguments: Vec<OsString> = [
             "run-log",
@@ -615,6 +633,33 @@ impl BootstrapRequest {
         .map(OsString::from)
         .collect();
         if !self.lifecycle_parent_context.is_empty() {
+            let parent_context = match kv_text(&[(
+                LIFECYCLE_PARENT_CONTEXT_KEY,
+                self.lifecycle_parent_context.as_str(),
+            )]) {
+                Ok(text) => text,
+                Err(error) => {
+                    writeln!(
+                        stderr,
+                        "step-0-bootstrap: invalid lifecycle parent context: {error}"
+                    )
+                    .expect("writing to String cannot fail");
+                    return 1;
+                }
+            };
+            if let Err(error) = write_session_text(
+                &implement_tmpdir,
+                LIFECYCLE_PARENT_CONTEXT_FILE,
+                &parent_context,
+                0o600,
+            ) {
+                writeln!(
+                    stderr,
+                    "step-0-bootstrap: could not persist lifecycle parent context: {error}"
+                )
+                .expect("writing to String cannot fail");
+                return 1;
+            }
             arguments.push(OsString::from("--lifecycle-parent-context"));
             arguments.push(OsString::from(self.lifecycle_parent_context.clone()));
         }
@@ -948,6 +993,32 @@ pub fn read_kv_or(path: &Path, key: &str, default: &str) -> String {
         }
     }
     default.to_owned()
+}
+
+/// Read the strict, session-confined parent identity written before lifecycle adoption.
+fn read_lifecycle_parent_context(tmpdir: &Path) -> Result<Option<String>, String> {
+    let path = tmpdir.join(LIFECYCLE_PARENT_CONTEXT_FILE);
+    let Some(text) = read_optional_confined_utf8_checked(&path)? else {
+        return Ok(None);
+    };
+    let document = KvDocument::parse(&text, ParseOptions::environment())
+        .map_err(|error| format!("{} is malformed: {error}", path.display()))?;
+    let [row] = document.rows() else {
+        return Err(format!(
+            "{} must contain exactly one {LIFECYCLE_PARENT_CONTEXT_KEY} row",
+            path.display()
+        ));
+    };
+    if row.key() != LIFECYCLE_PARENT_CONTEXT_KEY
+        || row.value().is_empty()
+        || row.value().contains(['\n', '\r'])
+    {
+        return Err(format!(
+            "{} has an invalid {LIFECYCLE_PARENT_CONTEXT_KEY} row",
+            path.display()
+        ));
+    }
+    Ok(Some(row.value().to_owned()))
 }
 
 /// Read one `KEY=value` row from a captured `KEY=value` stream.
@@ -1394,6 +1465,73 @@ mod tests {
         assert_eq!(
             fs::read_to_string(root.path().join("preflight-tmpdir.env")).expect("pointer"),
             "PREFLIGHT_TMPDIR=/tmp/preflight-42\n"
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_nested_resume_rehydrates_the_initial_lifecycle_parent_context() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        declare_tmpdir(Some(root.path()));
+        let initial_calls = recorder();
+        install_larch(initial_bootstrap_hook(
+            &initial_calls,
+            format!(
+                "RUN_ID=run-nested\nISSUE_NUMBER=42\nIMPLEMENT_TMPDIR={}\nREPO_UNAVAILABLE=false\n",
+                root.path().display()
+            ),
+            String::new(),
+            3,
+        ));
+
+        assert_eq!(
+            step0_bootstrap(&arguments(&[
+                "--mode",
+                "initial",
+                "--issue-number",
+                "42",
+                "--non-interactive",
+                "true",
+                "--lifecycle-parent-context",
+                "/tmp/im-parent-context",
+            ])),
+            ExitCode::from(3)
+        );
+        assert_eq!(
+            fs::read_to_string(root.path().join("lifecycle-parent-context.env"))
+                .expect("parent context"),
+            "LIFECYCLE_PARENT_CONTEXT=/tmp/im-parent-context\n"
+        );
+
+        let resume_calls = recorder();
+        install_larch(initial_bootstrap_hook(
+            &resume_calls,
+            format!(
+                "RUN_ID=run-nested\nISSUE_NUMBER=42\nIMPLEMENT_TMPDIR={}\nREPO_UNAVAILABLE=false\n",
+                root.path().display()
+            ),
+            "LIFECYCLE_STARTED=true\nRUN_LOG_STORAGE=enabled\nSTORAGE_PREFLIGHT=ok\n".to_owned(),
+            0,
+        ));
+
+        assert_eq!(
+            step0_bootstrap(&arguments(&[
+                "--mode",
+                "resume",
+                "--non-interactive",
+                "true",
+            ])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            recorded_value(
+                &resume_calls,
+                "lifecycle-start",
+                "--lifecycle-parent-context"
+            )
+            .as_deref(),
+            Some("/tmp/im-parent-context")
         );
         clear_hooks();
     }

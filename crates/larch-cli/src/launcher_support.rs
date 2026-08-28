@@ -1193,17 +1193,34 @@ pub fn copy_confined_checked(source: &Path, destination: &Path) -> Result<(), St
 
 /// Read an optional confined text file without following symlinks.
 pub fn read_optional_confined_checked(path: &Path) -> Result<String, String> {
-    if path.as_os_str().is_empty() {
+    let Some(path) = optional_confined_path(path)? else {
         return Ok(String::new());
+    };
+    let bytes = read_confined_bytes_checked(&path)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Read an optional confined regular file as strict UTF-8 without following symlinks.
+pub fn read_optional_confined_utf8_checked(path: &Path) -> Result<Option<String>, String> {
+    let Some(path) = optional_confined_path(path)? else {
+        return Ok(None);
+    };
+    let bytes = read_confined_bytes_checked(&path)?;
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|error| format!("{}: {error}", path.display()))
+}
+
+fn optional_confined_path(path: &Path) -> Result<Option<PathBuf>, String> {
+    if path.as_os_str().is_empty() {
+        return Ok(None);
     }
     let path = crate::argparse_compat::absolute_path(path).map_err(|error| error.to_string())?;
     match fs::symlink_metadata(&path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),
-        Err(error) => return Err(error.to_string()),
-        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.to_string()),
+        Ok(_) => Ok(Some(path)),
     }
-    let bytes = read_confined_bytes_checked(&path)?;
-    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// Resolve the canonical root and rebuilt path for one confined write.

@@ -34,6 +34,6 @@ Use this shape:
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -x "$IMPLEMENT_TMPDIR/larch-run.sh" ] && CLAUDE_PLUGIN_ROOT=$("$IMPLEMENT_TMPDIR/larch-run.sh" --print-plugin-root 2>/dev/null || true)
 export CLAUDE_PLUGIN_ROOT
-# Dirty-tree resume preserves implementer selection in the wrapper routing envelope.
+# Dirty-tree resume rehydrates implementer selection and lifecycle parent context from the tmpdir.
 LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume
 ```
