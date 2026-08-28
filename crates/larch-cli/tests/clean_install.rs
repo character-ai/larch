@@ -3554,6 +3554,60 @@ fn bootstrap_invoke_tracking_path_defers_unpublished_sentinel_and_activates_leas
     );
 }
 
+/// A dirty-tree resume with no prior coder selection must select one before
+/// running the absorbed continuation tail.
+#[cfg(unix)]
+#[test]
+fn bootstrap_resume_after_dirty_tree_selects_coder_and_routes_step2() {
+    let tracking = tracking_bootstrap_fixture();
+    let dirty_marker = tracking.session.join(".bootstrap-test-dirty-plan");
+    fs::write(&dirty_marker, "").expect("mark plan checkpoint dirty");
+
+    let initial =
+        invoke_tracking_bootstrap(&tracking, "dirty-run-8358", "true", "true", None, false);
+    assert!(
+        initial.status.success(),
+        "initial bootstrap failed: {}",
+        String::from_utf8_lossy(&initial.stderr),
+    );
+    let initial_stdout = String::from_utf8_lossy(&initial.stdout);
+    assert!(
+        initial_stdout.contains("IMPLEMENT_BAIL_REASON=dirty-tree\n"),
+        "stdout: {initial_stdout}"
+    );
+    assert!(
+        initial_stdout.contains("BOOTSTRAP_NEXT=dirty-recovery\n"),
+        "stdout: {initial_stdout}"
+    );
+    assert!(
+        !initial_stdout.contains("coder="),
+        "initial dirty-tree pass must stop before coder selection: {initial_stdout}"
+    );
+
+    fs::remove_file(dirty_marker).expect("restore clean plan checkpoint");
+    let resume = invoke_tracking_bootstrap_mode(
+        &tracking,
+        "resume",
+        "dirty-run-8358",
+        "true",
+        "true",
+        None,
+        false,
+    );
+    assert!(
+        resume.status.success(),
+        "resume bootstrap failed: {}",
+        String::from_utf8_lossy(&resume.stderr),
+    );
+    let resume_stdout = String::from_utf8_lossy(&resume.stdout);
+    for expected in ["coder=claude", "ROUTE=continue", "BOOTSTRAP_NEXT=step2"] {
+        assert!(
+            resume_stdout.contains(&format!("{expected}\n")),
+            "stdout: {resume_stdout}"
+        );
+    }
+}
+
 /// Failed lease activation must preserve both captured child streams in the
 /// redacted tracking diagnostic.
 #[cfg(unix)]
@@ -3758,6 +3812,27 @@ fn invoke_tracking_bootstrap(
     coder: Option<&str>,
     isolate_external_coders: bool,
 ) -> Output {
+    invoke_tracking_bootstrap_mode(
+        tracking,
+        "initial",
+        run_id,
+        self_review_requested,
+        self_implement_requested,
+        coder,
+        isolate_external_coders,
+    )
+}
+
+#[cfg(unix)]
+fn invoke_tracking_bootstrap_mode(
+    tracking: &TrackingBootstrapFixture,
+    mode: &str,
+    run_id: &str,
+    self_review_requested: &str,
+    self_implement_requested: &str,
+    coder: Option<&str>,
+    isolate_external_coders: bool,
+) -> Output {
     let inherited_path = if isolate_external_coders {
         std::ffi::OsString::from("/usr/bin:/bin")
     } else {
@@ -3773,7 +3848,7 @@ fn invoke_tracking_bootstrap(
             "bootstrap",
             "invoke",
             "--mode",
-            "initial",
+            mode,
             "--issue-number",
             "8358",
             "--run-id",
@@ -4252,7 +4327,16 @@ if [ -n "$bootstrap_session" ]; then
       ;;
     dirty-tree:checkpoint)
       if [ "$bootstrap_repo_available" = true ]; then
-        printf '%s\n' 'STATUS=clean'
+        if [ -f "$bootstrap_session/.bootstrap-test-dirty-plan" ]; then
+          if [ -f "$bootstrap_session/.bootstrap-test-dirty-check-seen" ]; then
+            printf '%s\n' 'STATUS=dirty'
+          else
+            : > "$bootstrap_session/.bootstrap-test-dirty-check-seen"
+            printf '%s\n' 'STATUS=clean'
+          fi
+        else
+          printf '%s\n' 'STATUS=clean'
+        fi
         exit 0
       fi
       ;;
