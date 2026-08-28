@@ -443,6 +443,10 @@ pub enum ChildEnvironment {
     OpenAiApiKey,
     CursorApiKey,
     CursorConfigDir,
+    /// Codex reviewer availability resolved during session setup.
+    CodexBinaryFound,
+    /// Cursor reviewer availability resolved during session setup.
+    CursorBinaryFound,
     /// Isolated Codex home directory injected into probe and launch children.
     CodexHome,
     NoOpenBrowser,
@@ -466,8 +470,16 @@ pub enum ChildEnvironment {
     ClaudeEffort,
     /// Explicit repository root used by nested session setup.
     RepoRoot,
+    /// GitHub repository slug associated with the current workflow.
+    Repo,
+    /// GitHub issue number associated with the current workflow.
+    IssueNumber,
     /// Run identity a composing command learned from its session artifacts.
     RunId,
+    /// Session identity associated with the current workflow.
+    SessionId,
+    /// Canonical larch run identity associated with the current workflow.
+    LarchRunId,
     ClaudeSubprocessHookExempt,
     /// Disables quiet stream routing inside a delegated larch verb.
     LarchQuietDisable,
@@ -611,6 +623,8 @@ impl ChildEnvironment {
             Self::OpenAiApiKey => env::OPENAI_API_KEY,
             Self::CursorApiKey => env::CURSOR_API_KEY,
             Self::CursorConfigDir => env::CURSOR_CONFIG_DIR,
+            Self::CodexBinaryFound => "CODEX_BINARY_FOUND",
+            Self::CursorBinaryFound => "CURSOR_BINARY_FOUND",
             Self::CodexHome => env::CODEX_HOME,
             Self::NoOpenBrowser => env::NO_OPEN_BROWSER,
             Self::ClaudePluginRoot => env::CLAUDE_PLUGIN_ROOT,
@@ -624,7 +638,11 @@ impl ChildEnvironment {
             Self::ClaudeCodeEffortLevel => "CLAUDE_CODE_EFFORT_LEVEL",
             Self::ClaudeEffort => "CLAUDE_EFFORT",
             Self::RepoRoot => env::REPO_ROOT,
+            Self::Repo => env::REPO,
+            Self::IssueNumber => env::ISSUE_NUMBER,
             Self::RunId => "RUN_ID",
+            Self::SessionId => env::SESSION_ID,
+            Self::LarchRunId => env::LARCH_RUN_ID,
             Self::ClaudeSubprocessHookExempt => env::LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT,
             Self::LarchQuietDisable => "LARCH_QUIET_DISABLE",
             Self::LarchRequirePlanDifficulty => "LARCH_REQUIRE_PLAN_DIFFICULTY",

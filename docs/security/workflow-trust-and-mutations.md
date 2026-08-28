@@ -174,6 +174,15 @@ directory and injects `CURSOR_CONFIG_DIR` only into the child `ProcessRequest`
 environment; it does not mutate the parent process environment, so parallel
 tests and parallel clones stay isolated.
 
+The Rust `plan-review step3-review` owner also uses the env-clearing process
+boundary for nested verified larch commands. It forwards only its fixed,
+non-secret design-session context through typed `ChildEnvironment` entries:
+the design and session roots, session and run identities, repository and issue
+identity, reviewer availability, external health-check timeout, plugin root,
+Claude source path, and explicit session-env path. It does not forward
+`LARCH_LIVE_MUTATION_OK`. A nested mutation must validate its session context
+through the scoped live-mutation gate below.
+
 `analyze-bugs runtime` uses closed `HostUtilityProgram` cases: one fixed legacy
 test runner for Gix-discovered, live, repository-relative retired-runtime test
 paths, plus fixed Make harness targets selected from touched-path prefixes. It
