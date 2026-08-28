@@ -307,6 +307,11 @@ fixed maintainer-controlled text, while call sites that surface untrusted
 external text must invoke the owning redactor first. Do not pass raw vendor,
 GitHub, repository, or subprocess content to a plain `larch_err` wrapper.
 
+Implement Step 0 lease failures preserve the verified-larch child's bounded
+stdout and stderr in the session-private tracking diagnostic. The tracking
+bail owner redacts the complete composed diagnostic before writing it under
+the session root; it never writes the raw child streams directly.
+
 Failed Codex, Cursor, and Claude launches may expose a bounded stderr tail.
 `LARCH_FAILED_AGENT_STDERR_TAIL_LINES` controls the line limit and `0` disables
 the tail. The default is 30 lines. After line limiting, the tail passes through
