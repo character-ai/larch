@@ -311,7 +311,7 @@ fn check_prompt(prompt: &Prompt, ownership: &BTreeMap<String, Ownership>) -> Vec
         .is_some_and(|row| has_external_owner(prompt, row));
     let instruction = if externally_owned {
         format!(
-            "**MANDATORY: Follow `${{CLAUDE_PLUGIN_ROOT}}/skills/shared/run-lifecycle.md` with declared skill `{0}`. The `{0}` row in `${{CLAUDE_PLUGIN_ROOT}}/skills/shared/run-lifecycle-ownership.tsv` has specialized owners. Do NOT run the shared contract's generic `run-log lifecycle-start` or terminal commands. Pass a leading `--lifecycle-parent-context` only through Step 0 to the registered start owner.**",
+            "**MANDATORY: `{0}`: Rust owns lifecycle start/finish (`skills/shared/run-lifecycle-ownership.tsv`). Never run the generic lifecycle (`${{CLAUDE_PLUGIN_ROOT}}/skills/shared/run-lifecycle.md`). Send `--lifecycle-parent-context` only to Step 0.**",
             prompt.skill
         )
     } else {

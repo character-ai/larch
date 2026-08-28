@@ -75,7 +75,7 @@ fn skill_run_lifecycle_accepts_specialized_instruction_for_external_owners() {
     );
     repository.write(
         "skills/design/SKILL.md",
-        b"# larch-run-lifecycle: shared-v1 skill=design\nallowed-tools: Bash\n**MANDATORY: Follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `design`. The `design` row in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle-ownership.tsv` has specialized owners. Do NOT run the shared contract's generic `run-log lifecycle-start` or terminal commands. Pass a leading `--lifecycle-parent-context` only through Step 0 to the registered start owner.**\ncode-quality / risk-integration / correctness / architecture / security\n",
+        b"# larch-run-lifecycle: shared-v1 skill=design\nallowed-tools: Bash\n**MANDATORY: `design`: Rust owns lifecycle start/finish (`skills/shared/run-lifecycle-ownership.tsv`). Never run the generic lifecycle (`${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md`). Send `--lifecycle-parent-context` only to Step 0.**\ncode-quality / risk-integration / correctness / architecture / security\n",
     );
     repository.write(
         "crates/larch-cli/src/design_step0_commands.rs",
