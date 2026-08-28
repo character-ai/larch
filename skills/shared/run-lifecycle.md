@@ -2,12 +2,13 @@
 
 This contract applies only to a skill whose `SKILL.md` contains
 `# larch-run-lifecycle: shared-v1 skill=<name>` in its YAML frontmatter.
-The machine-checked ownership registry is
-`skills/shared/run-lifecycle-ownership.tsv`. A specialized row replaces the
-generic start and terminal commands below. Do not run a second lifecycle path
-for a specialized skill.
+Before running a lifecycle command, resolve `<name>` in the machine-checked
+`skills/shared/run-lifecycle-ownership.tsv` registry. The `*` row selects the
+generic start and terminal commands below. A named row selects its registered
+owners instead. Do not run a second lifecycle path for a named skill.
 
-At invocation start, run this command before the skill performs work:
+Only for a skill resolved through the `*` row, run this command at invocation
+start before the skill performs work:
 
 Use the generic `$PWD` fallback only when this Bash call starts in the client
 repository. Bash tool calls do not inherit a `cd` from an earlier call. If this

@@ -13,7 +13,7 @@ argument-hint: "[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch, Skill
 ---
 
-**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `implement`.**
+**MANDATORY: `implement`: Rust owns lifecycle start/finish (`skills/shared/run-lifecycle-ownership.tsv`). Never run the generic lifecycle (`${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md`). Send `--lifecycle-parent-context` only to Step 0.**
 # Implement Skill
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
@@ -150,7 +150,7 @@ Use this macro after Step 3 emits `STATUS=fail` or a folded composite emits `NEX
 
 ## Flags
 
-**Invocation contract**: Nested input: `--lifecycle-parent-context <absolute-context-path>`; bind `LIFECYCLE_PARENT_CONTEXT`, remove it, and forward it to Step 0. Other forms abort before Preflight.
+**Invocation contract**: Accept one leading `--lifecycle-parent-context <absolute-context-path>`; bind `LIFECYCLE_PARENT_CONTEXT` and remove it. Reject other forms before Preflight.
 
 **Flags**: Parse flags from the start of `$ARGUMENTS` before the positional issue. Flags may appear in any order. **All boolean flags default to `false`.** Set a mental flag to `true` only when its listed token appears. `--force` and `-f` both set `force_requested=true`. Strip recognized flags before binding the issue.
 
@@ -259,7 +259,7 @@ export CLAUDE_PLUGIN_ROOT
 LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode initial --issue-number "$TARGET_ISSUE_NUMBER" --preflight-tmpdir "$PREFLIGHT_TMPDIR" --force-requested "${force_requested:-false}" --self-review-requested "${self_review:-false}" --self-implement-requested "${self_implement:-false}" --forked-target "${forked_target:-false}" --merge-requested "${merge:-false}" --draft-requested "${draft:-false}" --no-admin-fallback "${no_admin_fallback:-false}" --no-logs-commit "${no_logs_commit:-false}" --upstream-repo "${UPSTREAM_REPO:-}" --run-id "${RUN_ID:-}" --caller-env "${CALLER_ENV_PATH:-}" --session-env "${SESSION_ENV_PATH:-}" --coder "${coder:-}" --difficulty "${difficulty:-}" --lifecycle-parent-context "${LIFECYCLE_PARENT_CONTEXT:-}"
 ```
 
-Parse wrapper stdout as a routing envelope; `$IMPLEMENT_TMPDIR/bootstrap-routing.env` is durable. On `--mode resume`, restore non-empty coder routing and lifecycle parent context from `$IMPLEMENT_TMPDIR/lifecycle-parent-context.env`. Rust owns Step 0; `step-0-bootstrap.sh` owns the wrapper. Offline coverage: `crates/larch-cli/src/implement_bootstrap_continuation.rs` unit tests plus Rust parity. Preserve lifecycle-start `CONTEXT_FILE` for child skills. If `/implement` would replace the target with 2+ issues, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/umbrella-partition.md` completely and execute it. On exit `0`, require `BOOTSTRAP_NEXT` in `step2|dirty-recovery|degraded-prompt|rebase-routing|cleanup`; if `BOOTSTRAP_NEXT` is absent or any other value, treat the bootstrap envelope as malformed and abort with exit `2`. Routing after parsing:
+Parse wrapper stdout as a routing envelope; `$IMPLEMENT_TMPDIR/bootstrap-routing.env` is durable. On `--mode resume`, restore persisted coder and parent-context state from `$IMPLEMENT_TMPDIR/lifecycle-parent-context.env`. Rust owns Step 0; `step-0-bootstrap.sh` owns the wrapper. Offline coverage: `crates/larch-cli/src/implement_bootstrap_continuation.rs` unit tests plus Rust parity. Preserve `CONTEXT_FILE` for child skills. If `/implement` would replace the target with 2+ issues, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/umbrella-partition.md` completely and execute it. On exit `0`, require `BOOTSTRAP_NEXT` in `step2|dirty-recovery|degraded-prompt|rebase-routing|cleanup`; if `BOOTSTRAP_NEXT` is absent or any other value, treat the bootstrap envelope as malformed and abort with exit `2`. Routing after parsing:
 
 | `BOOTSTRAP_NEXT` | Routing |
 |---|---|

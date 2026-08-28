@@ -6,7 +6,7 @@ argument-hint: "[-p|--partition] [--brainstorm] [--per-round-approval] [--skip-a
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
-**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `design`.**
+**MANDATORY: `design`: Rust owns lifecycle start/finish (`skills/shared/run-lifecycle-ownership.tsv`). Never run the generic lifecycle (`${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md`). Send `--lifecycle-parent-context` only to Step 0.**
 # Design Skill
 
 Design an implementation plan and review it with the mechanical plan-review panel. `skills/design/references/plan-review-runtime.md` owns Step 3 topology, slots, adjudication, and voting; `plan-review.md` is editing-only authority. Flow: Step 2a sentinel prep is folded into the Step 2b drafter wrapper, Step 2b drafts from direct codebase inspection, Step 3 runs review, Step 5b files accepted non-security OOS via `/larch:issue`, and Step 5c writes `larch:plan` with `scripts/larch.sh named-block write --marker plan`. No design manifest export.
