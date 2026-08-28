@@ -1426,6 +1426,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "the end-to-end child fixture pins the complete environment boundary"
+    )]
     fn child_forwards_design_session_environment_to_review_loop() {
         let (sandbox, root) = design();
         fs::write(root.join("plan-review-scope-anchor.txt"), "anchor\n").expect("anchor");
