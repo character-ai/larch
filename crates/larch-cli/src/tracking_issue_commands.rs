@@ -896,10 +896,9 @@ fn initial_lease_mutation(
 
 fn initial_lease_identity(body: &str, head_sha: &str) -> Result<(String, String), String> {
     if let Some(receipt) = parse_receipt(body) {
-        if receipt.base_sha != head_sha {
-            return Err("implementation-lease-base-mismatch".to_owned());
-        }
-        return Ok((receipt.base_sha, receipt.plan_sha256));
+        // Bootstrap already validated the receipt's plan scope against this
+        // base target, so the lease records the head the run starts from.
+        return Ok((head_sha.to_owned(), receipt.plan_sha256));
     }
     if receipt_marker_present(body) {
         return Err("implementation-lease-plan-receipt-invalid".to_owned());
@@ -3217,12 +3216,14 @@ mod tests {
     }
 
     #[test]
-    fn initial_lease_and_active_title_share_one_freshness_bound_request() {
+    fn initial_lease_admits_a_scope_validated_base_advance_in_one_freshness_bound_request() {
         let reference =
             larch_core::GitHubRepositoryRef::new("owner", "repo").expect("valid repository");
+        let plan = "### UPDATED: crates/larch-cli/src/tracking_issue_commands.rs\n\nUse the validated base target.\n\n## Breaking changes and migration\n\nNone.\n";
+        let plan_sha256 = sha256_text(plan);
         let receipt = format!(
             "<!-- larch:plan-receipt v1 plan_sha256={} base_sha={} blockers_sha256={} owners_sha256={} -->\n",
-            "b".repeat(64),
+            plan_sha256,
             "a".repeat(40),
             "c".repeat(64),
             "d".repeat(64),
@@ -3231,7 +3232,7 @@ mod tests {
             repository: reference.clone(),
             issue: 7,
             title: "[DESIGNED] Work".to_owned(),
-            body: receipt,
+            body: format!("<!-- larch:plan:start -->\n{plan}<!-- larch:plan:end -->\n{receipt}"),
             labels: std::collections::BTreeSet::from(["alpha".to_owned(), "z".to_owned()]),
             state: larch_core::GitHubIssueState::Open,
             updated_at: "2026-08-10T00:00:01Z".to_owned(),
@@ -3248,7 +3249,7 @@ mod tests {
             issue: "7",
             run_id: "run-7",
             branch: "feature/work",
-            head_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            head_sha: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
             expected_updated_at: "2026-08-10T00:00:00Z",
             expected_body_sha256: &expected_body_sha256,
             expected_title_sha256: &expected_title_sha256,
@@ -3263,6 +3264,8 @@ mod tests {
             (lease.run_id.as_str(), lease.branch.as_str()),
             ("run-7", "feature/work")
         );
+        assert_eq!(lease.base, request.head_sha);
+        assert_eq!(lease.plan, plan_sha256);
         assert_eq!(
             mutation.fields,
             std::collections::BTreeSet::from([
