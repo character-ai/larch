@@ -710,8 +710,7 @@ async fn fetch_canonical_issue(
     if let Some(existing) = issues.get(&number) {
         if existing != &canonical {
             return Err(format!(
-                "search result and canonical read returned unequal copies of #{}",
-                number
+                "search result and canonical read returned unequal copies of #{number}"
             ));
         }
         return Ok(());
