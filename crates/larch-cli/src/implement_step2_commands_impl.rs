@@ -762,7 +762,7 @@ fn state_larch_launch(state: &DispatchState, argv: &[OsString]) -> Result<Proces
         &state.plugin_root,
         argv,
         &step2_child_environment(),
-        DISPATCH_TIMEOUT,
+        worker_deadline(STEP2_DISPATCH_BUDGET_SECONDS),
     )
 }
 

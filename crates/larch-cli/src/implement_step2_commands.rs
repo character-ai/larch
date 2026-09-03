@@ -22,7 +22,6 @@ use std::{
     path::{Path, PathBuf},
     process::ExitCode,
     sync::{Mutex, PoisonError},
-    time::Duration,
 };
 
 use larch_adapters::{AddRequest, CommitMessage, CommitRequest, GitFilePath, GixRepository};
@@ -53,6 +52,7 @@ use crate::{
         STEP2_DISPATCH_BUDGET_SECONDS, capture_postlaunch_porcelain, capture_prelaunch_porcelain,
         delegate_verified_larch, rehydrate_session, resolve_session_repo_root,
         run_step2_dispatch_adapter, run_verified_larch_env_in, run_verified_larch_env_in_timeout,
+        worker_deadline,
     },
     implement_launcher_commands::{CODEX_IMPLEMENT_MODEL, cursor_implement_model},
     implement_preflight_commands::{
@@ -71,10 +71,6 @@ const STEP2_HELP: &str = "usage: cli.py implement step2-dispatch [-h] --tmpdir T
 
 const IMPLEMENT_STEP2_LABEL: &str = "implement-step2";
 const LAUNCHER_TIMEOUT_SECONDS: u64 = STEP2_DISPATCH_BUDGET_SECONDS as u64;
-/// Headroom for the verified-larch parents around the external implementer.
-const DISPATCH_TIMEOUT_MARGIN_SECONDS: u64 = 120;
-const DISPATCH_TIMEOUT: Duration =
-    Duration::from_secs(LAUNCHER_TIMEOUT_SECONDS + DISPATCH_TIMEOUT_MARGIN_SECONDS);
 const ARCH_KNOWLEDGE_SNAPSHOT: &str = "step2-architectural-knowledge.env";
 const PRIOR_ATTEMPT_REASON: &str = "prior-attempt-unfinalized";
 const COMPLETION_RETRY_STATE_INVALID: &str = "completion-retry-state-invalid";
@@ -159,8 +155,13 @@ pub fn run_dispatch(arguments: &[OsString]) -> ExitCode {
             &codex_binary_found,
             &cursor_binary_found,
         );
-    let outcome =
-        run_verified_larch_env_in_timeout(&repo_root, &plugin_root, &child, &[], DISPATCH_TIMEOUT);
+    let outcome = run_verified_larch_env_in_timeout(
+        &repo_root,
+        &plugin_root,
+        &child,
+        &[],
+        worker_deadline(STEP2_DISPATCH_BUDGET_SECONDS),
+    );
     let result = match outcome {
         Ok(output) => output,
         Err(detail) => {
@@ -440,8 +441,8 @@ mod commands_tests {
             .lock()
             .expect("observed timeout lock")
             .expect("step2-dispatch request timeout");
-        assert_eq!(timeout, DISPATCH_TIMEOUT);
-        assert!(timeout > Duration::from_secs(LAUNCHER_TIMEOUT_SECONDS));
+        assert_eq!(timeout, worker_deadline(STEP2_DISPATCH_BUDGET_SECONDS));
+        assert!(timeout > std::time::Duration::from_secs(LAUNCHER_TIMEOUT_SECONDS));
     }
 
     #[test]

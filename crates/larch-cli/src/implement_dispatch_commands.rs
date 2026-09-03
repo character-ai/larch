@@ -3,7 +3,7 @@
 use std::{
     env,
     ffi::{OsStr, OsString},
-    fs,
+    fmt, fs,
     io::Write as _,
     path::{Path, PathBuf},
     process::ExitCode,
@@ -13,9 +13,10 @@ use std::{
 use larch_adapters::{GixRepository, SystemProcessIdentityHost};
 use larch_core::{
     CHECKS_TERMINAL_ACTIONS, ChildEnvironment, CommentPolicy, DuplicateInputPolicy,
-    DuplicatePolicy, ExternalProgram, KvDocument, LarchProgram, ParseOptions, ProcessOutput,
-    ProcessRequest, ProcessStatus, RecoveryPorcelainInputs, StatusOptions, bgjob_dir,
-    child_liveness, compute_recovery_paths, daemon_liveness, ensure_under,
+    DuplicatePolicy, ExternalProgram, KvDocument, LarchProgram, ParseOptions, ProcessError,
+    ProcessErrorKind, ProcessOutput, ProcessRequest, ProcessStatus, RecoveryPorcelainInputs,
+    StatusOptions, bgjob_dir, child_liveness, compute_recovery_paths, daemon_liveness,
+    ensure_under,
     implement::{
         ChecksIdentityError, ChecksInputIdentity, checks_run_relevant_args,
         classify_completed_result, classify_live_seed, identities_match, parse_porcelain_z,
@@ -29,7 +30,7 @@ use larch_core::{
 use crate::{
     argparse_compat::{ParsedCommandLine, choice_error, parse_required_with_help, usage_error},
     checks_identity_commands::{live_identity, validate_repo_root},
-    child_process::{bounded_request_in, run_bounded},
+    child_process::{bounded_request_in, run_bounded_detailed},
     implement_child_seam::resolve_plugin_root,
     runtime_entrypoint::{
         publish_session_environment, run_verified_larch_with_options_in,
@@ -47,6 +48,7 @@ const STEP_HELP: &str = "usage: cli.py implement run-step-checks [-h] --site SIT
 const ADAPT_TIMEOUT: Duration = Duration::from_secs(600);
 const ADAPT_GRACE: Duration = Duration::from_secs(5);
 const ADAPT_OUTPUT_LIMIT: usize = 256 * 1024;
+const WORKER_DEADLINE_MARGIN_SECONDS: u64 = 120;
 pub const STEP2_DISPATCH_BUDGET_SECONDS: u32 = 7_200;
 const CHECKS_HEAD: &str = "CHECKS_INPUT_HEAD_SHA";
 const CHECKS_FP: &str = "CHECKS_INPUT_TREE_FP";
@@ -62,9 +64,44 @@ type LarchHook = std::sync::Arc<
 type LarchRequestObserver = std::sync::Arc<dyn Fn(&ProcessRequest) + Send + Sync>;
 
 #[cfg(test)]
+type LarchDeadlineObserver = std::sync::Arc<dyn Fn(&[OsString], Duration) + Send + Sync>;
+
+#[cfg(test)]
 std::thread_local! {
     static TEST_LARCH: std::cell::RefCell<Option<LarchHook>> = const { std::cell::RefCell::new(None) };
     static TEST_REQUEST_OBSERVER: std::cell::RefCell<Option<LarchRequestObserver>> = const { std::cell::RefCell::new(None) };
+    static TEST_DEADLINE_OBSERVER: std::cell::RefCell<Option<LarchDeadlineObserver>> = const { std::cell::RefCell::new(None) };
+}
+
+/// A verified-larch launch failure that retains the process failure class.
+#[derive(Debug)]
+pub enum VerifiedLarchRunError {
+    Message(String),
+    Process(ProcessError),
+}
+
+impl VerifiedLarchRunError {
+    #[must_use]
+    pub fn is_timed_out(&self) -> bool {
+        matches!(self, Self::Process(error) if error.kind() == ProcessErrorKind::TimedOut)
+    }
+}
+
+impl fmt::Display for VerifiedLarchRunError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Message(message) => formatter.write_str(message),
+            Self::Process(error) => write!(formatter, "could not start verified larch: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for VerifiedLarchRunError {}
+
+/// Give a captured worker more time than the bgjob daemon that owns it.
+#[must_use]
+pub fn worker_deadline(budget_s: u32) -> Duration {
+    Duration::from_secs(u64::from(budget_s) + WORKER_DEADLINE_MARGIN_SECONDS)
 }
 
 pub fn delegate_verified_larch(
@@ -72,23 +109,63 @@ pub fn delegate_verified_larch(
     root: &Path,
     args: &[OsString],
 ) -> Result<ProcessOutput, String> {
+    delegate_verified_larch_timeout(cwd, root, args, ADAPT_TIMEOUT)
+        .map_err(|error| error.to_string())
+}
+
+/// Delegate through the verified bootstrap under a caller-owned deadline.
+pub fn delegate_verified_larch_timeout(
+    cwd: &Path,
+    root: &Path,
+    args: &[OsString],
+    timeout: Duration,
+) -> Result<ProcessOutput, VerifiedLarchRunError> {
+    delegate_verified_larch_env_timeout(cwd, root, args, &[], timeout)
+}
+
+/// Delegate with explicit child environment under a caller-owned deadline.
+pub fn delegate_verified_larch_env_timeout(
+    cwd: &Path,
+    root: &Path,
+    args: &[OsString],
+    extra: &[(ChildEnvironment, OsString)],
+    timeout: Duration,
+) -> Result<ProcessOutput, VerifiedLarchRunError> {
     #[cfg(test)]
-    if let Some(hook) = TEST_LARCH.with(|slot| slot.borrow().clone()) {
-        return hook(cwd, root, args);
+    {
+        if let Some(observer) = TEST_DEADLINE_OBSERVER.with(|slot| slot.borrow().clone()) {
+            observer(args, timeout);
+        }
+        if let Some(hook) = TEST_LARCH.with(|slot| slot.borrow().clone()) {
+            return hook(cwd, root, args).map_err(VerifiedLarchRunError::Message);
+        }
     }
-    run_verified_larch_in(cwd, root, args)
+    run_verified_larch_env_in_timeout_detailed(cwd, root, args, extra, timeout)
 }
 
 /// Compose a verified larch command with the published session environment.
 pub fn delegate_session_larch(cwd: &Path, args: &[OsString]) -> Result<ProcessOutput, String> {
+    delegate_session_larch_timeout(cwd, args, ADAPT_TIMEOUT).map_err(|error| error.to_string())
+}
+
+/// Compose a session-aware verified larch command under a caller deadline.
+pub fn delegate_session_larch_timeout(
+    cwd: &Path,
+    args: &[OsString],
+    timeout: Duration,
+) -> Result<ProcessOutput, VerifiedLarchRunError> {
     #[cfg(test)]
     {
+        if let Some(observer) = TEST_DEADLINE_OBSERVER.with(|slot| slot.borrow().clone()) {
+            observer(args, timeout);
+        }
         if let Some(hook) = TEST_LARCH.with(|slot| slot.borrow().clone()) {
-            let root = resolve_plugin_root()?;
-            return hook(cwd, &root, args);
+            let root = resolve_plugin_root().map_err(VerifiedLarchRunError::Message)?;
+            return hook(cwd, &root, args).map_err(VerifiedLarchRunError::Message);
         }
     }
-    run_verified_larch_with_options_in(args, &[], cwd, ADAPT_TIMEOUT)
+    run_verified_larch_with_options_in(args, &[], cwd, timeout)
+        .map_err(VerifiedLarchRunError::Message)
 }
 
 /// Answer every `delegate_verified_larch` call from `hook` for this thread (test only).
@@ -105,11 +182,20 @@ pub fn install_test_request_observer(observer: impl Fn(&ProcessRequest) + Send +
     TEST_REQUEST_OBSERVER.with(|slot| *slot.borrow_mut() = Some(std::sync::Arc::new(observer)));
 }
 
+/// Observe caller-selected verified-larch deadlines on this thread (test only).
+#[cfg(test)]
+pub fn install_test_larch_deadline_observer(
+    observer: impl Fn(&[OsString], Duration) + Send + Sync + 'static,
+) {
+    TEST_DEADLINE_OBSERVER.with(|slot| *slot.borrow_mut() = Some(std::sync::Arc::new(observer)));
+}
+
 /// Restore every dispatch test seam and the child seam for this thread (test only).
 #[cfg(test)]
 pub fn clear_test_hooks() {
     TEST_LARCH.with(|slot| *slot.borrow_mut() = None);
     TEST_REQUEST_OBSERVER.with(|slot| *slot.borrow_mut() = None);
+    TEST_DEADLINE_OBSERVER.with(|slot| *slot.borrow_mut() = None);
     crate::implement_child_seam::clear_hooks();
 }
 
@@ -560,11 +646,15 @@ fn run_step_checks_worker(
     tmpdir: &Path,
     repo_root: &Path,
 ) -> Result<(i32, String), String> {
+    let (_, budget_s) = resolve_step_and_budget(site);
+    let timeout = worker_deadline(budget_s);
     let output = if commit_site.is_empty() {
-        delegate_session_larch(
+        delegate_session_larch_timeout(
             repo_root,
             &checks_run_relevant_args(site, tmpdir, repo_root),
-        )?
+            timeout,
+        )
+        .map_err(|error| error.to_string())?
     } else {
         // #8611: `checks-commit-route` is now Rust-owned. Route it through the
         // verified bootstrap as a captured child so this worker keeps appending
@@ -583,7 +673,8 @@ fn run_step_checks_worker(
         args.extend([OsString::from("--forked-target"), OsString::from(forked)]);
         let root =
             resolve_plugin_root().map_err(|error| format!("checks-commit-route: {error}"))?;
-        delegate_verified_larch(repo_root, &root, &args)?
+        delegate_verified_larch_timeout(repo_root, &root, &args, timeout)
+            .map_err(|error| error.to_string())?
     };
     let text = String::from_utf8_lossy(output.stdout()).into_owned();
     if !output.stderr().is_empty() {
@@ -1069,14 +1160,6 @@ fn select_step2_owner_pid(configured: Option<&str>, parent: &str) -> String {
         .to_owned()
 }
 
-fn run_verified_larch_in(
-    cwd: &Path,
-    root: &Path,
-    args: &[OsString],
-) -> Result<ProcessOutput, String> {
-    run_verified_larch_env_in(cwd, root, args, &[])
-}
-
 /// Run a verified larch verb with the standard child env plus caller extras.
 pub fn run_verified_larch_env_in(
     cwd: &Path,
@@ -1088,8 +1171,8 @@ pub fn run_verified_larch_env_in(
 }
 
 /// Run a verified larch verb like [`run_verified_larch_env_in`] under a caller
-/// deadline. Step 2 and the commit-route legs use site-specific deadlines for
-/// children whose own budgets exceed the generic 600-second bound.
+/// deadline. Long bgjob worker legs use site-specific deadlines for children
+/// whose own budgets exceed the generic 600-second bound.
 pub fn run_verified_larch_env_in_timeout(
     cwd: &Path,
     root: &Path,
@@ -1097,8 +1180,22 @@ pub fn run_verified_larch_env_in_timeout(
     extra: &[(ChildEnvironment, OsString)],
     timeout: Duration,
 ) -> Result<ProcessOutput, String> {
-    let program = LarchProgram::bootstrap(root)
-        .map_err(|error| format!("could not select verified larch entrypoint: {error}"))?;
+    run_verified_larch_env_in_timeout_detailed(cwd, root, args, extra, timeout)
+        .map_err(|error| error.to_string())
+}
+
+fn run_verified_larch_env_in_timeout_detailed(
+    cwd: &Path,
+    root: &Path,
+    args: &[OsString],
+    extra: &[(ChildEnvironment, OsString)],
+    timeout: Duration,
+) -> Result<ProcessOutput, VerifiedLarchRunError> {
+    let program = LarchProgram::bootstrap(root).map_err(|error| {
+        VerifiedLarchRunError::Message(format!(
+            "could not select verified larch entrypoint: {error}"
+        ))
+    })?;
     let request = bounded_request_in(
         ExternalProgram::Larch(program),
         args.iter().cloned(),
@@ -1106,13 +1203,14 @@ pub fn run_verified_larch_env_in_timeout(
         timeout,
         ADAPT_GRACE,
         ADAPT_OUTPUT_LIMIT,
-    )?;
+    )
+    .map_err(VerifiedLarchRunError::Message)?;
     let request = decorate_verified_larch_env_in(request, root, cwd, extra);
     #[cfg(test)]
     if let Some(observer) = TEST_REQUEST_OBSERVER.with(|slot| slot.borrow().clone()) {
         observer(&request);
     }
-    run_bounded(request).map_err(|error| format!("could not start verified larch: {error}"))
+    run_bounded_detailed(request).map_err(VerifiedLarchRunError::Process)
 }
 
 /// Apply the verified-larch context allowlist plus the site-specific overrides
@@ -1200,8 +1298,8 @@ mod tests {
         CHECKS_FP, CHECKS_HEAD, CHECKS_SCHEMA, IDENTITY_FAILED, LaunchIdentity, TEST_LARCH,
         format_rows, integrity_rows, kv_value, opt_string, prepare_checks_rejoin,
         publish_identity_child, publish_rows, run_child, run_parent, run_step_checks,
-        safe_merge_env, select_step2_owner_pid, session_key, status_byte, stdout_is_merge_rows,
-        terminal_action_in_output, unlink_safe,
+        run_step_checks_worker, safe_merge_env, select_step2_owner_pid, session_key, status_byte,
+        stdout_is_merge_rows, terminal_action_in_output, unlink_safe, worker_deadline,
     };
     use larch_core::{ChangeKind, ProcessOutput, ProcessStatus};
     use larch_test_support::{GitFixture, GitRepository};
@@ -1210,6 +1308,7 @@ mod tests {
         fs,
         path::{Path, PathBuf},
         sync::Arc,
+        time::Duration,
     };
     use tempfile::TempDir;
 
@@ -1242,8 +1341,7 @@ mod tests {
     }
 
     fn clear_hooks() {
-        TEST_LARCH.with(|slot| *slot.borrow_mut() = None);
-        crate::implement_child_seam::clear_hooks();
+        super::clear_test_hooks();
     }
 
     fn identity(repo: &Path) -> LaunchIdentity {
@@ -1582,6 +1680,61 @@ mod tests {
         assert_eq!(code, std::process::ExitCode::SUCCESS);
         let body = fs::read_to_string(&merge).expect("merge");
         assert!(body.contains(&format!("{CHECKS_FP}={}", launch.tree_fp)));
+        clear_hooks();
+    }
+
+    #[test]
+    fn run_step_checks_worker_uses_each_sites_bgjob_budget() {
+        clear_hooks();
+        let repository = git_repository();
+        crate::implement_child_seam::declare_plugin_root(repository.root());
+        install_larch(|_cwd, _root, _args| Ok(output(0, "NEXT_ACTION=continue\n")));
+        let observed = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = Arc::clone(&observed);
+        super::install_test_larch_deadline_observer(move |args, timeout| {
+            let command = args
+                .iter()
+                .map(|arg| arg.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(" ");
+            sink.lock()
+                .expect("deadline sink lock")
+                .push((command, timeout));
+        });
+        let tmpdir = TempDir::new().expect("tmpdir");
+
+        run_step_checks_worker(
+            "step3",
+            "",
+            "false",
+            false,
+            tmpdir.path(),
+            repository.root(),
+        )
+        .expect("step3 checks worker");
+        run_step_checks_worker(
+            "step6",
+            "step7",
+            "false",
+            false,
+            tmpdir.path(),
+            repository.root(),
+        )
+        .expect("step6 commit worker");
+
+        let observed = observed.lock().expect("deadline sink lock");
+        assert_eq!(observed.len(), 2);
+        assert!(
+            observed[0]
+                .0
+                .starts_with("checks run-relevant --site step3")
+        );
+        assert_eq!(observed[0].1, worker_deadline(15_600));
+        assert!(observed[1].0.starts_with("implement checks-commit-route"));
+        assert_eq!(observed[1].1, worker_deadline(10_800));
+        assert!(observed[0].1 > Duration::from_secs(15_600));
+        assert!(observed[1].1 > Duration::from_secs(10_800));
+        drop(observed);
         clear_hooks();
     }
 
