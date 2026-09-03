@@ -94,7 +94,12 @@ pub async fn list_exhaustive_issues_for_state(
             cancellation,
         )
         .await
-        .map_err(|_error| "exhaustive issue history is unavailable".to_owned())?;
+        .map_err(|error| {
+            format!(
+                "exhaustive issue history is unavailable: {}",
+                crate::issue_mutation_support::flat_error(&error.to_string(), 500)
+            )
+        })?;
     if listed.truncated {
         Err("exhaustive issue history was truncated".to_owned())
     } else {
@@ -179,7 +184,10 @@ pub fn with_test_github_service<T>(factory: TestServiceFactory, action: impl FnO
 
 #[cfg(test)]
 mod tests {
-    use super::ServiceFailure;
+    use super::{ServiceFailure, list_exhaustive_issues};
+    use larch_adapters::{github::OctocrabGitHubService, runtime::Cancellation};
+    use larch_core::GitHubRepositoryRef;
+    use larch_test_support::{HttpResponseBuilder, IssueServiceExchange, IssueServiceStub};
 
     #[test]
     fn a_failure_yields_its_detail_whatever_its_cause() {
@@ -191,5 +199,42 @@ mod tests {
             ServiceFailure::Operation("not found".to_owned()).into_detail(),
             "not found"
         );
+    }
+
+    fn paginated_empty(next: &str) -> IssueServiceExchange {
+        let response = HttpResponseBuilder::new(200)
+            .header("content-type", "application/json")
+            .expect("content type")
+            .header("link", &format!("<{next}>; rel=\"next\""))
+            .expect("pagination link")
+            .body(b"[]".to_vec())
+            .build()
+            .expect("valid paginated response");
+        IssueServiceExchange::any(response)
+    }
+
+    #[tokio::test]
+    async fn exhaustive_issue_list_preserves_pagination_limit_detail() {
+        let exchanges: Vec<IssueServiceExchange> = (0..20)
+            .map(|page| paginated_empty(&format!("/repos/o/r/issues?state=all&page={}", page + 2)))
+            .collect();
+        let server = IssueServiceStub::start(exchanges).expect("start stub");
+        let service = OctocrabGitHubService::with_test_base(server.base_url());
+        let error = list_exhaustive_issues(
+            &service,
+            &Cancellation::new(),
+            &GitHubRepositoryRef::new("o", "r").expect("repository"),
+        )
+        .await
+        .expect_err("page limit refuses exhaustive history");
+        assert!(
+            error.starts_with("exhaustive issue history is unavailable:"),
+            "{error}"
+        );
+        assert!(
+            error.contains("GitHub pagination page limit exceeded"),
+            "{error}"
+        );
+        let _ = server.finish();
     }
 }

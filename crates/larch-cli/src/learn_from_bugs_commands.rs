@@ -1359,6 +1359,7 @@ fn fetch_issues(
         service
             .search_issues(&request, cancellation)
             .await
+            .map(|result| result.issues)
             .map_err(|error| error.to_string())
     })
     .map_err(crate::github_service::ServiceFailure::into_detail)

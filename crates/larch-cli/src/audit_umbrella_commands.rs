@@ -7,10 +7,8 @@
 use crate::{
     git_command_runtime::GitCommandRuntime,
     github_repository_resolution::repository_ref,
-    github_service::{
-        ServiceFailure, list_exhaustive_issues, with_github_service, with_github_service_policy,
-    },
-    issue_mutation_support::create_with_rollback,
+    github_service::{ServiceFailure, with_github_service, with_github_service_policy},
+    issue_mutation_support::{create_with_rollback, flat_error},
     session_artifact_support::{
         canonical_directory, confine_session_path, read_expected_file, temporary_root,
         write_private_file,
@@ -31,16 +29,16 @@ use larch_core::{
     AUDIT_PROPOSAL_VERSION, AuditDependency, AuditDependencyNode, AuditGraphState, AuditIssue,
     AuditIssueFingerprint, AuditLeafState, AuditLedger, AuditLedgerViolation, AuditProposal,
     AuditProposalDraft, AuditProposalViolation, AuditSnapshot, AuditSource, DONE_PREFIX,
-    GitHubIssue, GitHubIssueBodyMode, GitHubIssueList, GitHubIssueState, GitHubRepositoryRef,
-    GitHubService, GitHubTransportPolicy, IMPLEMENTING_PREFIX, ISSUE_DEDUP_LIMIT,
-    IssueCreateRequest, MAX_AUDIT_SOURCES, RepositoryRead, Revision, audit_issue_fingerprint,
-    audit_leaf_prefix, audit_proposal_existing_numbers, audit_snapshot_sha256,
-    diagnose_audit_ledger, diagnose_audit_proposal, emit_kv, has_umbrella_proposal,
-    is_controlling_umbrella_title, mark_audit_graph_in_flight, mark_audit_leaf_in_flight,
-    mark_audit_proposal_complete, parse_audit_ledger, parse_audit_proposal, parse_audit_snapshot,
-    record_audit_leaf_resolved, render_audit_proposal, render_audit_snapshot,
-    replace_audit_issue_fingerprints, reset_audit_leaf_pending, umbrella_leaf_opening,
-    validate_audit_proposal_binding,
+    GitHubIssue, GitHubIssueBodyMode, GitHubIssueList, GitHubIssueSearch, GitHubIssueSearchResult,
+    GitHubIssueSearchSort, GitHubIssueState, GitHubRepositoryRef, GitHubService,
+    GitHubTransportPolicy, IMPLEMENTING_PREFIX, ISSUE_DEDUP_LIMIT, IssueCreateRequest,
+    MAX_AUDIT_SOURCES, RepositoryRead, Revision, audit_issue_fingerprint, audit_leaf_prefix,
+    audit_proposal_existing_numbers, audit_snapshot_sha256, diagnose_audit_ledger,
+    diagnose_audit_proposal, emit_kv, has_umbrella_proposal, is_controlling_umbrella_title,
+    mark_audit_graph_in_flight, mark_audit_leaf_in_flight, mark_audit_proposal_complete,
+    parse_audit_ledger, parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved,
+    render_audit_proposal, render_audit_snapshot, replace_audit_issue_fingerprints,
+    reset_audit_leaf_pending, umbrella_leaf_opening, validate_audit_proposal_binding,
 };
 use regex::Regex;
 use std::{
@@ -575,6 +573,149 @@ fn remove_worktree(arguments: &RemoveWorktreeArguments) -> Result<(), String> {
     Ok(())
 }
 
+const AUDIT_ISSUE_SEARCH_LIMIT: usize = 1000;
+
+fn audit_search_limit(service: &OctocrabGitHubService) -> usize {
+    AUDIT_ISSUE_SEARCH_LIMIT.min(service.transport_policy().limits().items())
+}
+
+fn audit_title_search_query(umbrella: u64) -> String {
+    format!(r#""{}" in:title state:all"#, audit_leaf_prefix(umbrella))
+}
+
+fn audit_body_search_query(umbrella: u64) -> String {
+    format!(r#""{}" in:body state:all"#, umbrella_leaf_opening(umbrella))
+}
+
+fn require_complete_audit_search(
+    result: &GitHubIssueSearchResult,
+    label: &str,
+) -> Result<(), String> {
+    match result.incomplete_results {
+        Some(true) => {
+            return Err(format!(
+                "cannot complete {label} search: GitHub reported incomplete results"
+            ));
+        }
+        None => {
+            return Err(format!(
+                "cannot complete {label} search: GitHub omitted incomplete_results"
+            ));
+        }
+        Some(false) => {}
+    }
+    let Some(total_count) = result.total_count else {
+        return Err(format!(
+            "cannot complete {label} search: GitHub omitted total_count"
+        ));
+    };
+    let scanned = u64::try_from(result.raw_rows_scanned).unwrap_or(u64::MAX);
+    if total_count > scanned {
+        return Err(format!(
+            "cannot complete {label} search: GitHub reported {total_count} matches but only {scanned} rows were scanned"
+        ));
+    }
+    if result.continuation_unread {
+        return Err(format!(
+            "cannot complete {label} search: unread search continuation remains"
+        ));
+    }
+    Ok(())
+}
+
+fn is_audit_leaf_candidate(issue: &GitHubIssue, umbrella: u64) -> bool {
+    if issue.is_pull_request {
+        return false;
+    }
+    if has_exact_leaf_title(&issue.title, umbrella) {
+        return true;
+    }
+    let opening = umbrella_leaf_opening(umbrella);
+    issue.body.lines().next() == Some(opening.as_str())
+}
+
+fn merge_audit_search_issues(
+    title_hits: Vec<GitHubIssue>,
+    body_hits: Vec<GitHubIssue>,
+    umbrella: u64,
+) -> Result<BTreeMap<u64, GitHubIssue>, String> {
+    let mut issues = BTreeMap::new();
+    for issue in title_hits.into_iter().chain(body_hits) {
+        if !is_audit_leaf_candidate(&issue, umbrella) {
+            continue;
+        }
+        if let Some(existing) = issues.get(&issue.number) {
+            if existing != &issue {
+                return Err(format!(
+                    "title and body searches returned unequal copies of #{}",
+                    issue.number
+                ));
+            }
+            continue;
+        }
+        if issues.len() >= MAX_AUDIT_SOURCES {
+            return Err(
+                "audit search produced too many leaf candidates for one snapshot".to_owned(),
+            );
+        }
+        issues.insert(issue.number, issue);
+    }
+    Ok(issues)
+}
+
+async fn search_audit_issues(
+    service: &OctocrabGitHubService,
+    cancellation: &Cancellation,
+    repository: &GitHubRepositoryRef,
+    query: String,
+    label: &str,
+) -> Result<Vec<GitHubIssue>, String> {
+    let result = service
+        .search_issues(
+            &GitHubIssueSearch {
+                repo: repository.clone(),
+                query,
+                limit: audit_search_limit(service),
+                sort: GitHubIssueSearchSort::BestMatch,
+            },
+            cancellation,
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "cannot complete {label} search: {}",
+                flat_error(&error.to_string(), 500)
+            )
+        })?;
+    require_complete_audit_search(&result, label)?;
+    Ok(result.issues)
+}
+
+async fn fetch_missing_issue(
+    service: &OctocrabGitHubService,
+    cancellation: &Cancellation,
+    repository: &GitHubRepositoryRef,
+    issues: &mut BTreeMap<u64, GitHubIssue>,
+    number: u64,
+) -> Result<(), String> {
+    if issues.contains_key(&number) {
+        return Ok(());
+    }
+    let issue = service
+        .issue(repository, number, cancellation)
+        .await
+        .map_err(|error| {
+            format!(
+                "cannot read referenced issue: {}",
+                flat_error(&error.to_string(), 500)
+            )
+        })?;
+    if issues.insert(number, issue).is_some() {
+        return Err("referenced issue identity was duplicated".to_owned());
+    }
+    Ok(())
+}
+
 async fn collect_snapshot_remote(
     service: &OctocrabGitHubService,
     cancellation: &Cancellation,
@@ -615,41 +756,42 @@ async fn collect_snapshot_remote(
         return Err("umbrella has too many issue references for one audit".to_owned());
     }
     let explicit_numbers = explicit_leaf_references(&parent.body);
-    let listed = list_exhaustive_issues(service, cancellation, repository)
-        .await
-        .map_err(|error| format!("cannot read exhaustive issue history: {error}"))?;
-    let mut issues = BTreeMap::new();
-    for issue in listed {
-        if issues.insert(issue.number, issue).is_some() {
-            return Err("issue history contains duplicate issue numbers".to_owned());
-        }
-    }
+    let title_hits = search_audit_issues(
+        service,
+        cancellation,
+        repository,
+        audit_title_search_query(umbrella),
+        "title",
+    )
+    .await?;
+    let body_hits = search_audit_issues(
+        service,
+        cancellation,
+        repository,
+        audit_body_search_query(umbrella),
+        "body",
+    )
+    .await?;
+    let mut issues = merge_audit_search_issues(title_hits, body_hits, umbrella)?;
     match issues.insert(parent.number, parent.clone()) {
         Some(previous) if previous != parent => {
             return Err("umbrella changed during issue-history snapshot".to_owned());
         }
         _ => {}
     }
-    let required = direct_numbers
-        .iter()
-        .chain(referenced_numbers.iter())
-        .copied()
-        .filter(|number| *number != umbrella)
-        .collect::<BTreeSet<_>>();
-    let missing_references = required
-        .into_iter()
-        .filter(|number| !issues.contains_key(number))
-        .collect::<Vec<_>>();
-    for number in missing_references {
-        let issue = service
-            .issue(repository, number, cancellation)
-            .await
-            .map_err(|_error| "cannot read referenced issue".to_owned())?;
-        if issues.insert(number, issue).is_some() {
-            return Err("referenced issue identity was duplicated".to_owned());
+    for number in &direct_numbers {
+        if *number == umbrella {
+            continue;
         }
+        fetch_missing_issue(service, cancellation, repository, &mut issues, *number).await?;
     }
     require_no_nested_umbrella_children(&issues, &direct_numbers)?;
+    for number in &referenced_numbers {
+        if *number == umbrella {
+            continue;
+        }
+        fetch_missing_issue(service, cancellation, repository, &mut issues, *number).await?;
+    }
     build_snapshot(SnapshotSelection {
         repository,
         default_branch: &remote.default_branch,
@@ -2567,12 +2709,98 @@ mod tests {
         )
     }
 
+    fn search_payload(
+        items: &[Value],
+        total_count: u64,
+        incomplete_results: Option<bool>,
+    ) -> String {
+        let mut payload = json!({
+            "items": items,
+            "total_count": total_count,
+        });
+        if let Some(incomplete) = incomplete_results {
+            payload["incomplete_results"] = json!(incomplete);
+        }
+        payload.to_string()
+    }
+
+    fn search_items(bodies: &[&str]) -> String {
+        let items: Vec<Value> = bodies
+            .iter()
+            .map(|body| serde_json::from_str(body).expect("search item json"))
+            .collect();
+        let total = u64::try_from(items.len()).expect("search item count");
+        search_payload(&items, total, Some(false))
+    }
+
+    fn empty_search() -> String {
+        search_items(&[])
+    }
+
+    fn pull_request_json(number: u64, id: u64, title: &str, body: &str) -> String {
+        let mut issue: Value =
+            serde_json::from_str(&issue_json(number, id, title, body, "open")).expect("pr json");
+        issue["pull_request"] = json!({
+            "url": format!("https://api.github.com/repos/o/r/pulls/{number}"),
+            "html_url": format!("https://github.com/o/r/pull/{number}"),
+            "diff_url": format!("https://github.com/o/r/pull/{number}.diff"),
+            "patch_url": format!("https://github.com/o/r/pull/{number}.patch"),
+        });
+        issue.to_string()
+    }
+
+    fn is_repo_wide_issue_list(path: &str) -> bool {
+        path.starts_with("/repos/o/r/issues?")
+    }
+
+    fn decoded_search_query(path: &str) -> Option<String> {
+        let query = path.split_once('?')?.1;
+        query.split('&').find_map(|pair| {
+            let (key, value) = pair.split_once('=')?;
+            (key == "q").then(|| decode_query_component(value))
+        })
+    }
+
+    fn decode_query_component(value: &str) -> String {
+        let mut output = String::new();
+        let bytes = value.as_bytes();
+        let mut index = 0;
+        while index < bytes.len() {
+            if bytes[index] == b'%' && index + 2 < bytes.len() {
+                if let Ok(byte) = u8::from_str_radix(&value[index + 1..index + 3], 16) {
+                    output.push(char::from(byte));
+                    index += 3;
+                    continue;
+                }
+            }
+            output.push(if bytes[index] == b'+' {
+                ' '
+            } else {
+                char::from(bytes[index])
+            });
+            index += 1;
+        }
+        output
+    }
+
     fn snapshot_exchanges(parent: &str, leaf: &str, control: &str) -> Vec<IssueServiceExchange> {
+        let search = search_items(&[leaf]);
         vec![
             response(200, repository_json("main")),
             response(200, parent),
             response(200, refs(&[(11, 111, "open")])),
-            response(200, format!("[{parent},{leaf},{control}]")),
+            response(200, &search),
+            response(200, &search),
+            response(200, control),
+        ]
+    }
+
+    fn title_search_failure_exchanges(title_body: &str) -> Vec<IssueServiceExchange> {
+        vec![
+            response(200, repository_json("main")),
+            response(200, &remote_parent()),
+            response(200, refs(&[(11, 111, "open")])),
+            response(200, title_body),
         ]
     }
 
@@ -3185,7 +3413,38 @@ mod tests {
         .expect("remote snapshot");
 
         assert_eq!(snapshot, audit_snapshot());
-        assert_eq!(server.finish().expect("stub completed").len(), 4);
+        let requests = server.finish().expect("stub completed");
+        assert_eq!(requests.len(), 6);
+        assert!(
+            !requests
+                .iter()
+                .any(|request| is_repo_wide_issue_list(&request.path)),
+            "audit snapshot listed repo-wide issues: {:?}",
+            requests
+                .iter()
+                .map(|request| request.path.as_str())
+                .collect::<Vec<_>>()
+        );
+        let searches: Vec<_> = requests
+            .iter()
+            .filter(|request| request.path.starts_with("/search/issues?"))
+            .collect();
+        assert_eq!(searches.len(), 2);
+        let title_query = decoded_search_query(&searches[0].path).expect("title search query");
+        let body_query = decoded_search_query(&searches[1].path).expect("body search query");
+        assert!(
+            title_query.contains(r#""[LEAF OF 10] " in:title state:all"#),
+            "{title_query}"
+        );
+        assert_eq!(title_query.matches("is:issue").count(), 1, "{title_query}");
+        assert!(
+            body_query.contains(&format!(
+                r#""{}" in:body state:all"#,
+                umbrella_leaf_opening(10)
+            )),
+            "{body_query}"
+        );
+        assert_eq!(body_query.matches("is:issue").count(), 1, "{body_query}");
     }
 
     #[tokio::test]
@@ -3204,21 +3463,26 @@ mod tests {
                 (number, number + 100, "open")
             })
             .collect::<Vec<_>>();
-        let mut history = vec![parent.clone()];
-        history.extend(references.iter().map(|(number, id, _state)| {
-            issue_json(
-                *number,
-                *id,
-                &format!("[LEAF OF 10] Existing leaf {number}"),
-                &format!("{}\n\nExisting scope.\n", umbrella_leaf_opening(10)),
-                "open",
-            )
-        }));
+        let leaves: Vec<String> = references
+            .iter()
+            .map(|(number, id, _state)| {
+                issue_json(
+                    *number,
+                    *id,
+                    &format!("[LEAF OF 10] Existing leaf {number}"),
+                    &format!("{}\n\nExisting scope.\n", umbrella_leaf_opening(10)),
+                    "open",
+                )
+            })
+            .collect();
+        let leaf_refs: Vec<&str> = leaves.iter().map(String::as_str).collect();
+        let search = search_items(&leaf_refs);
         let (service, server) = service(vec![
             response(200, repository_json("main")),
             response(200, &parent),
             response(200, refs(&references)),
-            response(200, format!("[{}]", history.join(","))),
+            response(200, &search),
+            response(200, &search),
         ]);
 
         let snapshot = collect_snapshot_remote(
@@ -3233,7 +3497,7 @@ mod tests {
         .expect("direct leaf count does not consume proposal batch capacity");
 
         assert_eq!(snapshot.historical_leaf_numbers.len(), leaf_count);
-        assert_eq!(server.finish().expect("stub completed").len(), 4);
+        assert_eq!(server.finish().expect("stub completed").len(), 5);
     }
 
     #[tokio::test]
@@ -3246,12 +3510,13 @@ mod tests {
             "<!-- larch:umbrella-proposal v1 -->\n\n#### Leaf issues\n\n- None yet.\n",
             "open",
         );
-        let control = remote_control();
         let (service, server) = service(vec![
             response(200, repository_json("main")),
             response(200, &parent),
             response(200, refs(&[(11, 111, "open")])),
-            response(200, format!("[{parent},{nested},{control}]")),
+            response(200, &empty_search()),
+            response(200, &empty_search()),
+            response(200, &nested),
         ]);
         let cancellation = Cancellation::new();
         let error = collect_snapshot_remote(
@@ -3265,7 +3530,7 @@ mod tests {
         .await
         .expect_err("umbrella children must refuse");
         assert_eq!(error, "nested umbrellas are not supported");
-        assert_eq!(server.finish().expect("stub completed").len(), 4);
+        assert_eq!(server.finish().expect("stub completed").len(), 6);
     }
 
     #[tokio::test]
@@ -3308,7 +3573,8 @@ mod tests {
             response(200, repository_json("main")),
             response(200, &parent),
             response(200, refs(&[(11, 111, "open")])),
-            response(200, format!("[{parent}]")),
+            response(200, &empty_search()),
+            response(200, &empty_search()),
             response(200, &leaf),
             response(200, &control),
         ];
@@ -3326,7 +3592,366 @@ mod tests {
         .expect("missing sources read individually");
 
         assert_eq!(snapshot, audit_snapshot());
+        assert_eq!(server.finish().expect("stub completed").len(), 7);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_accepts_a_bare_title_only_leaf() {
+        let parent = remote_parent();
+        let leaf = remote_leaf();
+        let control = remote_control();
+        let (service, server) = service(vec![
+            response(200, repository_json("main")),
+            response(200, &parent),
+            response(200, refs(&[(11, 111, "open")])),
+            response(200, &search_items(&[&leaf])),
+            response(200, &empty_search()),
+            response(200, &control),
+        ]);
+        let snapshot = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect("title-only leaf");
+        assert_eq!(snapshot, audit_snapshot());
         assert_eq!(server.finish().expect("stub completed").len(), 6);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_accepts_a_backlink_only_leaf() {
+        let parent = remote_parent();
+        let leaf = issue_json(
+            11,
+            111,
+            "Existing leaf without a leaf prefix",
+            &format!("{}\n\nExisting scope.\n", umbrella_leaf_opening(10)),
+            "open",
+        );
+        let control = remote_control();
+        let (service, server) = service(vec![
+            response(200, repository_json("main")),
+            response(200, &parent),
+            response(200, refs(&[(11, 111, "open")])),
+            response(200, &empty_search()),
+            response(200, &search_items(&[&leaf])),
+            response(200, &control),
+        ]);
+        let snapshot = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect("backlink-only leaf");
+        assert!(snapshot.historical_leaf_numbers.contains(&11));
+        assert_eq!(server.finish().expect("stub completed").len(), 6);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_merges_identical_title_and_body_search_copies() {
+        let parent = remote_parent();
+        let leaf = remote_leaf();
+        let control = remote_control();
+        let (service, server) = service(snapshot_exchanges(&parent, &leaf, &control));
+        let snapshot = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect("identical search overlap");
+        assert_eq!(snapshot, audit_snapshot());
+        assert_eq!(server.finish().expect("stub completed").len(), 6);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_refuses_unequal_title_and_body_search_copies() {
+        let title_leaf = remote_leaf();
+        let body_leaf = issue_json(
+            11,
+            111,
+            "[LEAF OF 10] Different copy",
+            &format!("{}\n\nExisting scope.\n", umbrella_leaf_opening(10)),
+            "open",
+        );
+        let (service, server) = service(vec![
+            response(200, repository_json("main")),
+            response(200, &remote_parent()),
+            response(200, refs(&[(11, 111, "open")])),
+            response(200, &search_items(&[&title_leaf])),
+            response(200, &search_items(&[&body_leaf])),
+        ]);
+        let error = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect_err("unequal copies refuse");
+        assert_eq!(
+            error,
+            "title and body searches returned unequal copies of #11"
+        );
+        assert_eq!(server.finish().expect("stub completed").len(), 5);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_ignores_false_positive_search_rows_and_pull_requests() {
+        let junk = issue_json(
+            100,
+            1000,
+            "Unrelated search hit mentioning LEAF OF 10",
+            "noise",
+            "open",
+        );
+        let pull = pull_request_json(
+            200,
+            2000,
+            "[LEAF OF 10] Pull request",
+            &format!("{}\n\nExisting scope.\n", umbrella_leaf_opening(10)),
+        );
+        let (service, server) = service(vec![
+            response(200, repository_json("main")),
+            response(200, &remote_parent()),
+            response(200, refs(&[(11, 111, "open")])),
+            response(200, &search_items(&[&junk, &pull])),
+            response(200, &empty_search()),
+            response(200, &remote_leaf()),
+            response(200, &remote_control()),
+        ]);
+        let snapshot = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect("false positives stay out of the snapshot");
+        assert_eq!(snapshot, audit_snapshot());
+        assert_eq!(server.finish().expect("stub completed").len(), 7);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_accepts_lifecycle_prefixed_leaf_titles() {
+        let leaf = issue_json(
+            11,
+            111,
+            "[IMPLEMENTING] [LEAF OF 10] Existing leaf",
+            &format!("{}\n\nExisting scope.\n", umbrella_leaf_opening(10)),
+            "open",
+        );
+        let (service, server) = service(snapshot_exchanges(
+            &remote_parent(),
+            &leaf,
+            &remote_control(),
+        ));
+        let snapshot = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect("lifecycle prefix is stripped for leaf titles");
+        assert!(snapshot.historical_leaf_numbers.contains(&11));
+        assert_eq!(server.finish().expect("stub completed").len(), 6);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_filters_more_than_one_hundred_raw_search_hits() {
+        let junk: Vec<String> = (0..100)
+            .map(|offset| {
+                let number = 1001 + offset;
+                issue_json(
+                    number,
+                    number,
+                    "Unrelated search hit mentioning LEAF OF 10",
+                    "noise",
+                    "open",
+                )
+            })
+            .collect();
+        let leaf = remote_leaf();
+        let mut items: Vec<Value> = junk
+            .iter()
+            .map(|body| serde_json::from_str(body).expect("junk json"))
+            .collect();
+        items.push(serde_json::from_str(&leaf).expect("leaf json"));
+        let search = search_payload(&items, 101, Some(false));
+        let (service, server) = service(vec![
+            response(200, repository_json("main")),
+            response(200, &remote_parent()),
+            response(200, refs(&[(11, 111, "open")])),
+            response(200, &search),
+            response(200, &empty_search()),
+            response(200, &remote_control()),
+        ]);
+        let snapshot = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect("raw search volume above 100 stays usable");
+        assert_eq!(snapshot, audit_snapshot());
+        let requests = server.finish().expect("stub completed");
+        assert_eq!(requests.len(), 6);
+        assert!(
+            !requests
+                .iter()
+                .any(|request| is_repo_wide_issue_list(&request.path))
+        );
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_refuses_incomplete_title_search_results() {
+        let (service, server) = service(title_search_failure_exchanges(&search_payload(
+            &[],
+            0,
+            Some(true),
+        )));
+        let error = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect_err("incomplete results refuse");
+        assert_eq!(
+            error,
+            "cannot complete title search: GitHub reported incomplete results"
+        );
+        assert_eq!(server.finish().expect("stub completed").len(), 4);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_refuses_title_search_omitting_incomplete_results() {
+        let (service, server) = service(title_search_failure_exchanges(&search_payload(
+            &[],
+            0,
+            None,
+        )));
+        let error = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect_err("omitted incomplete_results refuse");
+        assert_eq!(
+            error,
+            "cannot complete title search: GitHub omitted incomplete_results"
+        );
+        assert_eq!(server.finish().expect("stub completed").len(), 4);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_refuses_title_search_omitting_total_count() {
+        let body = json!({
+            "items": [],
+            "incomplete_results": false,
+        })
+        .to_string();
+        let (service, server) = service(title_search_failure_exchanges(&body));
+        let error = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect_err("omitted total_count refuse");
+        assert_eq!(
+            error,
+            "cannot complete title search: GitHub omitted total_count"
+        );
+        assert_eq!(server.finish().expect("stub completed").len(), 4);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_refuses_title_search_when_reported_total_exceeds_scanned_rows() {
+        let (service, server) = service(title_search_failure_exchanges(&search_payload(
+            &[],
+            2,
+            Some(false),
+        )));
+        let error = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect_err("reported total truncation refuses");
+        assert_eq!(
+            error,
+            "cannot complete title search: GitHub reported 2 matches but only 0 rows were scanned"
+        );
+        assert_eq!(server.finish().expect("stub completed").len(), 4);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_refuses_a_saturated_title_search_continuation() {
+        let empty = empty_search();
+        let mut exchanges = vec![
+            response(200, repository_json("main")),
+            response(200, &remote_parent()),
+            response(200, refs(&[(11, 111, "open")])),
+        ];
+        for page in 0..20 {
+            exchanges.push(paginated_response(
+                200,
+                &empty,
+                &format!("/search/issues?page={}", page + 2),
+            ));
+        }
+        let (service, server) = service(exchanges);
+        let error = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect_err("saturated title search refuses");
+        assert_eq!(
+            error,
+            "cannot complete title search: unread search continuation remains"
+        );
+        assert_eq!(server.finish().expect("stub completed").len(), 23);
     }
 
     #[tokio::test]
@@ -3387,7 +4012,7 @@ mod tests {
             .await
             .expect("fresh remote proposal");
         assert_eq!(current, current_snapshot_sources(&snapshot));
-        assert_eq!(server.finish().expect("stub completed").len(), 9);
+        assert_eq!(server.finish().expect("stub completed").len(), 11);
     }
 
     #[tokio::test]
@@ -3698,7 +4323,7 @@ mod tests {
         assert!(proposal.complete);
         assert_eq!(proposal.graph_state, AuditGraphState::Verified);
         assert!(proposal_path.is_file());
-        assert_eq!(server.finish().expect("stub completed").len(), 32);
+        assert_eq!(server.finish().expect("stub completed").len(), 34);
     }
 
     #[allow(clippy::too_many_lines)] // One ordered exchange sequence proves the graph's remote mutation and read-back.

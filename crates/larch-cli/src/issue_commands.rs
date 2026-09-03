@@ -294,6 +294,7 @@ pub fn search_implementing(arguments: &[OsString]) -> ExitCode {
         service
             .search_issues(&request, cancellation)
             .await
+            .map(|result| result.issues)
             .map_err(|error| error.to_string())
     });
     let Ok(rows) = rows else {

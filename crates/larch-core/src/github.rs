@@ -54,7 +54,7 @@ pub trait GitHubService: Send + Sync {
         &'a self,
         request: &'a GitHubIssueSearch,
         cancellation: &'a dyn ProcessCancellation,
-    ) -> GitHubFuture<'a, Vec<GitHubIssue>>;
+    ) -> GitHubFuture<'a, GitHubIssueSearchResult>;
 
     fn create_issue<'a>(
         &'a self,
@@ -548,6 +548,24 @@ pub fn resolve_issue_list(
         raw_rows_scanned,
         truncated,
     })
+}
+
+/// Typed GitHub issue-search snapshot.
+///
+/// `total_count` and `incomplete_results` are transport evidence copied from
+/// the search response. Absent wire fields stay absent; they are not an
+/// inferred completeness claim. `raw_rows_scanned` counts every untrusted
+/// search row the adapter observed, including pull requests and
+/// foreign-repository rows dropped before `issues`. `continuation_unread` is
+/// true when pagination stopped while another row or page remained, including
+/// a requested-limit stop below the transport item bound.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitHubIssueSearchResult {
+    pub issues: Vec<GitHubIssue>,
+    pub total_count: Option<u64>,
+    pub incomplete_results: Option<bool>,
+    pub raw_rows_scanned: usize,
+    pub continuation_unread: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

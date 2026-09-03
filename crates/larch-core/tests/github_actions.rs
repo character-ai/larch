@@ -1,12 +1,13 @@
 //! Public-contract coverage for GitHub Actions log rendering.
 
 use larch_core::{
-    CheckRun, CiTimingRunSelection, GitHubActionsError, GitHubActionsErrorKind, GitHubActionsFuture,
-    GitHubActionsService, GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue,
-    GitHubIssueCreate, GitHubIssueEdit, GitHubIssueList, GitHubIssueListResult, GitHubIssueSearch,
-    GitHubLabel, GitHubLabelCreate, GitHubMutationOutcome, GitHubRepository, GitHubRepositoryRef,
-    GitHubService, GitHubTransportPolicy, GitHubUser, ProcessCancellation, WorkflowDispatchRequest,
-    WorkflowJob, WorkflowLogArchive, WorkflowRun, WorkflowRunFilters, collect_job_timing,
+    CheckRun, CiTimingRunSelection, GitHubActionsError, GitHubActionsErrorKind,
+    GitHubActionsFuture, GitHubActionsService, GitHubCloseReason, GitHubComment, GitHubFuture,
+    GitHubIssue, GitHubIssueCreate, GitHubIssueEdit, GitHubIssueList, GitHubIssueListResult,
+    GitHubIssueSearch, GitHubIssueSearchResult, GitHubLabel, GitHubLabelCreate,
+    GitHubMutationOutcome, GitHubRepository, GitHubRepositoryRef, GitHubService,
+    GitHubTransportPolicy, GitHubUser, ProcessCancellation, WorkflowDispatchRequest, WorkflowJob,
+    WorkflowLogArchive, WorkflowRun, WorkflowRunFilters, collect_job_timing,
     collect_rust_coverage_job_timing, run_logs, run_logs_setup_failure, workflow_path,
 };
 use std::{
@@ -84,7 +85,7 @@ impl GitHubService for FakeService {
         &'a self,
         _request: &'a GitHubIssueSearch,
         _cancellation: &'a dyn ProcessCancellation,
-    ) -> GitHubFuture<'a, Vec<GitHubIssue>> {
+    ) -> GitHubFuture<'a, GitHubIssueSearchResult> {
         unused_github()
     }
 

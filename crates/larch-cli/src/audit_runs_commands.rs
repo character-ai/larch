@@ -431,7 +431,8 @@ async fn bugs_backlog_nudge_count_remote(
     let rows = service
         .search_issues(&request, cancellation)
         .await
-        .map_err(NudgeReadFailure::from_github)?;
+        .map_err(NudgeReadFailure::from_github)?
+        .issues;
     Ok(rows
         .iter()
         .filter(|issue| {
@@ -759,7 +760,8 @@ async fn issue_search_remote<S: GitHubService + ?Sized>(
     let rows = service
         .search_issues(&request, cancellation)
         .await
-        .map_err(|error| format!("gh issue list failed: {error}"))?;
+        .map_err(|error| format!("gh issue list failed: {error}"))?
+        .issues;
     if rows.len() == request.limit {
         eprintln!(
             "WARN: audit-runs proposal search reached the {ISSUE_DEDUP_LIMIT}-issue dedup cap; additional matches, if any, were omitted"

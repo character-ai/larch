@@ -8,10 +8,10 @@ use larch_core::{
     GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue, GitHubIssueBodyMode,
     GitHubIssueCreate, GitHubIssueEdit, GitHubIssueList, GitHubIssueListMode,
     GitHubIssueListResult, GitHubIssueListTimeoutScope, GitHubIssueScan, GitHubIssueSearch,
-    GitHubIssueSearchSort, GitHubIssueState, GitHubLabel, GitHubLabelCreate, GitHubListOutcome,
-    GitHubListStop, GitHubOperationError, GitHubOperationErrorKind, GitHubRepository,
-    GitHubRepositoryRef, GitHubService, GitHubTransportPolicy, GitHubUser, ProcessCancellation,
-    resolve_issue_list,
+    GitHubIssueSearchResult, GitHubIssueSearchSort, GitHubIssueState, GitHubLabel,
+    GitHubLabelCreate, GitHubListOutcome, GitHubListStop, GitHubOperationError,
+    GitHubOperationErrorKind, GitHubRepository, GitHubRepositoryRef, GitHubService,
+    GitHubTransportPolicy, GitHubUser, ProcessCancellation, resolve_issue_list,
 };
 use octocrab::{Page, models, params};
 use serde::{Serialize, de::DeserializeOwned};
@@ -168,7 +168,7 @@ impl GitHubService for OctocrabGitHubService {
         &'a self,
         request: &'a GitHubIssueSearch,
         cancellation: &'a dyn ProcessCancellation,
-    ) -> GitHubFuture<'a, Vec<GitHubIssue>> {
+    ) -> GitHubFuture<'a, GitHubIssueSearchResult> {
         Box::pin(async move {
             self.guarded(cancellation, async {
                 validate_repo(&request.repo)?;
@@ -193,19 +193,27 @@ impl GitHubService for OctocrabGitHubService {
                         search.send().await
                     })
                     .await?;
+                let total_count = first.total_count;
+                let incomplete_results = first.incomplete_results;
                 self.collect_issues(
                     &request.repo,
                     first,
                     IssueListCollectionOptions {
                         limit: request.limit,
-                        mode: GitHubIssueListMode::Exhaustive,
+                        mode: GitHubIssueListMode::BoundedPartial,
                         body_mode: GitHubIssueBodyMode::Include,
                     },
                     RateBucket::Search,
                     cancellation,
                 )
                 .await
-                .map(|result| result.issues)
+                .map(|listed| GitHubIssueSearchResult {
+                    issues: listed.issues,
+                    total_count,
+                    incomplete_results,
+                    raw_rows_scanned: listed.raw_rows_scanned,
+                    continuation_unread: listed.truncated,
+                })
             })
             .await
         })
@@ -1793,12 +1801,16 @@ mod tests {
             service.transport_policy(),
         );
 
-        let rows = service
+        let result = service
             .search_issues(&request, &Cancellation::new())
             .await
             .expect("search succeeds");
 
-        assert!(rows.is_empty());
+        assert!(result.issues.is_empty());
+        assert_eq!(result.total_count, Some(0));
+        assert_eq!(result.incomplete_results, Some(false));
+        assert_eq!(result.raw_rows_scanned, 0);
+        assert!(!result.continuation_unread);
         let requests = server.finish().expect("requests");
         assert_eq!(requests.len(), 1);
         assert!(requests[0].path.contains("sort=created"));
@@ -1868,5 +1880,130 @@ mod tests {
         .expect_err("ordinary issue list must retain its overall deadline");
 
         assert_eq!(error.kind(), GitHubOperationErrorKind::DeadlineExceeded);
+    }
+
+    fn search_body(total: u64, incomplete: bool, items: Vec<Value>) -> String {
+        json!({
+            "total_count": total,
+            "incomplete_results": incomplete,
+            "items": items,
+        })
+        .to_string()
+    }
+
+    #[tokio::test]
+    async fn search_issues_preserves_complete_metadata_before_pagination() {
+        let issue: Value =
+            serde_json::from_str(include_str!("../fixtures/github_issue.json")).expect("fixture");
+        let (service, server) = stub_service(vec![(200, search_body(1, false, vec![issue]))]);
+        let repo = GitHubRepositoryRef::new("o", "r").expect("valid repo");
+        let request = GitHubIssueSearch {
+            repo,
+            query: String::from("parity"),
+            limit: 10,
+            sort: GitHubIssueSearchSort::BestMatch,
+        };
+        let result = service
+            .search_issues(&request, &Cancellation::new())
+            .await
+            .expect("search succeeds");
+        assert_eq!(result.issues.len(), 1);
+        assert_eq!(result.total_count, Some(1));
+        assert_eq!(result.incomplete_results, Some(false));
+        assert_eq!(result.raw_rows_scanned, 1);
+        assert!(!result.continuation_unread);
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn search_issues_preserves_incomplete_results_without_inferring_completeness() {
+        let issue: Value =
+            serde_json::from_str(include_str!("../fixtures/github_issue.json")).expect("fixture");
+        let (service, server) = stub_service(vec![(200, search_body(1, true, vec![issue]))]);
+        let repo = GitHubRepositoryRef::new("o", "r").expect("valid repo");
+        let request = GitHubIssueSearch {
+            repo,
+            query: String::from("parity"),
+            limit: 10,
+            sort: GitHubIssueSearchSort::BestMatch,
+        };
+        let result = service
+            .search_issues(&request, &Cancellation::new())
+            .await
+            .expect("search succeeds");
+        assert_eq!(result.incomplete_results, Some(true));
+        assert_eq!(result.total_count, Some(1));
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn search_issues_preserves_a_reported_total_greater_than_collected_rows() {
+        let issue: Value =
+            serde_json::from_str(include_str!("../fixtures/github_issue.json")).expect("fixture");
+        let (service, server) = stub_service(vec![(200, search_body(9, false, vec![issue]))]);
+        let repo = GitHubRepositoryRef::new("o", "r").expect("valid repo");
+        let request = GitHubIssueSearch {
+            repo,
+            query: String::from("parity"),
+            limit: 10,
+            sort: GitHubIssueSearchSort::BestMatch,
+        };
+        let result = service
+            .search_issues(&request, &Cancellation::new())
+            .await
+            .expect("search succeeds");
+        assert_eq!(result.issues.len(), 1);
+        assert_eq!(result.raw_rows_scanned, 1);
+        assert_eq!(result.total_count, Some(9));
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn search_issues_preserves_omitted_search_metadata_fields() {
+        let issue: Value =
+            serde_json::from_str(include_str!("../fixtures/github_issue.json")).expect("fixture");
+        let body = json!({"items": [issue]}).to_string();
+        let (service, server) = stub_service(vec![(200, body)]);
+        let repo = GitHubRepositoryRef::new("o", "r").expect("valid repo");
+        let request = GitHubIssueSearch {
+            repo,
+            query: String::from("parity"),
+            limit: 10,
+            sort: GitHubIssueSearchSort::BestMatch,
+        };
+        let result = service
+            .search_issues(&request, &Cancellation::new())
+            .await
+            .expect("search succeeds");
+        assert!(result.total_count.is_none());
+        assert!(result.incomplete_results.is_none());
+        assert_eq!(result.issues.len(), 1);
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn search_issues_marks_a_requested_limit_stop_below_the_transport_bound() {
+        let issue: Value =
+            serde_json::from_str(include_str!("../fixtures/github_issue.json")).expect("fixture");
+        let mut second = issue.clone();
+        second["number"] = json!(3);
+        second["id"] = json!(8);
+        let (service, server) =
+            stub_service(vec![(200, search_body(2, false, vec![issue, second]))]);
+        let repo = GitHubRepositoryRef::new("o", "r").expect("valid repo");
+        let request = GitHubIssueSearch {
+            repo,
+            query: String::from("parity"),
+            limit: 1,
+            sort: GitHubIssueSearchSort::BestMatch,
+        };
+        let result = service
+            .search_issues(&request, &Cancellation::new())
+            .await
+            .expect("search succeeds");
+        assert_eq!(result.issues.len(), 1);
+        assert_eq!(result.raw_rows_scanned, 1);
+        assert!(result.continuation_unread);
+        server.join().expect("stub completed");
     }
 }
