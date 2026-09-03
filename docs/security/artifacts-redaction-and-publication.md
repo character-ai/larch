@@ -34,6 +34,12 @@ session-private artifacts with private creation modes where supported. These che
 accidental cross-root writes and symlink substitution; they do not turn vendor
 input or output into a publication-safe artifact.
 
+Review-and-fix coder prompts keep temporary helpers under the session root.
+The shared repair stage selector excludes scratch-looking paths from repair
+commits, records each exclusion as a warning, and leaves each excluded change
+out of the repair commit. The selector recognizes `.tmp-*`, `.tmp_*`,
+`*.orig`, and `*.rej` paths, including content below a scratch-named directory.
+
 The Rust-owned `voting scoreboard` treats its caller-selected output as a
 local private artifact. It rejects replaceable symlinks in the output path
 before creating missing parents, confines that creation below the nearest
@@ -694,6 +700,7 @@ defines its implementation checks and the complete egress contract.
 | Concern | Current owners |
 |---------|----------------|
 | Redaction commands | `crates/larch-cli/src/redact_commands.rs` and `crates/larch-core/src/redaction.rs`; typed Git and confined atomic filesystem effects come from `larch-adapters` |
+| Review-fix scratch exclusion | `larch_core::review::select_repair_stage_paths` owns classification; `crates/larch-cli/src/review_and_fix_commands.rs` owns warning persistence and path-limited commits |
 | Cross-repository failure report publication | `crates/larch-cli/src/stall_recovery_file_report.rs`, `crates/larch-adapters/src/stall_recovery.rs`, `crates/larch-adapters/src/github_rest.rs`, and `crates/larch-adapters/src/github/issue_mutation.rs` |
 | Checksum-pinned scanner | Local Rust command: `crates/larch-cli/src/gitleaks.rs` and `crates/larch-adapters/src/github/release.rs`; CI verifier: `.github/workflows/ci.yaml` |
 | Rust human, machine, breadcrumb, and journal redaction | `crates/larch-core/src/redaction.rs`, `crates/larch-core/src/telemetry.rs`, and `larch_core::SafeText` consumers |

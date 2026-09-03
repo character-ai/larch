@@ -62,11 +62,12 @@ pub use repair::{
     RepairCoderAttempt, RepairCoderInput, RepairCoderResult, RepairCommitOutcome,
     RepairComposition, RepairConvergenceEvidence, RepairCounts, RepairRoundArtifacts,
     RepairRoundInput, RepairRoundState, RepairSnapshotError, RepairSnapshotLayout,
-    RepairSnapshotMode, RepairTrackedPath, SnapshotArtifactIdentity, cleanup_plan,
-    collect_repair_stage_paths, count_code_review_findings, render_rejected_findings_aggregate,
-    render_repair_tally_body, render_scout_manifest_payload, resolve_coder_result,
-    resolve_repair_round, safe_patch_name, snapshot_identity_matches, tally_flush_sidecar,
-    tracked_delta_paths, untracked_delta_paths, validate_repair_snapshot,
+    RepairSnapshotMode, RepairStageSelection, RepairTrackedPath, SnapshotArtifactIdentity,
+    cleanup_plan, collect_repair_stage_paths, count_code_review_findings,
+    render_rejected_findings_aggregate, render_repair_tally_body, render_scout_manifest_payload,
+    resolve_coder_result, resolve_repair_round, safe_patch_name, select_repair_stage_paths,
+    snapshot_identity_matches, tally_flush_sidecar, tracked_delta_paths, untracked_delta_paths,
+    validate_repair_snapshot,
 };
 pub use tally_engine::{ItemAdjudicationResult, ItemContext, VoteCell, adjudicate_item, run_items};
 pub use types::{
