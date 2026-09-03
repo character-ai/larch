@@ -8,7 +8,8 @@ use super::*;
 use crate::github_service::with_test_github_service;
 use chrono::{TimeZone, Utc};
 use larch_adapters::github::OctocrabGitHubService;
-use larch_test_support::{IssueServiceExchange, IssueServiceStub};
+use larch_core::GitHubTransportPolicy;
+use larch_test_support::{HttpResponseBuilder, IssueServiceExchange, IssueServiceStub};
 use serde_json::{Value, json};
 use std::{
     ffi::OsString,
@@ -285,6 +286,47 @@ fn backlog_nudge_uses_a_bounded_typed_read_without_comments() {
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].method, "GET");
     assert!(requests.iter().all(|request| request.method != "POST"));
+}
+
+#[test]
+fn backlog_nudge_refuses_a_search_that_stops_at_the_page_bound_with_rows_unread() {
+    let mut recent = audit_issue(7, "[BUG] fixed", "");
+    recent["closed_at"] = json!("2026-08-09T02:00:00Z");
+    let page = json!({
+        "total_count": 1,
+        "incomplete_results": false,
+        "items": [recent],
+    })
+    .to_string();
+    let pages = GitHubTransportPolicy::github_com().limits().pages();
+    let server = IssueServiceStub::start((0..pages).map(|_| {
+        let response = HttpResponseBuilder::new(200)
+            .header("content-type", "application/json")
+            .expect("content type")
+            .header("link", "</search/issues?page=2>; rel=\"next\"")
+            .expect("pagination link")
+            .body(page.clone().into_bytes())
+            .build()
+            .expect("paginated search page");
+        IssueServiceExchange::any(response)
+    }))
+    .expect("GitHub loopback");
+    let service = loopback_service(server.base_url().to_owned());
+
+    with_test_github_service(service, || {
+        let repository = repository_ref("o/r").expect("repository ref");
+        let boundary = parse_utc_instant("2026-08-09T01:00:00Z").expect("boundary");
+        let detail = with_github_service(async |service, cancellation| {
+            bugs_backlog_nudge_count_remote(service, cancellation, &repository, boundary)
+                .await
+                .map_err(NudgeReadFailure::into_wire)
+        })
+        .expect_err("an unread continuation must refuse the count")
+        .into_detail();
+        assert!(detail.starts_with("service:"), "{detail}");
+        assert!(detail.contains("matches unread"), "{detail}");
+    });
+    assert_eq!(server.finish().expect("recorded requests").len(), pages);
 }
 
 #[test]

@@ -1356,11 +1356,17 @@ fn fetch_issues(
             limit: limit.min(service.transport_policy().limits().items()),
             sort: larch_core::GitHubIssueSearchSort::BestMatch,
         };
-        service
+        let result = service
             .search_issues(&request, cancellation)
             .await
-            .map(|result| result.issues)
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+        if result.continuation_unread {
+            eprintln!(
+                "WARN: learn-from-bugs search stopped at {} issues with matching issues unread",
+                request.limit
+            );
+        }
+        Ok(result.issues)
     })
     .map_err(crate::github_service::ServiceFailure::into_detail)
 }

@@ -284,7 +284,7 @@ pub fn search_implementing(arguments: &[OsString]) -> ExitCode {
         return emit_search_error(&search_read_failure(&repo));
     };
     let query = format!("{sanitized_path} state:open");
-    let rows = with_github_service(async |service, cancellation| {
+    let result = with_github_service(async |service, cancellation| {
         let request = GitHubIssueSearch {
             repo: reference.clone(),
             query: query.clone(),
@@ -294,13 +294,18 @@ pub fn search_implementing(arguments: &[OsString]) -> ExitCode {
         service
             .search_issues(&request, cancellation)
             .await
-            .map(|result| result.issues)
             .map_err(|error| error.to_string())
     });
-    let Ok(rows) = rows else {
+    let Ok(result) = result else {
         return emit_search_error(&search_read_failure(&repo));
     };
-    match classify_implementing_issues(&sanitized_path, &rows) {
+    if result.continuation_unread {
+        return emit_search_error(&format!(
+            "gh issue search for repo {} stopped with matching issues unread",
+            single_line(&repo)
+        ));
+    }
+    match classify_implementing_issues(&sanitized_path, &result.issues) {
         Ok(outcome) => emit_implementing_outcome(outcome),
         Err(error) => emit_search_error(&error),
     }
