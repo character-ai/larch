@@ -95,7 +95,15 @@ pub fn mark(arguments: &[OsString]) -> ExitCode {
     let skill = environment.skill();
     let path = match resolve_ledger_path(ledger.as_deref(), &environment) {
         Ok(Some(path)) => path,
-        Ok(None) => return ExitCode::SUCCESS,
+        Ok(None) => {
+            if !environment.get("LARCH_TIMING_SKILL").is_empty() {
+                eprintln!(
+                    "timing mark: WARNING: no ledger resolved for {skill} mark: {}",
+                    timing::sanitize(label)
+                );
+            }
+            return ExitCode::SUCCESS;
+        }
         Err(message) => {
             eprintln!("timing mark: {message}");
             return ExitCode::from(1);

@@ -185,7 +185,12 @@ fn summary_cases() -> Vec<RecordedCase> {
         ],
         design_dir_seed(),
     ));
-    // pre-phase approved: renders and counts without enrichment.
+    // pre-phase approved: a zero-length timing report renders as unavailable.
+    let mut zero_duration = design_manifest_seed();
+    zero_duration.push(SeedFile::text(
+        &format!("{DESIGN_RELATIVE}/timing-report-final.json"),
+        "{\"total_seconds\":0,\"total_hms\":\"00:00:00\"}\n",
+    ));
     cases.push(summary_case(
         "design-gate-summary-final-pre-approved",
         &[
@@ -199,7 +204,7 @@ fn summary_cases() -> Vec<RecordedCase> {
             "--issue-number",
             "0",
         ],
-        design_manifest_seed(),
+        zero_duration,
     ));
     // post-phase approved: full enrichment path over an empty tmpdir.
     cases.push(summary_case(

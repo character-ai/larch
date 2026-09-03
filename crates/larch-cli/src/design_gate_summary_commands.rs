@@ -809,9 +809,15 @@ fn duration(design_tmpdir: &Path) -> String {
     let Ok(Value::Object(data)) = serde_json::from_str::<Value>(&text) else {
         return "N/A".to_owned();
     };
+    if data
+        .get("total_seconds")
+        .is_some_and(|value| value.as_i64() == Some(0))
+    {
+        return "N/A".to_owned();
+    }
     let value = data.get("total_hms").or_else(|| data.get("total_seconds"));
     match value {
-        Some(Value::String(text)) if !text.is_empty() => text.clone(),
+        Some(Value::String(text)) if !text.is_empty() && text != "00:00:00" => text.clone(),
         Some(Value::Number(number)) => {
             let rendered = number.to_string();
             if rendered == "0" {
@@ -2114,6 +2120,10 @@ mod tests {
         let path = dir.path().join("timing-report-final.json");
         fs::write(&path, r#"{"total_hms": "01:02:03"}"#).expect("write");
         assert_eq!(duration(dir.path()), "01:02:03");
+        fs::write(&path, r#"{"total_hms": "00:00:00"}"#).expect("write");
+        assert_eq!(duration(dir.path()), "N/A");
+        fs::write(&path, r#"{"total_hms": "01:02:03", "total_seconds": 0}"#).expect("write");
+        assert_eq!(duration(dir.path()), "N/A");
         fs::write(&path, r#"{"total_seconds": 0}"#).expect("write");
         assert_eq!(duration(dir.path()), "N/A");
         fs::write(&path, r#"{"total_seconds": 42}"#).expect("write");

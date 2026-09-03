@@ -33,6 +33,9 @@
     },
     "design/plan.txt": {
       "text": "## Plan\n\n### Closed decisions and ownership\n\n- Publish keeps one owner.\n\n### Ordered implementation\n\n1. Write the plan block.\n2. Rename the issue.\n\n## Files to modify/create\n\n### NEW: src/lib.rs\n\n## Acceptance\n\n- The publish rows stay allowlisted.\n\n## Breaking changes and migration\n\nNone.\n\ndiff_lines: 12\n"
+    },
+    "design/timing-ledger.tsv": {
+      "text": "v1\tmark\t1787000000\tdesign\tdesign Step 5c — publish\t-\t-\t-\t-\t-\t-\t-\t-\n"
     }
   },
   "side_effects": {},

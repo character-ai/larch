@@ -3,7 +3,12 @@
 //! Every case pins report time with `--test-now` or a seeded ledger rather than
 //! sleeping, so the suite stays deterministic under parallel execution.
 
-use std::{fs, path::PathBuf, process::Output};
+use std::{
+    ffi::OsString,
+    fs,
+    path::{Path, PathBuf},
+    process::Output,
+};
 
 use assert_cmd::Command as AssertCommand;
 use serde_json::Value;
@@ -71,6 +76,117 @@ fn stdout(output: &Output) -> String {
 
 fn stderr(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+fn repository_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repository root should canonicalize")
+}
+
+fn run_design_wrapper(
+    working_directory: &Path,
+    arguments: &[OsString],
+    fixed_time: Option<i64>,
+) -> Output {
+    let binary = env!("CARGO_BIN_EXE_larch");
+    let mut command = std::process::Command::new(binary);
+    command
+        .current_dir(working_directory)
+        .env("TMPDIR", working_directory)
+        .env("CLAUDE_PLUGIN_ROOT", repository_root())
+        .env("LARCH_BINARY", binary)
+        .env("LARCH_QUIET_DISABLE", "1")
+        .env("NO_OPEN_BROWSER", "1")
+        .env_remove("IMPLEMENT_TMPDIR")
+        .env_remove("DESIGN_TMPDIR")
+        .env_remove("REVIEW_TMPDIR")
+        .env_remove("SESSION_ENV_PATH")
+        .env_remove("LARCH_TIMING_LEDGER")
+        .env_remove("LARCH_TIMING_SKILL")
+        .args(arguments);
+    if let Some(now) = fixed_time {
+        command.env("LARCH_TEST_TIMING_NOW", now.to_string());
+    } else {
+        command.env_remove("LARCH_TEST_TIMING_NOW");
+    }
+    command.output().expect("design wrapper should launch")
+}
+
+fn source_only_design_fixture(fixture: &Fixture) -> (PathBuf, PathBuf) {
+    let design = fixture.tmpdir.join("design");
+    let consumer = fixture.tmpdir.join("consumer");
+    fs::create_dir_all(design.join(".completed")).expect("design directory should create");
+    fs::create_dir(&consumer).expect("consumer directory should create");
+    fs::write(
+        consumer.join("ARCHITECTURAL_INVARIANTS.md"),
+        "## I-Core-1: Keep one owner\n",
+    )
+    .expect("consumer invariant should seed");
+    let source = fixture.tmpdir.join("source-env.sh");
+    fs::write(
+        &source,
+        format!(
+            "export DESIGN_TMPDIR='{}'\nexport CLAUDE_PLUGIN_ROOT='{}'\nexport REPO_ROOT='{}'\nexport ISSUE_NUMBER='8586'\n",
+            design.display(),
+            repository_root().display(),
+            consumer.display()
+        ),
+    )
+    .expect("source environment should seed");
+    (design, source)
+}
+
+fn seed_step5c_refusal(design: &Path) -> PathBuf {
+    for path in [
+        design.join(".completed/step-3"),
+        design.join(".completed/step-5b"),
+        design.join(".completed/step-5b.5"),
+        design.join("architecture-diagram.skipped"),
+    ] {
+        fs::write(path, "").expect("Step 5c prerequisite should seed");
+    }
+    fs::write(
+        design.join(".step3-review-result.env"),
+        "STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n",
+    )
+    .expect("review result should seed");
+    fs::write(
+        design.join("plan.txt"),
+        "## Plan\n\n### Closed decisions and ownership\n\n- Keep one owner.\n\n### Ordered implementation\n\n1. Apply the change.\n\n## Files to modify/create\n\n### NEW: src/lib.rs\n\n## Acceptance\n\n- The regression passes.\n\n## Breaking changes and migration\n\nNone.\n\ndiff_lines: 1\n",
+    )
+    .expect("plan should seed");
+    let merge_result = design.join(".step5c-merge.env");
+    fs::write(&merge_result, "").expect("merge result should seed");
+    merge_result
+}
+
+fn assert_nonzero_design_report(fixture: &Fixture, ledger: PathBuf) {
+    let report = run_design_wrapper(
+        &fixture.tmpdir,
+        &[
+            "timing".into(),
+            "report".into(),
+            "--ledger".into(),
+            ledger.into_os_string(),
+            "--full".into(),
+            "--format".into(),
+            "json".into(),
+            "--test-now".into(),
+            "2000000000".into(),
+        ],
+        None,
+    );
+    assert!(report.status.success(), "{}", stderr(&report));
+    let parsed: Value =
+        serde_json::from_str(stdout(&report).trim()).expect("timing report should parse");
+    assert!(
+        parsed["total_seconds"]
+            .as_i64()
+            .is_some_and(|value| value > 0)
+    );
+    assert_ne!(parsed["total_hms"], "00:00:00");
 }
 
 const MARK_STEP_1: &str = "v1\tmark\t100\timplement\tStep 1\t-\t-\t-\t-\t-\t-\t-\t-";
@@ -154,10 +270,128 @@ fn mark_without_a_resolvable_ledger_writes_nothing_and_succeeds() {
         .env_remove("REVIEW_TMPDIR")
         .env_remove("SESSION_ENV_PATH")
         .env_remove("LARCH_TIMING_LEDGER")
+        .env_remove("LARCH_TIMING_SKILL")
         .args(["timing", "mark", "Step 1"]);
     let output = command.output().expect("timing mark should launch");
     assert!(output.status.success(), "{}", stderr(&output));
+    assert!(stderr(&output).is_empty(), "{}", stderr(&output));
     assert!(!fixture.ledger().exists());
+}
+
+#[test]
+fn skill_scoped_mark_without_a_resolvable_ledger_warns_and_succeeds() {
+    let fixture = Fixture::new();
+    let mut command = AssertCommand::cargo_bin("larch").expect("larch binary should build");
+    command
+        .current_dir(&fixture.tmpdir)
+        .env("LARCH_TIMING_SKILL", "design")
+        .env_remove("IMPLEMENT_TMPDIR")
+        .env_remove("DESIGN_TMPDIR")
+        .env_remove("REVIEW_TMPDIR")
+        .env_remove("SESSION_ENV_PATH")
+        .env_remove("LARCH_TIMING_LEDGER")
+        .args(["timing", "mark", "design Step 2b: plan"]);
+    let output = command.output().expect("timing mark should launch");
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        stderr(&output),
+        "timing mark: WARNING: no ledger resolved for design mark: design Step 2b: plan\n"
+    );
+    assert!(!fixture.ledger().exists());
+}
+
+#[test]
+fn source_only_design_wrappers_record_boundaries_and_a_nonzero_total() {
+    let fixture = Fixture::new();
+    let (design, source) = source_only_design_fixture(&fixture);
+    let plugin = repository_root().into_os_string();
+    let source_arg = source.as_os_str().to_owned();
+
+    let step0 = run_design_wrapper(
+        &fixture.tmpdir,
+        &[
+            "design".into(),
+            "step0c".into(),
+            "--plugin-root".into(),
+            plugin.clone(),
+            "--session-env-path".into(),
+            source_arg.clone(),
+        ],
+        Some(100),
+    );
+    assert!(step0.status.success(), "{}", stderr(&step0));
+
+    let draft = run_design_wrapper(
+        &fixture.tmpdir,
+        &[
+            "design".into(),
+            "step2b-drafter".into(),
+            "--plugin-root".into(),
+            plugin,
+            "--session-env-path".into(),
+            source_arg.clone(),
+        ],
+        Some(160),
+    );
+    assert_eq!(draft.status.code(), Some(1));
+    assert!(stderr(&draft).contains("feature-description.txt missing or empty"));
+
+    let step3 = run_design_wrapper(
+        &fixture.tmpdir,
+        &[
+            "plan-review".into(),
+            "step3-entry-state".into(),
+            "--session-env-path".into(),
+            source_arg.clone(),
+            "--claude-pid".into(),
+            "4242".into(),
+        ],
+        None,
+    );
+    assert!(step3.status.success(), "{}", stderr(&step3));
+
+    let merge_result = seed_step5c_refusal(&design);
+    let publish = run_design_wrapper(
+        &fixture.tmpdir,
+        &[
+            "design".into(),
+            "step5c".into(),
+            "--session-env-path".into(),
+            source_arg,
+            "--claude-pid".into(),
+            "4242".into(),
+            "--skip-validate".into(),
+            "--bgjob-child".into(),
+            "--merge-result-env".into(),
+            merge_result.into_os_string(),
+        ],
+        None,
+    );
+    assert!(
+        publish.status.success(),
+        "status={:?}\nstdout={}\nstderr={}",
+        publish.status.code(),
+        stdout(&publish),
+        stderr(&publish)
+    );
+    assert!(stdout(&publish).contains("STEP5C_STATUS=missing-invariant-assessment"));
+
+    let ledger = design.join("timing-ledger.tsv");
+    let labels: Vec<String> = fs::read_to_string(&ledger)
+        .expect("timing ledger should exist")
+        .lines()
+        .filter_map(|line| line.split('\t').nth(4).map(str::to_owned))
+        .collect();
+    for expected in [
+        "design folded discussion block",
+        "design Step 2b: plan",
+        "design Step 3 — plan review",
+        "design Step 5c — publish",
+    ] {
+        assert!(labels.iter().any(|label| label == expected), "{labels:?}");
+    }
+
+    assert_nonzero_design_report(&fixture, ledger);
 }
 
 #[test]

@@ -220,6 +220,45 @@ pub fn run_session_cleanup(
     )
 }
 
+/// Build the explicit child contract for one best-effort `/design` timing mark.
+///
+/// Wrappers rehydrate `DESIGN_TMPDIR` into process-local state, so relying on
+/// the child's ambient environment silently loses marks. Keep the ledger path
+/// and its confinement root together at every design call site.
+pub fn design_timing_mark_request(
+    design_tmpdir: &Path,
+    label: &str,
+) -> (Vec<String>, Vec<(String, String)>) {
+    let ledger = design_tmpdir.join("timing-ledger.tsv");
+    (
+        vec![
+            "timing".to_owned(),
+            "mark".to_owned(),
+            "--ledger".to_owned(),
+            ledger.display().to_string(),
+            label.to_owned(),
+        ],
+        vec![
+            ("LARCH_TIMING_SKILL".to_owned(), "design".to_owned()),
+            (
+                "DESIGN_TMPDIR".to_owned(),
+                design_tmpdir.display().to_string(),
+            ),
+        ],
+    )
+}
+
+/// Record one best-effort `/design` timing mark through the verified child.
+pub fn run_design_timing_mark(
+    runner: &dyn Step0Runner,
+    plugin_root: &Path,
+    design_tmpdir: &Path,
+    label: &str,
+) {
+    let (args, environment) = design_timing_mark_request(design_tmpdir, label);
+    let _ = runner.run(plugin_root, &args, &environment, false);
+}
+
 pub struct LiveStep0Runner;
 
 /// The larch entrypoint, preferring `LARCH_BINARY` like the frozen router.
@@ -1097,17 +1136,11 @@ fn step3_continuation_entry_with(arguments: &[OsString], runner: &dyn Step0Runne
     );
     print_child_streams(&child);
     if child.code == 0 {
-        let mut timing_env = child_env;
-        timing_env.push(("LARCH_TIMING_SKILL".to_owned(), "design".to_owned()));
-        let _ = runner.run(
+        run_design_timing_mark(
+            runner,
             &plugin_root,
-            &[
-                "timing".to_owned(),
-                "mark".to_owned(),
-                "design Step 3 — auto-continuation entry".to_owned(),
-            ],
-            &timing_env,
-            false,
+            &design_tmpdir,
+            "design Step 3 — auto-continuation entry",
         );
     }
     exit_from_i32(child.code)
@@ -1531,15 +1564,11 @@ fn step0c_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
     let completed = design_tmpdir.join(".completed");
     let _ = fs::create_dir_all(&completed);
     let _ = fs::write(completed.join("step-0c"), "");
-    let _ = runner.run(
+    run_design_timing_mark(
+        runner,
         &plugin_root,
-        &[
-            "timing".to_owned(),
-            "mark".to_owned(),
-            "design folded discussion block".to_owned(),
-        ],
-        &[("LARCH_TIMING_SKILL".to_owned(), "design".to_owned())],
-        false,
+        &design_tmpdir,
+        "design folded discussion block",
     );
     ExitCode::SUCCESS
 }
@@ -2821,15 +2850,11 @@ fn step0_session_main(
         &[],
         false,
     );
-    let _ = runner.run(
+    run_design_timing_mark(
+        runner,
         plugin_root,
-        &[
-            "timing".to_owned(),
-            "mark".to_owned(),
-            "design Step 0: session setup".to_owned(),
-        ],
-        &[("LARCH_TIMING_SKILL".to_owned(), "design".to_owned())],
-        false,
+        &design_path,
+        "design Step 0: session setup",
     );
     let gate = runner.run(
         plugin_root,
@@ -2901,10 +2926,10 @@ mod tests {
 
     use super::{
         ChildOutcome, Step0Runner, bash_percent_q, decode_bash_percent_q,
-        decode_shell_assignment_value, prelude_with, require_plugin_root, settle_next_action,
-        step0_abort_cleanup_with, step0_ap_continue, step0_clarify_hard_halt, step0_parse_with,
-        step0_route_with, step0_session_with, step0c_with, step3_continuation_entry_with,
-        validate_claude_pid,
+        decode_shell_assignment_value, design_timing_mark_request, prelude_with,
+        require_plugin_root, settle_next_action, step0_abort_cleanup_with, step0_ap_continue,
+        step0_clarify_hard_halt, step0_parse_with, step0_route_with, step0_session_with,
+        step0c_with, step3_continuation_entry_with, validate_claude_pid,
     };
 
     fn arguments(values: &[&str]) -> Vec<OsString> {
@@ -3039,6 +3064,18 @@ mod tests {
         assert!(
             runner.environments.borrow()[1]
                 .contains(&("LARCH_TIMING_SKILL".to_owned(), "design".to_owned()))
+        );
+        let canonical_root = fs::canonicalize(root.path()).expect("canonical design root");
+        assert!(runner.environments.borrow()[1].contains(&(
+            "DESIGN_TMPDIR".to_owned(),
+            canonical_root.display().to_string()
+        )));
+        assert_eq!(
+            calls[1][3],
+            canonical_root
+                .join("timing-ledger.tsv")
+                .display()
+                .to_string()
         );
     }
 
@@ -3289,6 +3326,18 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0][0], "timing");
         assert_eq!(calls[0][1], "mark");
+        let canonical_tmpdir = fs::canonicalize(&design_tmpdir).expect("canonical design tmpdir");
+        assert_eq!(
+            calls[0][3],
+            canonical_tmpdir
+                .join("timing-ledger.tsv")
+                .display()
+                .to_string()
+        );
+        assert!(runner.environments.borrow()[0].contains(&(
+            "DESIGN_TMPDIR".to_owned(),
+            canonical_tmpdir.display().to_string()
+        )));
     }
 
     #[test]
@@ -3498,5 +3547,38 @@ mod tests {
                 ("agent".to_owned(), "degraded-tools-gate".to_owned()),
             ]
         );
+        assert_eq!(
+            calls[10][3],
+            design_tmpdir
+                .join("timing-ledger.tsv")
+                .display()
+                .to_string()
+        );
+        assert!(runner.environments.borrow()[10].contains(&(
+            "DESIGN_TMPDIR".to_owned(),
+            design_tmpdir.display().to_string()
+        )));
+    }
+
+    #[test]
+    fn design_timing_mark_request_binds_explicit_ledger_and_root() {
+        let root = tempfile::tempdir_in("/tmp").expect("tempdir");
+        let (args, environment) =
+            design_timing_mark_request(root.path(), "design Step 5c — publish");
+        assert_eq!(
+            args,
+            [
+                "timing",
+                "mark",
+                "--ledger",
+                &root.path().join("timing-ledger.tsv").display().to_string(),
+                "design Step 5c — publish",
+            ]
+        );
+        assert!(environment.contains(&("LARCH_TIMING_SKILL".to_owned(), "design".to_owned())));
+        assert!(environment.contains(&(
+            "DESIGN_TMPDIR".to_owned(),
+            root.path().display().to_string()
+        )));
     }
 }
