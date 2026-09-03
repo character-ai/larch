@@ -26,7 +26,7 @@ use serde_json::Value;
 use crate::design_step0_commands::{
     Env, LiveStep0Runner, Step0Runner, check_pause_and_exit, derive_binary_found, entrypoint,
     env_get, exit_from_i32, load_wrapper_env, parse_wrapper_args, require_design_tmpdir,
-    require_plugin_root, utf8_arguments,
+    require_plugin_root, run_design_timing_mark, utf8_arguments,
 };
 
 /// Resolved wrapper preamble shared by the design Step 1 entry points.
@@ -487,15 +487,11 @@ fn step1d5_entry(
         println!("STEP1D5_SKIP_KIND={skip_kind}");
     }
     // Best-effort `timing mark`; failures are swallowed like `_run_best_effort`.
-    let _ = runner.run(
+    run_design_timing_mark(
+        runner,
         plugin_root,
-        &[
-            "timing".to_owned(),
-            "mark".to_owned(),
-            "design Step 1d.5 — brainstorm".to_owned(),
-        ],
-        &[("LARCH_TIMING_SKILL".to_owned(), "design".to_owned())],
-        false,
+        design_tmpdir,
+        "design Step 1d.5 — brainstorm",
     );
     ExitCode::SUCCESS
 }
@@ -1412,6 +1408,7 @@ mod tests {
 
     struct RecordingRunner {
         calls: RefCell<Vec<Vec<String>>>,
+        environments: RefCell<Vec<Vec<(String, String)>>>,
         answers: RefCell<Vec<ChildOutcome>>,
     }
 
@@ -1419,6 +1416,7 @@ mod tests {
         fn new(answers: Vec<ChildOutcome>) -> Self {
             Self {
                 calls: RefCell::new(Vec::new()),
+                environments: RefCell::new(Vec::new()),
                 answers: RefCell::new(answers),
             }
         }
@@ -1429,10 +1427,11 @@ mod tests {
             &self,
             _plugin_root: &Path,
             args: &[String],
-            _env: &[(String, String)],
+            env: &[(String, String)],
             _merge_stderr: bool,
         ) -> ChildOutcome {
             self.calls.borrow_mut().push(args.to_vec());
+            self.environments.borrow_mut().push(env.to_vec());
             let mut answers = self.answers.borrow_mut();
             if answers.is_empty() {
                 ChildOutcome {
@@ -1550,6 +1549,19 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0][0], "timing");
         assert_eq!(calls[0][1], "mark");
+        let canonical_tmpdir =
+            fs::canonicalize(&fixture.design_tmpdir).expect("canonical design tmpdir");
+        assert_eq!(
+            calls[0][3],
+            canonical_tmpdir
+                .join("timing-ledger.tsv")
+                .display()
+                .to_string()
+        );
+        assert!(runner.environments.borrow()[0].contains(&(
+            "DESIGN_TMPDIR".to_owned(),
+            canonical_tmpdir.display().to_string()
+        )));
     }
 
     #[test]

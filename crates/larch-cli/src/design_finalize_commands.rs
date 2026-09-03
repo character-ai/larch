@@ -31,7 +31,7 @@ use crate::clarify_orchestrator::write_result_env;
 use crate::design_log_publish_commands::resolve_summary_mode;
 use crate::design_step0_commands::{
     Env, LiveStep0Runner, Step0Runner, entrypoint, env_get, exit_from_i32, reap_pid_residuals,
-    require_plugin_root, resolve_owned_run_id, resolve_persisted_repo_root,
+    require_plugin_root, resolve_owned_run_id, resolve_persisted_repo_root, run_design_timing_mark,
     run_progress_deactivate, run_session_cleanup, utf8_arguments as utf8, validate_claude_pid,
 };
 use crate::design_step2b_commands::{
@@ -1240,6 +1240,12 @@ fn step5c_core_with(
         false,
     );
     let publish_rc = publish.code;
+    run_design_timing_mark(
+        runner,
+        &plugin_root,
+        &design_tmpdir,
+        "design Step 5c — publish",
+    );
 
     if publish_rc == 2 || !matches!(publish_rc, 0..=5) {
         let rows = early_status_rows(&ctx, &publish_rc.to_string(), false, "", "", false, &empty);
@@ -1644,16 +1650,7 @@ fn step6_prelude_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitC
     if let Some(code) = pause_if_requested(runner, &root, Some(&design_tmpdir), &ctx) {
         return exit_from_i32(code);
     }
-    let _ = runner.run(
-        &root,
-        &[
-            "timing".to_owned(),
-            "mark".to_owned(),
-            "design Step 6 — cleanup".to_owned(),
-        ],
-        &[("LARCH_TIMING_SKILL".to_owned(), "design".to_owned())],
-        false,
-    );
+    run_design_timing_mark(runner, &root, &design_tmpdir, "design Step 6 — cleanup");
     ExitCode::SUCCESS
 }
 

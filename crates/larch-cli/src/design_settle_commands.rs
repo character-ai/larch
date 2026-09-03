@@ -23,7 +23,7 @@ use crate::{
     design_step0_commands::{
         ChildOutcome, Env, LiveStep0Runner, Step0Runner, WrapperNs, atomic_write_string, env_get,
         load_source_env_allowed, load_wrapper_env, pause_save_arguments, require_plugin_root,
-        resolve_owned_run_id, utf8_arguments, write_text,
+        resolve_owned_run_id, run_design_timing_mark, utf8_arguments, write_text,
     },
     design_step1_commands::{append_failure_args, consumer_repo_root},
     voter_calibration_commands::resolve_like_python,
@@ -302,22 +302,6 @@ fn call_pause_save(
     let child = run_larch(runner, plugin_root, args, &[]);
     print_child(&child);
     child.code
-}
-
-fn mark_design_timing(runner: &dyn Step0Runner, plugin_root: &Path, label: &str) {
-    let root = plugin_root.to_string_lossy();
-    if root.is_empty() || root == "${CLAUDE_PLUGIN_ROOT}" {
-        return;
-    }
-    let _ = run_larch(
-        runner,
-        plugin_root,
-        ["timing".to_owned(), "mark".to_owned(), label.to_owned()],
-        &[
-            ("LARCH_TIMING_SKILL".to_owned(), "design".to_owned()),
-            ("CLAUDE_PLUGIN_ROOT".to_owned(), root.into_owned()),
-        ],
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1009,7 +993,12 @@ pub fn step5b_prepare(arguments: &[OsString]) -> ExitCode {
         return ExitCode::from(u8::try_from(prelude).unwrap_or(1));
     }
     touch(&design_tmpdir.join(".completed/step-4b"));
-    mark_design_timing(&runner, &plugin_root, "design Step 5 — finalize");
+    run_design_timing_mark(
+        &runner,
+        &plugin_root,
+        &design_tmpdir,
+        "design Step 5 — finalize",
+    );
     let stderr_path = design_tmpdir.join("oos-filing-prepare.stderr.log");
     let child = run_larch(
         &runner,

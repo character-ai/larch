@@ -36,9 +36,10 @@ use larch_core::{
 use crate::decompose_commands::which_binary;
 use crate::design_commands::parse_stdout_kv;
 use crate::design_step0_commands::{
-    ChildOutcome, Env, LiveStep0Runner, Step0Runner, WrapperNs, atomic_write_string, env_get,
-    exit_from_i32, load_source_env_allowed, load_wrapper_env, next_unknown_wrapper_arg,
-    pause_save_arguments, require_plugin_root, utf8_arguments, valid_var_name, write_text,
+    ChildOutcome, Env, LiveStep0Runner, Step0Runner, WrapperNs, atomic_write_string,
+    design_timing_mark_request, env_get, exit_from_i32, load_source_env_allowed, load_wrapper_env,
+    next_unknown_wrapper_arg, pause_save_arguments, require_plugin_root, utf8_arguments,
+    valid_var_name, write_text,
 };
 use crate::design_step1_commands::consumer_repo_root;
 
@@ -2425,7 +2426,7 @@ fn step2b_drafter_run(argv: &[String]) -> i32 {
         return code;
     }
     seed_step2b_drafter_fallback_state(&run.design_tmpdir);
-    mark_design_timing(&run.plugin_root, "design Step 2b: plan");
+    mark_design_timing(&run.plugin_root, &run.design_tmpdir, "design Step 2b: plan");
     let vendor = resolve_step2b_drafter_vendor();
     reset_step2b_drafter_artifacts(&run.design_tmpdir);
     let feature_rc = validate_step2b_drafter_feature_description(&run.design_tmpdir);
@@ -2710,19 +2711,18 @@ fn call_pause_save(plugin_root: &Path, design_tmpdir: &Path, issue: &str, repo: 
     pause_save_captured(plugin_root, design_tmpdir, issue, repo).0
 }
 
-fn mark_design_timing(plugin_root: &Path, label: &str) {
+fn mark_design_timing(plugin_root: &Path, design_tmpdir: &Path, label: &str) {
     let root = plugin_root.to_string_lossy();
     if root.is_empty() || root == "${CLAUDE_PLUGIN_ROOT}" {
         return;
     }
-    let _ = run_larch(
-        plugin_root,
-        &["timing", "mark", label],
-        &[
-            ("LARCH_TIMING_SKILL", "design"),
-            ("CLAUDE_PLUGIN_ROOT", &root),
-        ],
-    );
+    let (args, environment) = design_timing_mark_request(design_tmpdir, label);
+    #[cfg(test)]
+    if let Some(seam) = current_seam() {
+        let _ = seam.larch(&args, &environment);
+        return;
+    }
+    let _ = LiveStep0Runner.run(plugin_root, &args, &environment, false);
 }
 
 fn unlink_diagram_artifacts(design_tmpdir: &Path, names: &[&str]) {
@@ -2840,7 +2840,11 @@ fn run_diagram(plugin_root: &Path, design_tmpdir: &Path, issue: &str, repo: &str
     if design_tmpdir.join(".pause-requested").is_file() {
         return call_pause_save(plugin_root, design_tmpdir, issue, repo);
     }
-    mark_design_timing(plugin_root, "design Step 5b.5 — arch diagram");
+    mark_design_timing(
+        plugin_root,
+        design_tmpdir,
+        "design Step 5b.5 — arch diagram",
+    );
     if diagram_required(&design_tmpdir.join("plan.txt")) {
         unlink_diagram_artifacts(
             design_tmpdir,
@@ -2924,7 +2928,7 @@ fn step3b_entry_run(argv: &[String]) -> i32 {
     if design_tmpdir.join(".pause-requested").is_file() {
         return call_pause_save(&plugin_root, &design_tmpdir, &issue, &repo);
     }
-    mark_design_timing(&plugin_root, "design Step 3b — finalize");
+    mark_design_timing(&plugin_root, &design_tmpdir, "design Step 3b — finalize");
     let rc = run_finalize(&plugin_root, &design_tmpdir);
     if rc == 0 {
         run_step4_mode_probe(&design_tmpdir)

@@ -17,7 +17,8 @@ use sha2::{Digest as _, Sha256};
 
 use crate::design_step0_commands::{
     ChildOutcome, Env, LiveStep0Runner, Step0Runner, WrapperNs, entrypoint, env_get, exit_from_i32,
-    load_source_env_allowed, load_wrapper_env, require_plugin_root, utf8_arguments,
+    load_source_env_allowed, load_wrapper_env, require_plugin_root, run_design_timing_mark,
+    utf8_arguments,
 };
 use crate::design_step2b_commands::{print_text, resolve_design_tmpdir, touch};
 
@@ -483,15 +484,6 @@ fn pause_save(
     run_larch(plugin_root, &args, &[], runner)
 }
 
-fn timing_mark(plugin_root: &Path, label: &str, runner: &dyn Step0Runner) {
-    let _ = run_larch(
-        plugin_root,
-        &["timing", "mark", label],
-        &[("LARCH_TIMING_SKILL", "design")],
-        runner,
-    );
-}
-
 #[allow(clippy::too_many_lines)] // One Bash scope-anchor assembly, ported branch for branch.
 fn write_scope_anchor(
     plugin_root: &Path,
@@ -825,7 +817,7 @@ fn gate_b_with(arguments: &[OsString], runner: &dyn Step0Runner) -> VerbResult {
         out.code = exit_from_i32(pause.code);
         return out;
     }
-    timing_mark(&plugin_root, "design Step 3.5 — gate B", runner);
+    run_design_timing_mark(runner, &plugin_root, &design, "design Step 3.5 — gate B");
     let approve = json_bool(&design.join("run-params.json"), "approve_requested");
     emit(
         &mut out.stdout,
@@ -1018,7 +1010,12 @@ fn step4_tail_child(
         out.code = exit_from_i32(published.code);
         return out;
     }
-    timing_mark(plugin_root, "design Step 4 — rejected findings", runner);
+    run_design_timing_mark(
+        runner,
+        plugin_root,
+        design,
+        "design Step 4 — rejected findings",
+    );
     let mut out = VerbResult::from_code(0);
     if !design.join(".completed/finalize").is_file() {
         let design_text = design.display().to_string();
@@ -1066,7 +1063,7 @@ fn step4_tail_child(
         out.code = exit_from_i32(published.code);
         return out;
     }
-    timing_mark(plugin_root, "design Step 4b — gate C", runner);
+    run_design_timing_mark(runner, plugin_root, design, "design Step 4b — gate C");
     skip_gatec = json_bool(&design.join("run-params.json"), "skip_approve_requested");
     let design_text = design.display().to_string();
     let dialectic = run_larch(
