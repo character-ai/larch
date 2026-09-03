@@ -12,13 +12,13 @@ use std::{
     io::Write as _,
     path::{Path, PathBuf},
     process::ExitCode,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use larch_adapters::GixRepository;
 use larch_core::{
     ChildEnvironment, DuplicatePolicy, KvDocument, ParseOptions, ProcessOutput, RepositoryRead,
-    Revision,
+    Revision, TIER_CEILING,
     implement::{
         checks_pass, checks_relay_line, checks_run_relevant_args, parse_line_anchored,
         parse_whitespace_kv_line,
@@ -30,11 +30,13 @@ use crate::{
     argparse_compat::{choice_error, parse_required_with_help, usage_error},
     implement_child_seam::resolve_plugin_root,
     implement_dispatch_commands::{
-        LaunchIdentity, checks_launch_identity, delegate_session_larch, delegate_verified_larch,
-        ensure_safe_regular_file, format_rows, forward_output, opt_string,
-        parse_command_with_tmpdir, prepare_checks_rejoin, publish_child_session,
+        LaunchIdentity, VerifiedLarchRunError, checks_launch_identity, delegate_session_larch,
+        delegate_verified_larch, delegate_verified_larch_env_timeout,
+        delegate_verified_larch_timeout, ensure_safe_regular_file, format_rows, forward_output,
+        opt_string, parse_command_with_tmpdir, prepare_checks_rejoin, publish_child_session,
         publish_identity_child, publish_rows, rehydrate_session, resolve_repo_root_output,
         run_bgjob_adapt, run_verified_larch_env_in, safe_merge_env, tmpdir_from_env, unlink_safe,
+        worker_deadline,
     },
 };
 
@@ -42,6 +44,10 @@ const STEP5_REVIEW_STEP: &str = "implement-step5-review";
 const STEP5_RESUME_STEP: &str = "implement-step5-resume";
 const STEP6_CHECKS_STEP: &str = "implement-step6-checks";
 const STEP7A_STEP: &str = "implement-step7a";
+const STEP5_REVIEW_BUDGET_S: u32 = 21_600;
+const STEP5_RESUME_BUDGET_S: u32 = 32_700;
+const STEP6_CHECKS_BUDGET_S: u32 = 15_600;
+const WRAPPER_DEADLINE_REASON: &str = "wrapper-deadline";
 
 const CHECKS_HEAD: &str = "CHECKS_INPUT_HEAD_SHA";
 const CHECKS_FP: &str = "CHECKS_INPUT_TREE_FP";
@@ -106,7 +112,7 @@ pub fn step5_review(arguments: &[OsString]) -> ExitCode {
         run_adapter(&AdapterSpec {
             tmpdir: tmpdir.clone(),
             step: STEP5_REVIEW_STEP,
-            budget_s: 21600,
+            budget_s: STEP5_REVIEW_BUDGET_S,
             verb: "step-5-review",
             public_args: Vec::new(),
             merge_env,
@@ -153,12 +159,13 @@ fn step5_review_worker(tmpdir: &Path) -> (i32, String) {
         command.push(OsString::from("--difficulty"));
         command.push(OsString::from(&difficulty));
     }
-    forward_worker(larch_env(
+    forward_step5_worker(larch_env_timeout(
         &command,
         &[(
             ChildEnvironment::LarchDynamicArchetypesMax,
             OsString::from(&dynamic_cap),
         )],
+        worker_deadline(STEP5_REVIEW_BUDGET_S),
     ))
 }
 
@@ -242,7 +249,7 @@ pub fn step5_resume(arguments: &[OsString]) -> ExitCode {
         run_adapter(&AdapterSpec {
             tmpdir: tmpdir.clone(),
             step: STEP5_RESUME_STEP,
-            budget_s: 32700,
+            budget_s: STEP5_RESUME_BUDGET_S,
             verb: "step-5-resume",
             public_args: public_args.clone(),
             merge_env,
@@ -296,7 +303,10 @@ fn step5_resume_worker(
         command.push(OsString::from("--difficulty"));
         command.push(OsString::from(&difficulty));
     }
-    let (rc, text) = forward_worker(larch(&command));
+    let (rc, text) = forward_step5_worker(larch_timeout(
+        &command,
+        worker_deadline(STEP5_RESUME_BUDGET_S),
+    ));
     out.push_str(&text);
     (rc, out)
 }
@@ -403,7 +413,12 @@ fn run_checks_step5_resume(
     let (captured, timed_out) = run_relevant_checks_for_site(tmpdir, checks_site, &repo_root);
     out.push_str(&checks_relay_line(&captured));
     out.push('\n');
-    if timed_out || !checks_pass(&captured) {
+    if timed_out {
+        let (rc, envelope) = step5_wrapper_deadline_stall();
+        out.push_str(&envelope);
+        return (rc, out);
+    }
+    if !checks_pass(&captured) {
         out.push_str("NEXT_ACTION=checks-failed\n");
         return (0, out);
     }
@@ -431,18 +446,17 @@ fn run_step5_resume_leg(tmpdir: &Path, final_round_num: &str) -> (i32, String) {
         OsString::from("--merge-result-env"),
         merge_env.into_os_string(),
     ];
-    larch(&args).map_or_else(
-        |_| (2, String::new()),
-        |output| {
-            if !output.stderr().is_empty() {
-                let _ = std::io::stderr().write_all(output.stderr());
-            }
-            (
-                output.status().code().unwrap_or(1),
-                String::from_utf8_lossy(output.stdout()).into_owned(),
-            )
-        },
-    )
+    match larch_timeout(&args, worker_deadline(STEP5_RESUME_BUDGET_S)) {
+        Err(error) if error.is_timed_out() => {
+            eprintln!("{error}");
+            step5_wrapper_deadline_stall()
+        }
+        Ok(output) => forward_worker(Ok(output)),
+        Err(error) => {
+            eprintln!("{error}");
+            (2, String::new())
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -556,7 +570,7 @@ pub fn step6_entry(arguments: &[OsString]) -> ExitCode {
         run_adapter(&AdapterSpec {
             tmpdir: tmpdir.clone(),
             step: STEP6_CHECKS_STEP,
-            budget_s: 15600,
+            budget_s: STEP6_CHECKS_BUDGET_S,
             verb: "step-6-entry",
             public_args: args,
             merge_env,
@@ -622,7 +636,10 @@ fn run_step6_composite(forked_target: &str) -> (i32, String) {
         OsString::from("--forked-target"),
         OsString::from(forked_target),
     ];
-    forward_worker(larch(&args))
+    forward_worker(
+        larch_timeout(&args, worker_deadline(STEP6_CHECKS_BUDGET_S))
+            .map_err(|error| error.to_string()),
+    )
 }
 
 fn step6_entry_seed_stall(tmpdir: &Path) -> (i32, String) {
@@ -1341,19 +1358,30 @@ fn run_relevant_checks_for_site(
     checks_site: &str,
     repo_root: &Path,
 ) -> (BTreeMap<String, String>, bool) {
-    let output = larch_in(
+    let output = larch_in_timeout(
         repo_root,
         &checks_run_relevant_args(checks_site, tmpdir, repo_root),
+        worker_deadline(STEP5_RESUME_BUDGET_S),
     );
-    let (rc, stdout) = output.map_or_else(
-        |_| (1, String::new()),
-        |output| {
-            (
-                output.status().code().unwrap_or(1),
-                String::from_utf8_lossy(output.stdout()).into_owned(),
-            )
-        },
-    );
+    let (rc, stdout) = match output {
+        Ok(output) => (
+            output.status().code().unwrap_or(1),
+            String::from_utf8_lossy(output.stdout()).into_owned(),
+        ),
+        Err(error) if error.is_timed_out() => {
+            return (
+                BTreeMap::from([
+                    ("STATUS".to_owned(), "fail".to_owned()),
+                    (
+                        "FAILURE_REASON".to_owned(),
+                        WRAPPER_DEADLINE_REASON.to_owned(),
+                    ),
+                ]),
+                true,
+            );
+        }
+        Err(_) => (1, String::new()),
+    };
     let first_line = stdout.lines().next().unwrap_or_default();
     let mut captured = parse_whitespace_kv_line(first_line);
     if captured.is_empty() {
@@ -1578,9 +1606,23 @@ fn larch(args: &[OsString]) -> Result<ProcessOutput, String> {
     delegate_verified_larch(&cwd, &root, args)
 }
 
-fn larch_in(cwd: &Path, args: &[OsString]) -> Result<ProcessOutput, String> {
-    let root = resolve_plugin_root()?;
-    delegate_verified_larch(cwd, &root, args)
+fn larch_timeout(
+    args: &[OsString],
+    timeout: Duration,
+) -> Result<ProcessOutput, VerifiedLarchRunError> {
+    let root = resolve_plugin_root().map_err(VerifiedLarchRunError::Message)?;
+    let cwd =
+        env::current_dir().map_err(|error| VerifiedLarchRunError::Message(error.to_string()))?;
+    delegate_verified_larch_timeout(&cwd, &root, args, timeout)
+}
+
+fn larch_in_timeout(
+    cwd: &Path,
+    args: &[OsString],
+    timeout: Duration,
+) -> Result<ProcessOutput, VerifiedLarchRunError> {
+    let root = resolve_plugin_root().map_err(VerifiedLarchRunError::Message)?;
+    delegate_verified_larch_timeout(cwd, &root, args, timeout)
 }
 
 fn larch_env(
@@ -1590,6 +1632,17 @@ fn larch_env(
     let root = resolve_plugin_root()?;
     let cwd = env::current_dir().map_err(|e| e.to_string())?;
     run_verified_larch_env_in(&cwd, &root, args, extra)
+}
+
+fn larch_env_timeout(
+    args: &[OsString],
+    extra: &[(ChildEnvironment, OsString)],
+    timeout: Duration,
+) -> Result<ProcessOutput, VerifiedLarchRunError> {
+    let root = resolve_plugin_root().map_err(VerifiedLarchRunError::Message)?;
+    let cwd =
+        env::current_dir().map_err(|error| VerifiedLarchRunError::Message(error.to_string()))?;
+    delegate_verified_larch_env_timeout(&cwd, &root, args, extra, timeout)
 }
 
 /// Mirror the Python `_forward_result` capture: return the child's exit code and
@@ -1610,6 +1663,38 @@ fn forward_worker(result: Result<ProcessOutput, String>) -> (i32, String) {
             (1, String::new())
         }
     }
+}
+
+fn forward_step5_worker(result: Result<ProcessOutput, VerifiedLarchRunError>) -> (i32, String) {
+    match result {
+        Err(error) if error.is_timed_out() => {
+            eprintln!("{error}");
+            step5_wrapper_deadline_stall()
+        }
+        Ok(output) => forward_worker(Ok(output)),
+        Err(error) => forward_worker(Err(error.to_string())),
+    }
+}
+
+fn step5_wrapper_deadline_stall() -> (i32, String) {
+    let rows = vec![
+        ("STEP5_REVIEW_STATUS".to_owned(), "stall".to_owned()),
+        ("STALL_TRACKING".to_owned(), "true".to_owned()),
+        (
+            "STALL_REASON".to_owned(),
+            WRAPPER_DEADLINE_REASON.to_owned(),
+        ),
+        ("ROUNDS_COMPLETED".to_owned(), "0".to_owned()),
+        ("FINAL_ROUND_NUM".to_owned(), "0".to_owned()),
+        (
+            "FINAL_REVIEW_AND_FIX_STATUS".to_owned(),
+            "unknown".to_owned(),
+        ),
+        ("CODER_STATUS".to_owned(), String::new()),
+        ("FILES_CHANGED_HINT".to_owned(), String::new()),
+        ("EFFECTIVE_ROUND_CAP".to_owned(), TIER_CEILING.to_string()),
+    ];
+    (1, format_rows(&rows))
 }
 
 fn relay_commit_kvs(commit_output: &str, include_next_action: bool) -> String {
@@ -1759,10 +1844,15 @@ fn exit_code(code: i32) -> ExitCode {
 mod tests {
     use super::*;
     use crate::implement_child_seam::declare_plugin_root;
-    use crate::implement_dispatch_commands::{clear_test_hooks, install_test_larch};
-    use larch_core::ProcessStatus;
+    use crate::implement_dispatch_commands::{
+        clear_test_hooks, install_test_larch, install_test_larch_deadline_observer,
+    };
+    use larch_core::{ProcessError, ProcessErrorKind, ProcessStatus};
     use larch_test_support::{GitFixture, GitRepository};
-    use std::ffi::OsStr;
+    use std::{
+        ffi::OsStr,
+        sync::{Arc, Mutex},
+    };
     use tempfile::TempDir;
 
     /// Seed a real repository plus session env for the in-process identity verbs.
@@ -2376,6 +2466,89 @@ mod tests {
         // larch_env is not hooked and fails fast on the bogus root; the worker
         // still exercises banner + command assembly + difficulty branch.
         let (_rc, _out) = step5_review_worker(tmp.path());
+    }
+
+    #[test]
+    fn long_review_workers_use_deadlines_beyond_their_bgjob_budgets() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_larch(|_cwd, _root, _args| Ok(out(0, "NEXT_ACTION=continue\n")));
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&observed);
+        install_test_larch_deadline_observer(move |args, timeout| {
+            let command = args
+                .iter()
+                .map(|arg| arg.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(" ");
+            sink.lock().unwrap().push((command, timeout));
+        });
+
+        let _ = step5_review_worker(tmp.path());
+        let _ = step5_resume_worker(tmp.path(), "1", "", false);
+        let _ = run_step6_composite("false");
+
+        let observed = observed.lock().unwrap();
+        assert_eq!(observed.len(), 3);
+        for (needle, budget_s) in [
+            ("--starting-round 1", STEP5_REVIEW_BUDGET_S),
+            ("--starting-round 2", STEP5_RESUME_BUDGET_S),
+            ("implement checks-commit-route", STEP6_CHECKS_BUDGET_S),
+        ] {
+            let (_, deadline) = observed
+                .iter()
+                .find(|(command, _)| command.contains(needle))
+                .unwrap_or_else(|| panic!("missing observed command containing {needle}"));
+            assert_eq!(*deadline, worker_deadline(budget_s));
+            assert!(*deadline > Duration::from_secs(u64::from(budget_s)));
+        }
+    }
+
+    #[test]
+    fn step5_wrapper_timeout_emits_complete_stall_envelope() {
+        let timeout = VerifiedLarchRunError::Process(ProcessError::new(
+            ProcessErrorKind::TimedOut,
+            "external process timed out",
+            None,
+        ));
+
+        let (rc, text) = forward_step5_worker(Err(timeout));
+
+        assert_eq!(rc, 1);
+        let values = KvDocument::parse(&text, ParseOptions::legacy())
+            .unwrap()
+            .select(DuplicatePolicy::First);
+        assert_eq!(values.len(), STEP5_RESULT_ENVELOPE_KEYS.len());
+        assert!(
+            STEP5_RESULT_ENVELOPE_KEYS
+                .iter()
+                .all(|key| values.contains_key(*key))
+        );
+        assert_eq!(
+            values.get("STEP5_REVIEW_STATUS").map(String::as_str),
+            Some("stall")
+        );
+        assert_eq!(
+            values.get("STALL_TRACKING").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            values.get("STALL_REASON").map(String::as_str),
+            Some(WRAPPER_DEADLINE_REASON)
+        );
+        assert_eq!(
+            values.get("EFFECTIVE_ROUND_CAP").map(String::as_str),
+            Some("2")
+        );
+    }
+
+    #[test]
+    fn step5_resume_leg_keeps_non_timeout_launch_failure_exit_code() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_larch(|_cwd, _root, _args| Err("launch failed".to_owned()));
+
+        assert_eq!(run_step5_resume_leg(tmp.path(), "2"), (2, String::new()));
     }
 
     #[test]

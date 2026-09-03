@@ -1821,7 +1821,10 @@ esac
             .lock()
             .expect("observed timeout lock")
             .expect("launcher request timeout");
-        assert_eq!(timeout, DISPATCH_TIMEOUT);
-        assert!(timeout > Duration::from_secs(LAUNCHER_TIMEOUT_SECONDS));
+        assert_eq!(
+            timeout,
+            worker_deadline(STEP2_DISPATCH_BUDGET_SECONDS)
+        );
+        assert!(timeout > std::time::Duration::from_secs(LAUNCHER_TIMEOUT_SECONDS));
     }
 }
