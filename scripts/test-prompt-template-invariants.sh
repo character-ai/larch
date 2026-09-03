@@ -203,6 +203,8 @@ assert_contains "coder acceptable-output example" \
     'Acceptable response shape' "$coder_prompt"
 assert_contains "coder PROHIBITION via lib" \
     '## PROHIBITION: Submodules' "$coder_prompt"
+assert_contains "coder scratch files stay in session directory" \
+    'Use the session directory named below for every temporary helper, patch script, and scratch file.' "$coder_prompt"
 
 # The `checks lint-fix` coder prompt is composed in Rust (#8625); its FIXED:/
 # UNFIXABLE: result-shape, submodule prohibition, PLR0911 guidance, and the
@@ -211,6 +213,14 @@ assert_contains "coder PROHIBITION via lib" \
 
 assert_contains "implementer base PLR0911 checklist" \
     'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/agents/_implementer-base.md"
+assert_contains "implementer base scratch directory guard" \
+    'Put every temporary helper, patch script, and scratch file under `$IMPLEMENT_TMPDIR`, never the repository root.' "$REPO_ROOT/agents/_implementer-base.md"
+assert_contains "codex implementer scratch directory guard" \
+    'Put every temporary helper, patch script, and scratch file under `$IMPLEMENT_TMPDIR`, never the repository root.' "$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
+assert_contains "cursor implementer scratch directory guard" \
+    'Put every temporary helper, patch script, and scratch file under `$IMPLEMENT_TMPDIR`, never the repository root.' "$REPO_ROOT/skills/implement/prompts/cursor-implementer.md"
+assert_contains "claude implementer scratch directory guard" \
+    'Put every temporary helper, patch script, and scratch file under `$IMPLEMENT_TMPDIR`, never the repository root.' "$REPO_ROOT/agents/claude-implementer.md"
 assert_contains "codex implementer PLR0911 checklist" \
     'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/skills/implement/prompts/codex-implementer.md"
 assert_contains "cursor implementer PLR0911 checklist" \

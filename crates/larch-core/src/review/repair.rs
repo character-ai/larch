@@ -247,6 +247,61 @@ pub struct RepairTrackedPath {
     pub matches_baseline: bool,
 }
 
+/// Paths selected for a repair commit and scratch-looking paths kept out of it.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RepairStageSelection {
+    commit_paths: Vec<String>,
+    skipped_scratch_paths: Vec<String>,
+}
+
+impl RepairStageSelection {
+    /// Return repository paths eligible for the repair commit.
+    #[must_use]
+    pub fn commit_paths(&self) -> &[String] {
+        &self.commit_paths
+    }
+
+    /// Consume the selection and return repository paths eligible for the commit.
+    #[must_use]
+    pub fn into_commit_paths(self) -> Vec<String> {
+        self.commit_paths
+    }
+
+    /// Return scratch-looking paths excluded from the repair commit.
+    #[must_use]
+    pub fn skipped_scratch_paths(&self) -> &[String] {
+        &self.skipped_scratch_paths
+    }
+
+    /// Report whether the coder changed any path, including excluded scratch.
+    #[must_use]
+    pub const fn has_deltas(&self) -> bool {
+        !self.commit_paths.is_empty() || !self.skipped_scratch_paths.is_empty()
+    }
+
+    /// Merge another round's selection while preserving first-seen order.
+    pub fn extend(&mut self, other: Self) {
+        let mut seen = self
+            .commit_paths
+            .iter()
+            .chain(&self.skipped_scratch_paths)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        self.commit_paths.extend(
+            other
+                .commit_paths
+                .into_iter()
+                .filter(|path| seen.insert(path.clone())),
+        );
+        self.skipped_scratch_paths.extend(
+            other
+                .skipped_scratch_paths
+                .into_iter()
+                .filter(|path| seen.insert(path.clone())),
+        );
+    }
+}
+
 /// Return tracked paths changed by a coder, preserving Python's first-seen order.
 #[must_use]
 pub fn tracked_delta_paths(
@@ -287,16 +342,51 @@ pub fn collect_repair_stage_paths(
     tracked: &[String],
     untracked: &[String],
 ) -> Vec<String> {
+    select_repair_stage_paths(mode, diff_base, tracked, untracked).into_commit_paths()
+}
+
+/// Classify repair deltas into commit paths and excluded scratch paths.
+#[must_use]
+pub fn select_repair_stage_paths(
+    mode: RepairSnapshotMode,
+    diff_base: &str,
+    tracked: &[String],
+    untracked: &[String],
+) -> RepairStageSelection {
     if mode == RepairSnapshotMode::Missing || diff_base.is_empty() {
-        return Vec::new();
+        return RepairStageSelection::default();
     }
     let mut seen = BTreeSet::new();
-    tracked
+    let mut selection = RepairStageSelection::default();
+    for path in tracked.iter().chain(untracked) {
+        if path.is_empty() || !seen.insert(path.clone()) {
+            continue;
+        }
+        if is_repair_scratch_path(path) {
+            selection.skipped_scratch_paths.push(path.clone());
+        } else {
+            selection.commit_paths.push(path.clone());
+        }
+    }
+    selection
+}
+
+fn is_repair_scratch_path(path: &str) -> bool {
+    let components = path
+        .split(['/', '\\'])
+        .filter(|component| !component.is_empty())
+        .collect::<Vec<_>>();
+    components
         .iter()
-        .chain(untracked)
-        .filter(|path| !path.is_empty() && seen.insert((*path).clone()))
-        .cloned()
-        .collect()
+        .any(|component| component.starts_with(".tmp-") || component.starts_with(".tmp_"))
+        || components.last().is_some_and(|name| {
+            Path::new(name)
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| {
+                    extension.eq_ignore_ascii_case("orig") || extension.eq_ignore_ascii_case("rej")
+                })
+        })
 }
 
 /// One ordered recovery operation for a failed coder attempt.

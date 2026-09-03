@@ -8,8 +8,8 @@ use larch_core::review::{
     RepairTrackedPath, SnapshotArtifactIdentity, cleanup_plan, collect_repair_stage_paths,
     count_code_review_findings, render_rejected_findings_aggregate, render_repair_tally_body,
     render_scout_manifest_payload, resolve_coder_result, resolve_repair_round,
-    snapshot_identity_matches, tally_flush_sidecar, tracked_delta_paths, untracked_delta_paths,
-    validate_repair_snapshot,
+    select_repair_stage_paths, snapshot_identity_matches, tally_flush_sidecar,
+    tracked_delta_paths, untracked_delta_paths, validate_repair_snapshot,
 };
 
 const BATCH_GOLDEN: &str = include_str!("fixtures/review/repair_batch_report.golden.txt");
@@ -265,6 +265,57 @@ fn repair_snapshot_delta_and_identity_contracts_preserve_python_baselines() {
         std::slice::from_ref(&identity),
     ));
     assert!(!snapshot_identity_matches(&[identity], &[]));
+}
+
+#[test]
+fn repair_stage_selection_excludes_scratch_families_and_keeps_other_deltas() {
+    let tracked = [".tmp-staged.sh".to_owned(), "src/lib.rs".to_owned()];
+    let untracked = [
+        ".tmp-fix.py".to_owned(),
+        ".tmp_fix.sh".to_owned(),
+        ".tmp-work/patch.txt".to_owned(),
+        "nested/file.orig".to_owned(),
+        "nested/file.rej".to_owned(),
+        "nested/upper.ORIG".to_owned(),
+        "nested/mixed.ReJ".to_owned(),
+        "nested/tmp-fix.sh".to_owned(),
+        "nested/file.original".to_owned(),
+    ];
+
+    let selection = select_repair_stage_paths(
+        RepairSnapshotMode::Full,
+        "post-coder",
+        &tracked,
+        &untracked,
+    );
+
+    assert_eq!(
+        selection.commit_paths(),
+        ["src/lib.rs", "nested/tmp-fix.sh", "nested/file.original"]
+    );
+    assert_eq!(
+        selection.skipped_scratch_paths(),
+        [
+            ".tmp-staged.sh",
+            ".tmp-fix.py",
+            ".tmp_fix.sh",
+            ".tmp-work/patch.txt",
+            "nested/file.orig",
+            "nested/file.rej",
+            "nested/upper.ORIG",
+            "nested/mixed.ReJ",
+        ]
+    );
+    assert!(selection.has_deltas());
+    assert_eq!(
+        collect_repair_stage_paths(
+            RepairSnapshotMode::Full,
+            "post-coder",
+            &tracked,
+            &untracked,
+        ),
+        selection.commit_paths()
+    );
 }
 
 #[test]
