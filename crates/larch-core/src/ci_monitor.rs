@@ -167,9 +167,28 @@ pub fn classify_checks(checks: &[CheckRun], empty_checks_grace: u64) -> CheckObs
         .iter()
         .find(|check| check.bucket == CheckBucket::Fail)
     {
+        let failed_run_id = check.details_url.as_deref().and_then(run_id_from_url);
+        // Failed logs become distillable only after every check in their run settles.
+        let run_still_pending = failed_run_id.as_deref().is_some_and(|run_id| {
+            checks.iter().any(|candidate| {
+                candidate.bucket == CheckBucket::Pending
+                    && candidate
+                        .details_url
+                        .as_deref()
+                        .and_then(run_id_from_url)
+                        .is_some_and(|candidate_run_id| candidate_run_id == run_id)
+            })
+        });
+        if run_still_pending {
+            return CheckObservation {
+                kind: CiStatusKind::Pending,
+                failed_run_id: None,
+                empty: false,
+            };
+        }
         return CheckObservation {
             kind: CiStatusKind::Fail,
-            failed_run_id: check.details_url.as_deref().and_then(run_id_from_url),
+            failed_run_id,
             empty: false,
         };
     }
@@ -259,6 +278,26 @@ mod tests {
     #[rustfmt::skip]
     fn failed_check_yields_the_first_actions_run_id() {
         let checks=[CheckRun { name: "test".to_owned(), status: "completed".to_owned(), conclusion: Some("failure".to_owned()), details_url: Some("https://github.com/o/r/actions/runs/123/job/4".to_owned()), description: None, wall_clock_seconds: None, bucket: CheckBucket::Fail }];
+        let observed=classify_checks(&checks,0); assert_eq!(observed.kind,CiStatusKind::Fail); assert_eq!(observed.failed_run_id.as_deref(),Some("123"));
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn failed_check_waits_for_pending_sibling_in_the_same_actions_run() {
+        let checks=[
+            CheckRun { name: "fast".to_owned(), status: "completed".to_owned(), conclusion: Some("failure".to_owned()), details_url: Some("https://github.com/o/r/actions/runs/123/job/4".to_owned()), description: None, wall_clock_seconds: None, bucket: CheckBucket::Fail },
+            CheckRun { name: "slow".to_owned(), status: "in_progress".to_owned(), conclusion: None, details_url: Some("https://github.com/o/r/actions/runs/123/job/5".to_owned()), description: None, wall_clock_seconds: None, bucket: CheckBucket::Pending },
+        ];
+        let observed=classify_checks(&checks,0); assert_eq!(observed.kind,CiStatusKind::Pending); assert_eq!(observed.failed_run_id,None);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn failed_check_does_not_wait_for_pending_check_in_another_actions_run() {
+        let checks=[
+            CheckRun { name: "fast".to_owned(), status: "completed".to_owned(), conclusion: Some("failure".to_owned()), details_url: Some("https://github.com/o/r/actions/runs/123/job/4".to_owned()), description: None, wall_clock_seconds: None, bucket: CheckBucket::Fail },
+            CheckRun { name: "other".to_owned(), status: "in_progress".to_owned(), conclusion: None, details_url: Some("https://github.com/o/r/actions/runs/456/job/5".to_owned()), description: None, wall_clock_seconds: None, bucket: CheckBucket::Pending },
+        ];
         let observed=classify_checks(&checks,0); assert_eq!(observed.kind,CiStatusKind::Fail); assert_eq!(observed.failed_run_id.as_deref(),Some("123"));
     }
 
