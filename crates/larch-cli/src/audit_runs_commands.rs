@@ -428,11 +428,17 @@ async fn bugs_backlog_nudge_count_remote(
         limit: service.transport_policy().limits().items(),
         sort: GitHubIssueSearchSort::BestMatch,
     };
-    let rows = service
+    let result = service
         .search_issues(&request, cancellation)
         .await
         .map_err(NudgeReadFailure::from_github)?;
-    Ok(rows
+    if result.continuation_unread {
+        return Err(NudgeReadFailure::Service(
+            "bug backlog search stopped at its transport bound with matches unread".to_owned(),
+        ));
+    }
+    Ok(result
+        .issues
         .iter()
         .filter(|issue| {
             issue.state == GitHubIssueState::Closed
@@ -756,11 +762,16 @@ async fn issue_search_remote<S: GitHubService + ?Sized>(
         keywords.to_owned(),
         service.transport_policy(),
     );
-    let rows = service
+    let result = service
         .search_issues(&request, cancellation)
         .await
         .map_err(|error| format!("gh issue list failed: {error}"))?;
-    if rows.len() == request.limit {
+    let rows = result.issues;
+    if result.continuation_unread {
+        eprintln!(
+            "WARN: audit-runs proposal search stopped at its bound with matches unread; additional matches were omitted"
+        );
+    } else if rows.len() == request.limit {
         eprintln!(
             "WARN: audit-runs proposal search reached the {ISSUE_DEDUP_LIMIT}-issue dedup cap; additional matches, if any, were omitted"
         );
