@@ -131,6 +131,49 @@ mod design_finalize_commands_tests {
         }
     }
 
+    fn assert_publish_timing_order_and_binding(runner: &PublishRunner, design: &Path) {
+        let calls = runner.calls.borrow();
+        let publish_index = calls
+            .iter()
+            .position(|call| call.get(1).map(String::as_str) == Some("publish"))
+            .expect("publish call");
+        let timing_index = calls
+            .iter()
+            .position(|call| call.get(1).map(String::as_str) == Some("mark"))
+            .expect("timing mark");
+        let summary_index = calls
+            .iter()
+            .position(|call| call.get(1).map(String::as_str) == Some("render-final-summary"))
+            .expect("summary render");
+        assert!(publish_index < timing_index && timing_index < summary_index);
+        let canonical_design = fs::canonicalize(design).expect("canonical design tmpdir");
+        assert_eq!(
+            calls[timing_index][3],
+            canonical_design
+                .join("timing-ledger.tsv")
+                .display()
+                .to_string()
+        );
+        assert!(runner.environments.borrow()[timing_index].contains(&(
+            "DESIGN_TMPDIR".to_owned(),
+            canonical_design.display().to_string()
+        )));
+    }
+
+    fn assert_queue_timing_binding(runner: &QueueRunner, design: &Path) {
+        let timing_index = runner
+            .calls
+            .borrow()
+            .iter()
+            .position(|call| call.first().map(String::as_str) == Some("timing"))
+            .expect("timing mark");
+        let canonical_design = fs::canonicalize(design).expect("canonical design tmpdir");
+        assert!(runner.environments.borrow()[timing_index].contains(&(
+            "DESIGN_TMPDIR".to_owned(),
+            canonical_design.display().to_string()
+        )));
+    }
+
     fn fixture() -> (tempfile::TempDir, PathBuf, PathBuf) {
         let sandbox = tempfile::tempdir().expect("sandbox");
         let design = sandbox.path().join("design");
@@ -724,33 +767,7 @@ mod design_finalize_commands_tests {
 
         let rc3 = PublishRunner::new(3, "PLAN_WRITE_OK=true\nPUBLISH_OK=true\n", "", false);
         assert_eq!(step5c_with(&args, &rc3), ExitCode::SUCCESS);
-        let calls = rc3.calls.borrow();
-        let publish_index = calls
-            .iter()
-            .position(|call| call.get(1).map(String::as_str) == Some("publish"))
-            .expect("publish call");
-        let timing_index = calls
-            .iter()
-            .position(|call| call.get(1).map(String::as_str) == Some("mark"))
-            .expect("timing mark");
-        let summary_index = calls
-            .iter()
-            .position(|call| call.get(1).map(String::as_str) == Some("render-final-summary"))
-            .expect("summary render");
-        assert!(publish_index < timing_index && timing_index < summary_index);
-        let canonical_design = fs::canonicalize(&design).expect("canonical design tmpdir");
-        assert_eq!(
-            calls[timing_index][3],
-            canonical_design
-                .join("timing-ledger.tsv")
-                .display()
-                .to_string()
-        );
-        assert!(rc3.environments.borrow()[timing_index].contains(&(
-            "DESIGN_TMPDIR".to_owned(),
-            canonical_design.display().to_string()
-        )));
-        drop(calls);
+        assert_publish_timing_order_and_binding(&rc3, &design);
         let rows = env_map(
             &read_env_file(
                 &design.join(".design-step5c-status.env"),
@@ -874,24 +891,7 @@ mod design_finalize_commands_tests {
         let timing = QueueRunner::default();
         assert_eq!(step6_prelude_with(&args, &timing), ExitCode::SUCCESS);
         assert!(design.join(".completed/step-5d").is_file());
-        assert!(
-            timing
-                .calls
-                .borrow()
-                .iter()
-                .any(|call| call.first().map(String::as_str) == Some("timing"))
-        );
-        let timing_index = timing
-            .calls
-            .borrow()
-            .iter()
-            .position(|call| call.first().map(String::as_str) == Some("timing"))
-            .expect("timing mark");
-        let canonical_design = fs::canonicalize(&design).expect("canonical design tmpdir");
-        assert!(timing.environments.borrow()[timing_index].contains(&(
-            "DESIGN_TMPDIR".to_owned(),
-            canonical_design.display().to_string()
-        )));
+        assert_queue_timing_binding(&timing, &design);
         let invalid_pid = wrapper_args(sandbox.path(), &design, &plugin, "run-1", "bad-pid");
         assert_eq!(
             step6_cleanup_with(&invalid_pid, &QueueRunner::default()),
