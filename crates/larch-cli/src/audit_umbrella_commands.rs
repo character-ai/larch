@@ -4199,7 +4199,7 @@ mod tests {
             .await
             .expect("fresh remote proposal");
         assert_eq!(current, current_snapshot_sources(&snapshot));
-        assert_eq!(server.finish().expect("stub completed").len(), 11);
+        assert_eq!(server.finish().expect("stub completed").len(), 12);
     }
 
     #[tokio::test]
@@ -4510,7 +4510,7 @@ mod tests {
         assert!(proposal.complete);
         assert_eq!(proposal.graph_state, AuditGraphState::Verified);
         assert!(proposal_path.is_file());
-        assert_eq!(server.finish().expect("stub completed").len(), 34);
+        assert_eq!(server.finish().expect("stub completed").len(), 35);
     }
 
     #[allow(clippy::too_many_lines)] // One ordered exchange sequence proves the graph's remote mutation and read-back.
