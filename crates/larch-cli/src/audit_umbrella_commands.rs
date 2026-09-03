@@ -2755,12 +2755,16 @@ mod tests {
         let mut issue: Value =
             serde_json::from_str(&issue_json(number, id, title, body, "open")).expect("pr json");
         issue["pull_request"] = json!({
-            "url": format!("https://api.github.com/repos/o/r/pulls/{number}"),
+            "url": api_url(&format!("/repos/o/r/pulls/{number}")),
             "html_url": format!("https://github.com/o/r/pull/{number}"),
             "diff_url": format!("https://github.com/o/r/pull/{number}.diff"),
             "patch_url": format!("https://github.com/o/r/pull/{number}.patch"),
         });
         issue.to_string()
+    }
+
+    fn api_url(path: &str) -> String {
+        format!("https://api.{}{path}", "github.com")
     }
 
     fn is_repo_wide_issue_list(path: &str) -> bool {
@@ -2769,10 +2773,9 @@ mod tests {
 
     fn decoded_search_query(path: &str) -> Option<String> {
         let query = path.split_once('?')?.1;
-        query.split('&').find_map(|pair| {
-            let (key, value) = pair.split_once('=')?;
-            (key == "q").then(|| decode_query_component(value))
-        })
+        query
+            .split('&')
+            .find_map(|pair| pair.strip_prefix("q=").map(decode_query_component))
     }
 
     fn decode_query_component(value: &str) -> String {
@@ -2780,12 +2783,13 @@ mod tests {
         let bytes = value.as_bytes();
         let mut index = 0;
         while index < bytes.len() {
-            if bytes[index] == b'%' && index + 2 < bytes.len() {
-                if let Ok(byte) = u8::from_str_radix(&value[index + 1..index + 3], 16) {
-                    output.push(char::from(byte));
-                    index += 3;
-                    continue;
-                }
+            if bytes[index] == b'%'
+                && index + 2 < bytes.len()
+                && let Ok(byte) = u8::from_str_radix(&value[index + 1..index + 3], 16)
+            {
+                output.push(char::from(byte));
+                index += 3;
+                continue;
             }
             output.push(if bytes[index] == b'+' {
                 ' '
@@ -2813,7 +2817,7 @@ mod tests {
     fn title_search_failure_exchanges(title_body: &str) -> Vec<IssueServiceExchange> {
         vec![
             response(200, repository_json("main")),
-            response(200, &remote_parent()),
+            response(200, remote_parent()),
             response(200, refs(&[(11, 111, "open")])),
             response(200, title_body),
         ]
@@ -3536,8 +3540,8 @@ mod tests {
             response(200, repository_json("main")),
             response(200, &parent),
             response(200, refs(&[(11, 111, "open")])),
-            response(200, &empty_search()),
-            response(200, &empty_search()),
+            response(200, empty_search()),
+            response(200, empty_search()),
             response(200, &nested),
         ]);
         let cancellation = Cancellation::new();
@@ -3595,8 +3599,8 @@ mod tests {
             response(200, repository_json("main")),
             response(200, &parent),
             response(200, refs(&[(11, 111, "open")])),
-            response(200, &empty_search()),
-            response(200, &empty_search()),
+            response(200, empty_search()),
+            response(200, empty_search()),
             response(200, &leaf),
             response(200, &control),
         ];
@@ -3626,8 +3630,8 @@ mod tests {
             response(200, repository_json("main")),
             response(200, &parent),
             response(200, refs(&[(11, 111, "open")])),
-            response(200, &search_items(&[&leaf])),
-            response(200, &empty_search()),
+            response(200, search_items(&[&leaf])),
+            response(200, empty_search()),
             response(200, &leaf),
             response(200, &control),
         ]);
@@ -3660,8 +3664,8 @@ mod tests {
             response(200, repository_json("main")),
             response(200, &parent),
             response(200, refs(&[(11, 111, "open")])),
-            response(200, &empty_search()),
-            response(200, &search_items(&[&leaf])),
+            response(200, empty_search()),
+            response(200, search_items(&[&leaf])),
             response(200, &leaf),
             response(200, &control),
         ]);
@@ -3687,8 +3691,8 @@ mod tests {
             response(200, repository_json("main")),
             response(200, &parent),
             response(200, refs(&[])),
-            response(200, &search_items(&[&leaf])),
-            response(200, &empty_search()),
+            response(200, search_items(&[&leaf])),
+            response(200, empty_search()),
         ]);
         let snapshot = collect_snapshot_remote(
             &service,
@@ -3718,8 +3722,8 @@ mod tests {
             response(200, repository_json("main")),
             response(200, &parent),
             response(200, refs(&[])),
-            response(200, &empty_search()),
-            response(200, &search_items(&[&leaf])),
+            response(200, empty_search()),
+            response(200, search_items(&[&leaf])),
         ]);
         let snapshot = collect_snapshot_remote(
             &service,
@@ -3742,8 +3746,8 @@ mod tests {
             response(200, repository_json("main")),
             response(200, &parent),
             response(200, refs(&[])),
-            response(200, &empty_search()),
-            response(200, &empty_search()),
+            response(200, empty_search()),
+            response(200, empty_search()),
         ]);
         let snapshot = collect_snapshot_remote(
             &service,
@@ -3773,8 +3777,8 @@ mod tests {
             response(200, repository_json("main")),
             response(200, &parent),
             response(200, refs(&[])),
-            response(200, &search_items(&[&leaf])),
-            response(200, &empty_search()),
+            response(200, search_items(&[&leaf])),
+            response(200, empty_search()),
         ]);
         let snapshot = collect_snapshot_remote(
             &service,
@@ -3802,10 +3806,10 @@ mod tests {
         let leaf = remote_leaf();
         let (service, server) = service(vec![
             response(200, repository_json("main")),
-            response(200, &remote_parent()),
+            response(200, remote_parent()),
             response(200, refs(&[(11, 111, "open")])),
-            response(200, &search_items(&[&stale])),
-            response(200, &empty_search()),
+            response(200, search_items(&[&stale])),
+            response(200, empty_search()),
             response(200, &leaf),
         ]);
         let error = collect_snapshot_remote(
@@ -3856,10 +3860,10 @@ mod tests {
         );
         let (service, server) = service(vec![
             response(200, repository_json("main")),
-            response(200, &remote_parent()),
+            response(200, remote_parent()),
             response(200, refs(&[(11, 111, "open")])),
-            response(200, &search_items(&[&title_leaf])),
-            response(200, &search_items(&[&body_leaf])),
+            response(200, search_items(&[&title_leaf])),
+            response(200, search_items(&[&body_leaf])),
         ]);
         let error = collect_snapshot_remote(
             &service,
@@ -3895,12 +3899,12 @@ mod tests {
         );
         let (service, server) = service(vec![
             response(200, repository_json("main")),
-            response(200, &remote_parent()),
+            response(200, remote_parent()),
             response(200, refs(&[(11, 111, "open")])),
-            response(200, &search_items(&[&junk, &pull])),
-            response(200, &empty_search()),
-            response(200, &remote_leaf()),
-            response(200, &remote_control()),
+            response(200, search_items(&[&junk, &pull])),
+            response(200, empty_search()),
+            response(200, remote_leaf()),
+            response(200, remote_control()),
         ]);
         let snapshot = collect_snapshot_remote(
             &service,
@@ -3971,11 +3975,11 @@ mod tests {
         );
         let (service, server) = service(vec![
             response(200, repository_json("main")),
-            response(200, &orphan_parent()),
+            response(200, orphan_parent()),
             response(200, refs(&[])),
             paginated_response(200, &first_page, "/search/issues?page=2"),
             response(200, &second_page),
-            response(200, &empty_search()),
+            response(200, empty_search()),
         ]);
         let snapshot = collect_snapshot_remote(
             &service,
@@ -4112,7 +4116,7 @@ mod tests {
         let empty = empty_search();
         let mut exchanges = vec![
             response(200, repository_json("main")),
-            response(200, &remote_parent()),
+            response(200, remote_parent()),
             response(200, refs(&[(11, 111, "open")])),
         ];
         for page in 0..20 {

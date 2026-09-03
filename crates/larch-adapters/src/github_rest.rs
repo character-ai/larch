@@ -1882,7 +1882,7 @@ mod tests {
         assert_eq!(error.kind(), GitHubOperationErrorKind::DeadlineExceeded);
     }
 
-    fn search_body(total: u64, incomplete: bool, items: Vec<Value>) -> String {
+    fn search_body(total: u64, incomplete: bool, items: &[Value]) -> String {
         json!({
             "total_count": total,
             "incomplete_results": incomplete,
@@ -1895,7 +1895,7 @@ mod tests {
     async fn search_issues_preserves_complete_metadata_before_pagination() {
         let issue: Value =
             serde_json::from_str(include_str!("../fixtures/github_issue.json")).expect("fixture");
-        let (service, server) = stub_service(vec![(200, search_body(1, false, vec![issue]))]);
+        let (service, server) = stub_service(vec![(200, search_body(1, false, &[issue]))]);
         let repo = GitHubRepositoryRef::new("o", "r").expect("valid repo");
         let request = GitHubIssueSearch {
             repo,
@@ -1919,7 +1919,7 @@ mod tests {
     async fn search_issues_preserves_incomplete_results_without_inferring_completeness() {
         let issue: Value =
             serde_json::from_str(include_str!("../fixtures/github_issue.json")).expect("fixture");
-        let (service, server) = stub_service(vec![(200, search_body(1, true, vec![issue]))]);
+        let (service, server) = stub_service(vec![(200, search_body(1, true, &[issue]))]);
         let repo = GitHubRepositoryRef::new("o", "r").expect("valid repo");
         let request = GitHubIssueSearch {
             repo,
@@ -1940,7 +1940,7 @@ mod tests {
     async fn search_issues_preserves_a_reported_total_greater_than_collected_rows() {
         let issue: Value =
             serde_json::from_str(include_str!("../fixtures/github_issue.json")).expect("fixture");
-        let (service, server) = stub_service(vec![(200, search_body(9, false, vec![issue]))]);
+        let (service, server) = stub_service(vec![(200, search_body(9, false, &[issue]))]);
         let repo = GitHubRepositoryRef::new("o", "r").expect("valid repo");
         let request = GitHubIssueSearch {
             repo,
@@ -1988,8 +1988,7 @@ mod tests {
         let mut second = issue.clone();
         second["number"] = json!(3);
         second["id"] = json!(8);
-        let (service, server) =
-            stub_service(vec![(200, search_body(2, false, vec![issue, second]))]);
+        let (service, server) = stub_service(vec![(200, search_body(2, false, &[issue, second]))]);
         let repo = GitHubRepositoryRef::new("o", "r").expect("valid repo");
         let request = GitHubIssueSearch {
             repo,
