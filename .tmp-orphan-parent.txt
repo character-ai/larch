@@ -1,0 +1,9 @@
+    fn orphan_parent() -> String {
+        issue_json(
+            10,
+            110,
+            "[UMBRELLA] Fixture",
+            "<!-- larch:umbrella-proposal v1 -->\n\n#### Leaf issues\n\n- Managed natively.\n",
+            "open",
+        )
+    }

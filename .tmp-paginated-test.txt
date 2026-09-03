@@ -1,0 +1,59 @@
+    #[tokio::test]
+    async fn remote_snapshot_filters_more_than_one_hundred_raw_search_hits() {
+        let junk: Vec<String> = (0..100)
+            .map(|offset| {
+                let number = 1001 + offset;
+                issue_json(
+                    number,
+                    number,
+                    "Unrelated search hit mentioning LEAF OF 10",
+                    "noise",
+                    "open",
+                )
+            })
+            .collect();
+        let leaf = remote_leaf();
+        let junk_items: Vec<Value> = junk
+            .iter()
+            .map(|body| serde_json::from_str(body).expect("junk json"))
+            .collect();
+        let first_page = search_payload(&junk_items, 101, Some(false));
+        let second_page = search_payload(
+            &[serde_json::from_str(&leaf).expect("leaf json")],
+            101,
+            Some(false),
+        );
+        let (service, server) = service(vec![
+            response(200, repository_json("main")),
+            response(200, &remote_parent()),
+            response(200, refs(&[(11, 111, "open")])),
+            paginated_response(200, &first_page, "/search/issues?page=2"),
+            response(200, &second_page),
+            response(200, &empty_search()),
+            response(200, &leaf),
+            response(200, &remote_control()),
+        ]);
+        let snapshot = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect("paginated search above 100 stays usable");
+        assert_eq!(snapshot, audit_snapshot());
+        let requests = server.finish().expect("stub completed");
+        assert_eq!(requests.len(), 8);
+        let searches: Vec<_> = requests
+            .iter()
+            .filter(|request| request.path.starts_with("/search/issues"))
+            .collect();
+        assert_eq!(searches.len(), 2);
+        assert!(
+            !requests
+                .iter()
+                .any(|request| is_repo_wide_issue_list(&request.path))
+        );
+    }

@@ -691,17 +691,14 @@ async fn search_audit_issues(
     Ok(result.issues)
 }
 
-async fn fetch_missing_issue(
+async fn fetch_canonical_issue(
     service: &OctocrabGitHubService,
     cancellation: &Cancellation,
     repository: &GitHubRepositoryRef,
     issues: &mut BTreeMap<u64, GitHubIssue>,
     number: u64,
 ) -> Result<(), String> {
-    if issues.contains_key(&number) {
-        return Ok(());
-    }
-    let issue = service
+    let canonical = service
         .issue(repository, number, cancellation)
         .await
         .map_err(|error| {
@@ -710,7 +707,16 @@ async fn fetch_missing_issue(
                 flat_error(&error.to_string(), 500)
             )
         })?;
-    if issues.insert(number, issue).is_some() {
+    if let Some(existing) = issues.get(&number) {
+        if existing != &canonical {
+            return Err(format!(
+                "search result and canonical read returned unequal copies of #{}",
+                number
+            ));
+        }
+        return Ok(());
+    }
+    if issues.insert(number, canonical).is_some() {
         return Err("referenced issue identity was duplicated".to_owned());
     }
     Ok(())
@@ -783,14 +789,14 @@ async fn collect_snapshot_remote(
         if *number == umbrella {
             continue;
         }
-        fetch_missing_issue(service, cancellation, repository, &mut issues, *number).await?;
+        fetch_canonical_issue(service, cancellation, repository, &mut issues, *number).await?;
     }
     require_no_nested_umbrella_children(&issues, &direct_numbers)?;
     for number in &referenced_numbers {
-        if *number == umbrella {
+        if *number == umbrella || direct_numbers.contains(number) {
             continue;
         }
-        fetch_missing_issue(service, cancellation, repository, &mut issues, *number).await?;
+        fetch_canonical_issue(service, cancellation, repository, &mut issues, *number).await?;
     }
     build_snapshot(SnapshotSelection {
         repository,
@@ -2684,6 +2690,15 @@ mod tests {
         )
     }
 
+    fn orphan_parent() -> String {
+        issue_json(
+            10,
+            110,
+            "[UMBRELLA] Fixture",
+            "<!-- larch:umbrella-proposal v1 -->\n\n#### Leaf issues\n\n- Managed natively.\n",
+            "open",
+        )
+    }
     fn remote_leaf() -> String {
         remote_leaf_at("2026-08-11T00:00:00Z")
     }
@@ -2791,6 +2806,7 @@ mod tests {
             response(200, refs(&[(11, 111, "open")])),
             response(200, &search),
             response(200, &search),
+            response(200, leaf),
             response(200, control),
         ]
     }
@@ -3414,7 +3430,7 @@ mod tests {
 
         assert_eq!(snapshot, audit_snapshot());
         let requests = server.finish().expect("stub completed");
-        assert_eq!(requests.len(), 6);
+        assert_eq!(requests.len(), 7);
         assert!(
             !requests
                 .iter()
@@ -3477,13 +3493,17 @@ mod tests {
             .collect();
         let leaf_refs: Vec<&str> = leaves.iter().map(String::as_str).collect();
         let search = search_items(&leaf_refs);
-        let (service, server) = service(vec![
+        let mut exchanges = vec![
             response(200, repository_json("main")),
             response(200, &parent),
             response(200, refs(&references)),
             response(200, &search),
             response(200, &search),
-        ]);
+        ];
+        for leaf in &leaves {
+            exchanges.push(response(200, leaf));
+        }
+        let (service, server) = service(exchanges);
 
         let snapshot = collect_snapshot_remote(
             &service,
@@ -3497,7 +3517,10 @@ mod tests {
         .expect("direct leaf count does not consume proposal batch capacity");
 
         assert_eq!(snapshot.historical_leaf_numbers.len(), leaf_count);
-        assert_eq!(server.finish().expect("stub completed").len(), 5);
+        assert_eq!(
+            server.finish().expect("stub completed").len(),
+            5 + leaf_count
+        );
     }
 
     #[tokio::test]
@@ -3606,6 +3629,7 @@ mod tests {
             response(200, refs(&[(11, 111, "open")])),
             response(200, &search_items(&[&leaf])),
             response(200, &empty_search()),
+            response(200, &leaf),
             response(200, &control),
         ]);
         let snapshot = collect_snapshot_remote(
@@ -3619,7 +3643,7 @@ mod tests {
         .await
         .expect("title-only leaf");
         assert_eq!(snapshot, audit_snapshot());
-        assert_eq!(server.finish().expect("stub completed").len(), 6);
+        assert_eq!(server.finish().expect("stub completed").len(), 7);
     }
 
     #[tokio::test]
@@ -3639,6 +3663,7 @@ mod tests {
             response(200, refs(&[(11, 111, "open")])),
             response(200, &empty_search()),
             response(200, &search_items(&[&leaf])),
+            response(200, &leaf),
             response(200, &control),
         ]);
         let snapshot = collect_snapshot_remote(
@@ -3652,9 +3677,154 @@ mod tests {
         .await
         .expect("backlink-only leaf");
         assert!(snapshot.historical_leaf_numbers.contains(&11));
-        assert_eq!(server.finish().expect("stub completed").len(), 6);
+        assert_eq!(server.finish().expect("stub completed").len(), 7);
     }
 
+    #[tokio::test]
+    async fn remote_snapshot_discovers_title_only_orphan_without_native_edge() {
+        let parent = orphan_parent();
+        let leaf = remote_leaf();
+        let (service, server) = service(vec![
+            response(200, repository_json("main")),
+            response(200, &parent),
+            response(200, refs(&[])),
+            response(200, &search_items(&[&leaf])),
+            response(200, &empty_search()),
+        ]);
+        let snapshot = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect("title-only orphan");
+        assert!(snapshot.historical_leaf_numbers.contains(&11));
+        assert_eq!(server.finish().expect("stub completed").len(), 5);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_discovers_backlink_only_orphan_without_native_edge() {
+        let parent = orphan_parent();
+        let leaf = issue_json(
+            11,
+            111,
+            "Existing leaf without a leaf prefix",
+            &format!("{}\n\nExisting scope.\n", umbrella_leaf_opening(10)),
+            "open",
+        );
+        let (service, server) = service(vec![
+            response(200, repository_json("main")),
+            response(200, &parent),
+            response(200, refs(&[])),
+            response(200, &empty_search()),
+            response(200, &search_items(&[&leaf])),
+        ]);
+        let snapshot = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect("backlink-only orphan");
+        assert!(snapshot.historical_leaf_numbers.contains(&11));
+        assert_eq!(server.finish().expect("stub completed").len(), 5);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_skips_orphan_when_both_searches_are_empty() {
+        let parent = orphan_parent();
+        let (service, server) = service(vec![
+            response(200, repository_json("main")),
+            response(200, &parent),
+            response(200, refs(&[])),
+            response(200, &empty_search()),
+            response(200, &empty_search()),
+        ]);
+        let snapshot = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect("no orphan discovery");
+        assert!(!snapshot.historical_leaf_numbers.contains(&11));
+        assert_eq!(server.finish().expect("stub completed").len(), 5);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_discovers_closed_historical_orphan_via_title_search() {
+        let parent = orphan_parent();
+        let leaf = issue_json(
+            11,
+            111,
+            "[LEAF OF 10] Historical closed leaf",
+            &format!("{}\n\nHistorical scope.\n", umbrella_leaf_opening(10)),
+            "closed",
+        );
+        let (service, server) = service(vec![
+            response(200, repository_json("main")),
+            response(200, &parent),
+            response(200, refs(&[])),
+            response(200, &search_items(&[&leaf])),
+            response(200, &empty_search()),
+        ]);
+        let snapshot = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect("closed historical orphan");
+        assert!(snapshot.historical_leaf_numbers.contains(&11));
+        assert_eq!(server.finish().expect("stub completed").len(), 5);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_refuses_stale_search_copy_against_canonical_direct_leaf() {
+        let stale = issue_json(
+            11,
+            111,
+            "[LEAF OF 10] Stale search copy",
+            &format!("{}\n\nStale scope.\n", umbrella_leaf_opening(10)),
+            "open",
+        );
+        let leaf = remote_leaf();
+        let (service, server) = service(vec![
+            response(200, repository_json("main")),
+            response(200, &remote_parent()),
+            response(200, refs(&[(11, 111, "open")])),
+            response(200, &search_items(&[&stale])),
+            response(200, &empty_search()),
+            response(200, &leaf),
+        ]);
+        let error = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect_err("stale search refuses");
+        assert_eq!(
+            error,
+            "search result and canonical read returned unequal copies of #11"
+        );
+        assert_eq!(server.finish().expect("stub completed").len(), 6);
+    }
     #[tokio::test]
     async fn remote_snapshot_merges_identical_title_and_body_search_copies() {
         let parent = remote_parent();
@@ -3672,7 +3842,7 @@ mod tests {
         .await
         .expect("identical search overlap");
         assert_eq!(snapshot, audit_snapshot());
-        assert_eq!(server.finish().expect("stub completed").len(), 6);
+        assert_eq!(server.finish().expect("stub completed").len(), 7);
     }
 
     #[tokio::test]
@@ -3772,7 +3942,7 @@ mod tests {
         .await
         .expect("lifecycle prefix is stripped for leaf titles");
         assert!(snapshot.historical_leaf_numbers.contains(&11));
-        assert_eq!(server.finish().expect("stub completed").len(), 6);
+        assert_eq!(server.finish().expect("stub completed").len(), 7);
     }
 
     #[tokio::test]
@@ -3790,19 +3960,23 @@ mod tests {
             })
             .collect();
         let leaf = remote_leaf();
-        let mut items: Vec<Value> = junk
+        let junk_items: Vec<Value> = junk
             .iter()
             .map(|body| serde_json::from_str(body).expect("junk json"))
             .collect();
-        items.push(serde_json::from_str(&leaf).expect("leaf json"));
-        let search = search_payload(&items, 101, Some(false));
+        let first_page = search_payload(&junk_items, 101, Some(false));
+        let second_page = search_payload(
+            &[serde_json::from_str(&leaf).expect("leaf json")],
+            101,
+            Some(false),
+        );
         let (service, server) = service(vec![
             response(200, repository_json("main")),
-            response(200, &remote_parent()),
-            response(200, refs(&[(11, 111, "open")])),
-            response(200, &search),
+            response(200, &orphan_parent()),
+            response(200, refs(&[])),
+            paginated_response(200, &first_page, "/search/issues?page=2"),
+            response(200, &second_page),
             response(200, &empty_search()),
-            response(200, &remote_control()),
         ]);
         let snapshot = collect_snapshot_remote(
             &service,
@@ -3813,17 +3987,30 @@ mod tests {
             &"a".repeat(40),
         )
         .await
-        .expect("raw search volume above 100 stays usable");
-        assert_eq!(snapshot, audit_snapshot());
+        .expect("paginated search above 100 stays usable");
+        assert!(snapshot.historical_leaf_numbers.contains(&11));
         let requests = server.finish().expect("stub completed");
         assert_eq!(requests.len(), 6);
+        let search_requests: Vec<_> = requests
+            .iter()
+            .filter(|request| request.path.starts_with("/search/issues"))
+            .collect();
+        assert_eq!(search_requests.len(), 3);
+        assert!(
+            search_requests
+                .iter()
+                .any(|request| request.path.contains("page=2"))
+        );
+        assert!(
+            decoded_search_query(&search_requests[0].path)
+                .is_some_and(|query| query.contains("in:title"))
+        );
         assert!(
             !requests
                 .iter()
                 .any(|request| is_repo_wide_issue_list(&request.path))
         );
     }
-
     #[tokio::test]
     async fn remote_snapshot_refuses_incomplete_title_search_results() {
         let (service, server) = service(title_search_failure_exchanges(&search_payload(
