@@ -49,7 +49,7 @@ The zero-findings short-circuit still precedes apply UX selection: nothing is ap
 
 Under default auto-apply (`approve_requested=false`), Gate B fires **no** finding-acceptance prompt. Only these brakes can prompt inside `### Shared post-apply pipeline`, independent of `approve_requested`:
 
-1. **Plan-size trigger** (`scripts/larch.sh design postplan-emit` rc=12): in-loop continuation warns and continues. The unified Split-path single question fires only on prompt-side Gate B bail-out paths (`main-agent-apply-required`, `per-round-approval-required`).
+1. **Plan-size trigger** (`scripts/larch.sh design postplan-emit` rc=12): the in-loop controller returns `NEXT_ACTION=postplan-operator` before Step 3b. Gate B's idempotent settle re-entry emits `SETTLE_NEXT_ACTION=gate-b-hard-size`, then the unified Split-path single question fires.
 2. **Plan-command validator escalation** (rc=10): cross-vendor auto-correction runs first with the `SKILL.md` shared validator contract. Fix-and-retry / Override / Cancel fires only after auto-fix is exhausted.
 
 Plan drift (`DRIFT_TRIGGER_FIRED=true`) records a warning in `execution-issues.md` and exits `0`; it no longer halts.
@@ -60,6 +60,7 @@ After every `BGJOB_STATUS=DONE`, read the result env first. Require `BGJOB_RC=0`
 
 - `NEXT_ACTION=step3b`: the loop already applied accepted findings, ran postplan, and ran continuation; skip Gate B.
 - `NEXT_ACTION=gate-b`: prompt-side Gate B owns apply/postplan recovery, then resumes the recorded phase.
+- `NEXT_ACTION=postplan-operator`: prompt-side Gate B owns the postplan operator brake without re-applying accepted findings. A hard-size rc 12 routes through `SETTLE_NEXT_ACTION=gate-b-hard-size` to the unified Split-path before Step 3b.
 - `NEXT_ACTION=mav`: delegate MainAgent vote and re-tally directly to `scripts/larch.sh plan-review step3-mav --phase pre` and `--phase post`, with the PID-keyed current design env. Parse only trusted scalars from `DESIGN_STEP3_MAV_KV_BEGIN` / `DESIGN_STEP3_MAV_KV_END`; do not bind prompt-side retally anchors or invoke tally, persist-retally, or timing helpers inline. After successful post, resume once through the Step 3 bgjob wrapper: `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` for zero accepted findings or `--phase awaiting-apply` when accepted findings remain; if live, rejoin with `bgjob wait`. If post emits `NEXT_ACTION=step3b-bypass`, run the Gate-B-bypass helper and continue to Step 3b.
 - `NEXT_ACTION=step3b-bypass`: Gate B is **bypassed**. `NEXT_ACTION=final-summary:*`: Gate B is not reached.
 

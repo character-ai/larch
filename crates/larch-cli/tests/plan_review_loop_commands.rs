@@ -60,6 +60,17 @@ fn real_dispatcher_post_apply_reaches_awaiting_continuation() {
     let applied=run(Some(&root),"run",&["--mode","loop","--starting-round","1","--no-preview"],&[]); assert!(applied.status.success(),"{}",err(&applied)); assert_eq!(text(root.join(".step3-round-1.phase")),"awaiting-continuation\n"); let result=text(root.join(".design-postplan-emit-result.env")); assert!(result.contains("POSTPLAN_EMIT_STATUS=ok\n"),"{result}");
 }
 
+#[cfg(unix)]
+#[test]
+fn post_apply_hard_size_routes_to_operator_before_step3b() {
+    let sandbox=TempDir::new().expect("sandbox"); let root=design(&sandbox); write_executable_plan(&root); fs::write(root.join(".step3-round-1.phase"),"awaiting-post-apply\n").expect("phase"); fs::write(root.join(".gate-b-postapply-ready-1"),"").expect("ready");
+    let postplan=sandbox.path().join("postplan-hard-size.sh"); script(&postplan,"printf '%s\\n' 'POSTPLAN_EMIT_STATUS=ok' 'PLAN_SIZE_STATUS=plan-size-trigger' 'SIZE_TRIGGER_FIRED=true' 'TRIGGER_REASONS=surfaces' 'SURFACES_TOUCHED=10' 'STEP2B5_NEXT_ACTION=hard-trigger' >\"$DESIGN_TMPDIR/.design-postplan-emit-result.env\"\nexit 12");
+    let continuation=sandbox.path().join("continuation.sh"); script(&continuation,"printf '%s\\n' 'PLAN_REVIEW_CONTINUE=false' 'PLAN_REVIEW_CONTINUE_REASON=small-clean' 'ACCEPTED_COUNT=0' 'DEGRADED_PANEL=0'");
+    let routed=run(Some(&root),"run",&["--mode","loop","--starting-round","1","--no-preview"],&[("RUN_STEP3_POSTPLAN_EMIT_SH",&postplan),("RUN_STEP3_CONTINUATION_SH",&continuation)]); assert!(routed.status.success(),"{}",err(&routed)); let stdout=out(&routed);
+    assert!(stdout.contains("NEXT_ACTION=postplan-operator\n"),"{stdout}"); assert!(stdout.contains("STEP3_REVIEW_LOOP_STATUS=postplan-operator-required\n"),"{stdout}"); assert!(stdout.contains("POSTPLAN_RC=12\n"),"{stdout}"); assert!(!stdout.contains("NEXT_ACTION=step3b\n"),"{stdout}"); assert_eq!(text(root.join(".step3-round-1.phase")),"awaiting-postplan-operator\n");
+    let envelope=text(root.join(".step3-review-result.env")); assert!(envelope.contains("NEXT_ACTION=postplan-operator\n"),"{envelope}"); assert!(envelope.contains("POSTPLAN_RC=12\n"),"{envelope}");
+}
+
 #[test]
 fn preview_and_finalize_bytes_are_frozen() {
     let missing=run(None,"preview",&[],&[]); assert!(missing.status.success()); assert_eq!(out(&missing),"**⚠ 3: DESIGN_TMPDIR missing or invalid; cannot present plan candidate for review**\n"); assert!(err(&missing).is_empty());
