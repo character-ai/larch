@@ -2502,6 +2502,7 @@ mod tests {
             assert_eq!(*deadline, worker_deadline(budget_s));
             assert!(*deadline > Duration::from_secs(u64::from(budget_s)));
         }
+        drop(observed);
     }
 
     #[test]
