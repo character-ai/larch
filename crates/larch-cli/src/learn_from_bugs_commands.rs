@@ -21,9 +21,9 @@ use larch_adapters::path_under;
 use larch_core::DONE_PREFIX as DONE_TITLE_PREFIX;
 use larch_core::{
     BUG_PREFIX, FILE_CONFLICT_DEFAULT_CLUSTER_CAP, FILE_CONFLICT_DEFAULT_GLOBAL_CAP,
-    GUIDELINE_HEADING_RE, GitHubIssue, GitHubIssueSearch, GitHubIssueState, GitHubService,
-    INVARIANT_HEADING_RE, ParsedInput, bug_title_match, parse_issue_input, plan_file_conflict_deps,
-    private_atomic_write, render_deps_tsv,
+    GUIDELINE_HEADING_RE, GitHubIssue, GitHubIssueSearch, GitHubIssueSearchSort, GitHubIssueState,
+    GitHubService, INVARIANT_HEADING_RE, ParsedInput, bug_title_match, parse_issue_input,
+    plan_file_conflict_deps, private_atomic_write, render_deps_tsv,
 };
 use regex::Regex;
 use serde::Serialize;
@@ -295,40 +295,47 @@ pub fn prepare(arguments: &[OsString]) -> ExitCode {
             "--repo does not match the durable learn-from-bugs state repository",
         );
     }
+    let prior_highest = prior
+        .as_ref()
+        .map_or(0, |value| value.highest.max(0).cast_unsigned());
+    let incremental = prior.is_some() && !parsed.flag("--full") && !explicit_search;
+    let search_sort = if explicit_search {
+        GitHubIssueSearchSort::BestMatch
+    } else {
+        GitHubIssueSearchSort::CreatedDescending
+    };
     let scan_started_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let raw_issues = match fetch_issues(&repo, &search, &state, limit) {
+    let fetched = match fetch_issues(
+        &repo,
+        &search,
+        &state,
+        limit,
+        search_sort,
+        incremental.then_some(prior_highest),
+    ) {
         Ok(issues) => issues,
         Err(error) => {
             return command_error(PREPARE_PROGRAM, &format!("gh issue list failed: {error}"));
         }
     };
-    let highest = raw_issues
-        .iter()
-        .map(|issue| issue.number)
-        .max()
-        .unwrap_or(0);
-    let mut issues: Vec<_> = raw_issues
-        .iter()
-        .filter(|issue| !issue.is_pull_request && bug_title_match(&issue.title))
-        .cloned()
-        .collect();
-    let filtered = raw_issues.len().saturating_sub(issues.len());
-    let prior_highest = prior
-        .as_ref()
-        .map_or(0, |value| value.highest.max(0).cast_unsigned());
-    let previously_scanned = if prior.is_some() {
-        issues
-            .iter()
-            .filter(|issue| issue.number <= prior_highest)
-            .count()
-    } else {
-        0
-    };
-    let incremental = prior.is_some() && !parsed.flag("--full") && !explicit_search;
-    if incremental {
-        issues.retain(|issue| issue.number > prior_highest);
-    }
-    let digests: Vec<_> = issues.iter().map(build_digest).collect();
+    let issue_limit =
+        usize::try_from(limit).expect("fetch_issues validated the non-negative limit");
+    let selected = select_issue_window(
+        &fetched.issues,
+        issue_limit,
+        prior.as_ref().map(|_| prior_highest),
+        incremental,
+    );
+    warn_unread_issue_window(&fetched, &selected, issue_limit, incremental);
+    let highest = selected
+        .highest
+        .max(if incremental { prior_highest } else { 0 });
+    let incremental_window_starved = is_incremental_window_starved(
+        incremental,
+        selected.issues.len(),
+        fetched.continuation_unread,
+    );
+    let digests: Vec<_> = selected.issues.iter().map(build_digest).collect();
     let out = match create_out_dir(&out) {
         Ok(path) => path,
         Err(error) => return command_error(PREPARE_PROGRAM, &error),
@@ -365,9 +372,10 @@ pub fn prepare(arguments: &[OsString]) -> ExitCode {
     println!("SCAN_STARTED_AT={scan_started_at}");
     println!("HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED={highest}");
     println!("ISSUES_SELECTED={}", digests.len());
-    println!("ISSUES_PREVIOUSLY_SCANNED={previously_scanned}");
+    println!("ISSUES_PREVIOUSLY_SCANNED={}", selected.previously_scanned);
     println!("INCREMENTAL={incremental}");
-    println!("ISSUES_FILTERED_NON_BUG={filtered}");
+    println!("INCREMENTAL_WINDOW_STARVED={incremental_window_starved}");
+    println!("ISSUES_FILTERED_NON_BUG={}", selected.filtered);
     println!("STRUCTURED={structured}");
     println!("FREEFORM_OR_TITLE_ONLY={}", digests.len() - structured);
     println!("DIGEST_CHARS={digest_chars}");
@@ -1333,14 +1341,36 @@ fn resolve_repo(explicit: &str) -> Result<String, String> {
     ambient_repo().ok_or_else(|| "could not resolve GitHub repository".to_owned())
 }
 
+struct FetchedIssueWindow {
+    issues: Vec<GitHubIssue>,
+    continuation_unread: bool,
+    request_limit: usize,
+    transport_limit: usize,
+}
+
+struct SelectedIssueWindow {
+    issues: Vec<GitHubIssue>,
+    highest: u64,
+    previously_scanned: usize,
+    filtered: usize,
+    reached_marker: bool,
+}
+
 fn fetch_issues(
     repo: &str,
     search: &str,
     state: &str,
     limit: i64,
-) -> Result<Vec<GitHubIssue>, String> {
+    sort: GitHubIssueSearchSort,
+    prior_highest: Option<u64>,
+) -> Result<FetchedIssueWindow, String> {
     if limit == 0 {
-        return Ok(Vec::new());
+        return Ok(FetchedIssueWindow {
+            issues: Vec::new(),
+            continuation_unread: false,
+            request_limit: 0,
+            transport_limit: 0,
+        });
     }
     let limit = usize::try_from(limit).map_err(|_| "invalid issue limit".to_owned())?;
     let repo = repository_ref(repo).map_err(|()| "invalid repository".to_owned())?;
@@ -1350,25 +1380,162 @@ fn fetch_issues(
         format!("{search} state:{state}")
     };
     with_github_service(async |service, cancellation| {
-        let request = GitHubIssueSearch {
-            repo: repo.clone(),
-            query: query.clone(),
-            limit: limit.min(service.transport_policy().limits().items()),
-            sort: larch_core::GitHubIssueSearchSort::BestMatch,
-        };
-        let result = service
-            .search_issues(&request, cancellation)
-            .await
-            .map_err(|error| error.to_string())?;
-        if result.continuation_unread {
-            eprintln!(
-                "WARN: learn-from-bugs search stopped at {} issues with matching issues unread",
-                request.limit
-            );
+        let transport_limit = service.transport_policy().limits().items();
+        let mut request_limit = limit.min(transport_limit);
+        loop {
+            let request = GitHubIssueSearch {
+                repo: repo.clone(),
+                query: query.clone(),
+                limit: request_limit,
+                sort,
+            };
+            let result = service
+                .search_issues(&request, cancellation)
+                .await
+                .map_err(|error| error.to_string())?;
+            let incremental = prior_highest.is_some();
+            let selected_count = selectable_issues(&result.issues, prior_highest, incremental)
+                .take(limit)
+                .count();
+            let reached_marker =
+                issue_window_reached_marker(&result.issues, prior_highest, incremental);
+            let should_expand = sort == GitHubIssueSearchSort::CreatedDescending
+                && selected_count < limit
+                && !reached_marker
+                && result.continuation_unread
+                && request_limit < transport_limit;
+            if !should_expand {
+                return Ok(FetchedIssueWindow {
+                    issues: result.issues,
+                    continuation_unread: result.continuation_unread,
+                    request_limit,
+                    transport_limit,
+                });
+            }
+            request_limit = request_limit
+                .saturating_mul(2)
+                .max(request_limit.saturating_add(1))
+                .min(transport_limit);
         }
-        Ok(result.issues)
     })
     .map_err(crate::github_service::ServiceFailure::into_detail)
+}
+
+fn select_issue_window(
+    raw_issues: &[GitHubIssue],
+    limit: usize,
+    prior_highest: Option<u64>,
+    incremental: bool,
+) -> SelectedIssueWindow {
+    let highest = if incremental {
+        let marker = prior_highest.unwrap_or(0);
+        raw_issues
+            .iter()
+            .take_while(|issue| issue.number > marker)
+            .map(|issue| issue.number)
+            .max()
+            .unwrap_or(0)
+    } else {
+        raw_issues
+            .iter()
+            .map(|issue| issue.number)
+            .max()
+            .unwrap_or(0)
+    };
+    let matching_count = raw_issues
+        .iter()
+        .filter(|issue| is_mined_bug(issue))
+        .count();
+    let filtered = raw_issues.len().saturating_sub(matching_count);
+    let previously_scanned = prior_highest.map_or(0, |highest| {
+        raw_issues
+            .iter()
+            .filter(|issue| is_mined_bug(issue) && issue.number <= highest)
+            .count()
+    });
+    let reached_marker = issue_window_reached_marker(raw_issues, prior_highest, incremental);
+    let issues = selectable_issues(raw_issues, prior_highest, incremental)
+        .take(limit)
+        .cloned()
+        .collect();
+    SelectedIssueWindow {
+        issues,
+        highest,
+        previously_scanned,
+        filtered,
+        reached_marker,
+    }
+}
+
+fn selectable_issues(
+    raw_issues: &[GitHubIssue],
+    prior_highest: Option<u64>,
+    incremental: bool,
+) -> impl Iterator<Item = &GitHubIssue> {
+    let marker = prior_highest.unwrap_or(0);
+    raw_issues
+        .iter()
+        .take_while(move |issue| !incremental || issue.number > marker)
+        .filter(|issue| is_mined_bug(issue))
+}
+
+fn issue_window_reached_marker(
+    raw_issues: &[GitHubIssue],
+    prior_highest: Option<u64>,
+    incremental: bool,
+) -> bool {
+    incremental
+        && prior_highest
+            .is_some_and(|highest| raw_issues.iter().any(|issue| issue.number <= highest))
+}
+
+fn is_mined_bug(issue: &GitHubIssue) -> bool {
+    !issue.is_pull_request && bug_title_match(&issue.title)
+}
+
+fn warn_unread_issue_window(
+    fetched: &FetchedIssueWindow,
+    selected: &SelectedIssueWindow,
+    limit: usize,
+    incremental: bool,
+) {
+    if let Some(warning) = unread_issue_window_warning(fetched, selected, limit, incremental) {
+        eprintln!("{warning}");
+    }
+}
+
+fn unread_issue_window_warning(
+    fetched: &FetchedIssueWindow,
+    selected: &SelectedIssueWindow,
+    limit: usize,
+    incremental: bool,
+) -> Option<String> {
+    if !fetched.continuation_unread {
+        return None;
+    }
+    if incremental
+        && selected.issues.len() < limit
+        && !selected.reached_marker
+        && fetched.request_limit == fetched.transport_limit
+    {
+        return Some(format!(
+            "WARN: learn-from-bugs search hit the transport limit with {} of {} requested new issues still uncollected and matching issues unread",
+            limit - selected.issues.len(),
+            limit
+        ));
+    }
+    Some(format!(
+        "WARN: learn-from-bugs search stopped at {} issues with matching issues unread",
+        fetched.request_limit
+    ))
+}
+
+const fn is_incremental_window_starved(
+    incremental: bool,
+    selected_count: usize,
+    continuation_unread: bool,
+) -> bool {
+    incremental && selected_count == 0 && continuation_unread
 }
 
 fn create_out_dir(path: &Path) -> Result<PathBuf, String> {

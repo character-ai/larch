@@ -1548,6 +1548,8 @@
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"After `STATE_PUBLISH_STATUS=saved`, continue directly to Step 5a","id":"ported _structure_learn_from_bugs_specialized.py:195 [7f112c0444]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"[--full]","id":"ported _structure_learn_from_bugs_specialized.py:195 [84b052b84d]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"If `ISSUES_SELECTED=0`, do not read `DIGEST_PATH`","id":"ported _structure_learn_from_bugs_specialized.py:195 [97f17cff91]"}
+{"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"If `INCREMENTAL_WINDOW_STARVED=true`, do not read `DIGEST_PATH`","id":"learn-from-bugs-incremental-window-starvation-route"}
+{"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"Do not run Step 2.5 or the shared state-publication fragment","id":"learn-from-bugs-starvation-blocks-state-publication"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"ISSUES_PREVIOUSLY_SCANNED","id":"ported _structure_learn_from_bugs_specialized.py:196 [038e049c54]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"contains","needle":"INCREMENTAL","id":"ported _structure_learn_from_bugs_specialized.py:196 [099225c9fd]"}
 {"path":"skills/learn-from-bugs/SKILL.md","kind":"path_exists","id":"ported _structure_learn_from_bugs_specialized.py:204 [d0cf3500e7]"}
