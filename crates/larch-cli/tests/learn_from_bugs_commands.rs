@@ -250,6 +250,7 @@ fn preparation_runs_without_github_when_limit_is_zero() {
     assert!(prepared.contains("REPO=acme/widget\n"));
     assert!(prepared.contains("ISSUES_SELECTED=0\n"));
     assert!(prepared.contains("INCREMENTAL=false\n"));
+    assert!(prepared.contains("INCREMENTAL_WINDOW_STARVED=false\n"));
     assert!(prepared.contains("GUIDELINES_INDEXED=1\n"));
     assert!(prepared.contains("RUST_LINTS_INDEXED=2\n"));
     assert!(!prepared.contains("PYTHON_LINTS_INDEXED="));

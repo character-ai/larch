@@ -942,12 +942,28 @@ fn integer_options_and_filesystem_primitives_preserve_boundaries() {
     assert_eq!(resolve_repo("owner/repo"), Ok("owner/repo".to_owned()));
     assert!(resolve_repo("not a repository").is_err());
     assert!(
-        fetch_issues("owner/repo", "query", "closed", 0)
-            .unwrap()
-            .is_empty()
+        fetch_issues(
+            "owner/repo",
+            "query",
+            "closed",
+            0,
+            GitHubIssueSearchSort::BestMatch,
+            None,
+        )
+        .unwrap()
+        .issues
+        .is_empty()
     );
     assert_eq!(
-        fetch_issues("owner/repo", "query", "closed", -1),
+        fetch_issues(
+            "owner/repo",
+            "query",
+            "closed",
+            -1,
+            GitHubIssueSearchSort::BestMatch,
+            None,
+        )
+        .map(|window| window.issues),
         Err("invalid issue limit".to_owned())
     );
     let output = create_out_dir(&directory.path().join("nested/output")).unwrap();
@@ -955,6 +971,85 @@ fn integer_options_and_filesystem_primitives_preserve_boundaries() {
     let written = output.join("payload.txt");
     plain_atomic_write(&written, "payload").unwrap();
     assert_eq!(fs::read_to_string(written).unwrap(), "payload");
+}
+
+#[test]
+fn issue_selection_applies_the_marker_and_limit_after_local_filtering() {
+    let issues = [
+        issue(105, "[BUG] newest", ""),
+        issue(104, "ordinary issue", ""),
+        issue(103, "[BUG] next", ""),
+        issue(102, "[DONE] [BUG] third", ""),
+        issue(100, "ordinary marker row", ""),
+        issue(99, "[BUG] previously scanned", ""),
+        issue(106, "[BUG] out of order after marker", ""),
+    ];
+
+    let selected = select_issue_window(&issues, 3, Some(100), true);
+
+    assert_eq!(
+        selected
+            .issues
+            .iter()
+            .map(|issue| issue.number)
+            .collect::<Vec<_>>(),
+        [105, 103, 102]
+    );
+    assert_eq!(selected.highest, 105);
+    assert_eq!(selected.previously_scanned, 1);
+    assert_eq!(selected.filtered, 2);
+    assert!(selected.reached_marker);
+    assert!(is_incremental_window_starved(true, 0, true));
+    assert!(!is_incremental_window_starved(true, 1, true));
+    assert!(!is_incremental_window_starved(false, 0, true));
+}
+
+#[test]
+fn newest_first_order_prevents_old_best_matches_from_spending_the_incremental_budget() {
+    let best_match_order = [
+        issue(98, "[BUG] old best match", ""),
+        issue(97, "[BUG] another old match", ""),
+        issue(105, "[BUG] new one", ""),
+        issue(104, "[BUG] new two", ""),
+    ];
+    let newest_first_order = [
+        issue(105, "[BUG] new one", ""),
+        issue(104, "[BUG] new two", ""),
+        issue(98, "[BUG] old best match", ""),
+        issue(97, "[BUG] another old match", ""),
+    ];
+
+    assert!(
+        select_issue_window(&best_match_order, 2, Some(100), true)
+            .issues
+            .is_empty()
+    );
+    assert_eq!(
+        select_issue_window(&newest_first_order, 2, Some(100), true)
+            .issues
+            .iter()
+            .map(|issue| issue.number)
+            .collect::<Vec<_>>(),
+        [105, 104]
+    );
+}
+
+#[test]
+fn unread_transport_warning_names_the_unfilled_new_issue_count() {
+    let fetched = FetchedIssueWindow {
+        issues: vec![issue(12, "[BUG] one", ""), issue(11, "[BUG] two", "")],
+        continuation_unread: true,
+        request_limit: 20,
+        transport_limit: 20,
+    };
+    let selected = select_issue_window(&fetched.issues, 5, Some(9), true);
+
+    assert_eq!(
+        unread_issue_window_warning(&fetched, &selected, 5, true).as_deref(),
+        Some(
+            "WARN: learn-from-bugs search hit the transport limit with 3 of 5 requested new issues still uncollected and matching issues unread"
+        )
+    );
 }
 
 #[test]
@@ -1349,12 +1444,93 @@ fn typed_issue_fetch_uses_the_loopback_github_service_for_all_states() {
     let service: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
         Arc::new(move || OctocrabGitHubService::with_test_base(&base));
     with_test_github_service(service, || {
-        let all = fetch_issues("o/r", BUG_PREFIX, "all", 3).expect("all-state search");
-        let closed = fetch_issues("o/r", BUG_PREFIX, "closed", 3).expect("closed-state search");
-        assert_eq!(all[0].number, 71);
-        assert_eq!(closed[0].title, title);
+        let all = fetch_issues(
+            "o/r",
+            BUG_PREFIX,
+            "all",
+            3,
+            GitHubIssueSearchSort::BestMatch,
+            None,
+        )
+        .expect("all-state search");
+        let closed = fetch_issues(
+            "o/r",
+            BUG_PREFIX,
+            "closed",
+            3,
+            GitHubIssueSearchSort::CreatedDescending,
+            None,
+        )
+        .expect("closed-state search");
+        assert_eq!(all.issues[0].number, 71);
+        assert_eq!(closed.issues[0].title, title);
     });
-    assert_eq!(server.finish().expect("requests").len(), 2);
+    let requests = server.finish().expect("requests");
+    assert_eq!(requests.len(), 2);
+    assert!(!requests[0].path.contains("sort=created"));
+    assert!(requests[1].path.contains("sort=created"));
+    assert!(requests[1].path.contains("order=desc"));
+}
+
+#[test]
+fn newest_first_fetch_expands_until_local_bug_matches_fill_the_limit() {
+    let mut ordinary: Value = serde_json::from_str(include_str!(
+        "../../../larch-adapters/fixtures/github_issue.json"
+    ))
+    .expect("issue fixture");
+    ordinary["number"] = json!(12);
+    ordinary["id"] = json!(12);
+    ordinary["title"] = json!("ordinary maintenance");
+    let mut first_bug = ordinary.clone();
+    first_bug["number"] = json!(11);
+    first_bug["id"] = json!(11);
+    first_bug["title"] = json!("[BUG] first match");
+    let mut second_bug = ordinary.clone();
+    second_bug["number"] = json!(10);
+    second_bug["id"] = json!(10);
+    second_bug["title"] = json!("[BUG] second match");
+    let response = json!({
+        "total_count": 3,
+        "incomplete_results": false,
+        "items": [ordinary, first_bug, second_bug],
+    })
+    .to_string();
+    let server = IssueServiceStub::start([
+        IssueServiceExchange::any_json(200, response.clone()).expect("initial search exchange"),
+        IssueServiceExchange::any_json(200, response).expect("expanded search exchange"),
+    ])
+    .expect("issue service");
+    let base = server.base_url().to_owned();
+    let service: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+        Arc::new(move || OctocrabGitHubService::with_test_base(&base));
+
+    with_test_github_service(service, || {
+        let fetched = fetch_issues(
+            "o/r",
+            BUG_PREFIX,
+            "closed",
+            2,
+            GitHubIssueSearchSort::CreatedDescending,
+            Some(9),
+        )
+        .expect("expanded issue search");
+        let selected = select_issue_window(&fetched.issues, 2, Some(9), true);
+        assert_eq!(fetched.request_limit, 4);
+        assert!(!fetched.continuation_unread);
+        assert_eq!(
+            selected
+                .issues
+                .iter()
+                .map(|issue| issue.number)
+                .collect::<Vec<_>>(),
+            [11, 10]
+        );
+    });
+    let requests = server.finish().expect("requests");
+    assert_eq!(requests.len(), 2);
+    assert!(requests.iter().all(
+        |request| request.path.contains("sort=created") && request.path.contains("order=desc")
+    ));
 }
 
 #[test]
