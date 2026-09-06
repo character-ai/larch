@@ -23,7 +23,7 @@
     "total": 110
   },
   "BUCKETS_codex_by_model": {
-    "gpt-5.6-sol": {
+    "gpt-6-astra": {
       "cached_input": 0,
       "input": 100,
       "output": 10,

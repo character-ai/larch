@@ -43,7 +43,7 @@ fn model_args_emits_cursor_and_codex_tokens() {
         .assert()
         .success()
         .stdout(predicate::str::starts_with(
-            "-m\ngpt-5.6-sol\n-c\nmodel_reasoning_effort=\"high\"\n",
+            "-m\ngpt-6-astra\n-c\nmodel_reasoning_effort=\"high\"\n",
         ));
 
     larch()

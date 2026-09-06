@@ -217,6 +217,25 @@ fn an_unpriced_per_model_bucket_is_reported_for_every_lane() {
 }
 
 #[test]
+fn historical_codex_sol_ledgers_remain_priced_without_unknown_model_warnings() {
+    let report = json!({
+        "BUCKETS_codex": {"input": 1_000_000, "cached_input": 1_000_000, "output": 1_000_000},
+        "BUCKETS_codex_by_model": {
+            "gpt-5.6-sol": {"input": 1_000_000, "cached_input": 1_000_000, "output": 1_000_000},
+        },
+    });
+    let record = record_from_report(
+        report.as_object().expect("report object").clone(),
+        CLAUDE_OPUS_4_8_MODEL,
+    );
+    let mut sink = observations();
+    let cost = price_run(&record, &BTreeMap::new(), &mut sink);
+
+    assert!((cost.codex_cost - 35.5).abs() < f64::EPSILON);
+    assert!(sink.entries().is_empty(), "{:?}", sink.entries());
+}
+
+#[test]
 fn legacy_cursor_grok_ledger_ids_keep_the_current_grok_rate() {
     let report = json!({
         "BUCKETS_cursor": {"input": 1_000_000, "cache_read": 1_000_000, "output": 1_000_000},

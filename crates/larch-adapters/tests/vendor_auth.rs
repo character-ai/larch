@@ -301,14 +301,14 @@ fn a_negative_verdict_is_never_reused_when_negative_caching_is_off() {
 }
 
 fn gate_detail() -> CodexGateDetail {
-    detect_codex_cli_gate("requires a newer version of Codex", "gpt-5.6-sol").expect("gate detail")
+    detect_codex_cli_gate("requires a newer version of Codex", "gpt-6-astra").expect("gate detail")
 }
 
 #[test]
 fn a_gate_detail_round_trips_expires_and_clears() {
     let temp = tempfile::tempdir().expect("temp");
     let cache = cache(temp.path(), 60, 30);
-    let identity = codex_probe_identity(larch_core::CodexEnvAuth::Omit, "gpt-5.6-sol");
+    let identity = codex_probe_identity(larch_core::CodexEnvAuth::Omit, "gpt-6-astra");
     let detail = gate_detail();
 
     cache.write_gate_detail(&identity, &detail).expect("write");
@@ -334,7 +334,7 @@ fn a_gate_detail_round_trips_expires_and_clears() {
 fn a_gate_detail_older_than_its_probe_stamp_is_discarded() {
     let temp = tempfile::tempdir().expect("temp");
     let cache = cache(temp.path(), 600, 600);
-    let identity = codex_probe_identity(larch_core::CodexEnvAuth::Omit, "gpt-5.6-sol");
+    let identity = codex_probe_identity(larch_core::CodexEnvAuth::Omit, "gpt-6-astra");
 
     cache
         .write_gate_detail(&identity, &gate_detail())
@@ -357,7 +357,7 @@ fn a_gate_detail_older_than_its_probe_stamp_is_discarded() {
 fn concurrent_probes_serialize_and_publish_one_consistent_gate_detail() {
     let temp = tempfile::tempdir().expect("temp");
     let root = temp.path().to_path_buf();
-    let identity = codex_probe_identity(larch_core::CodexEnvAuth::Omit, "gpt-5.6-sol");
+    let identity = codex_probe_identity(larch_core::CodexEnvAuth::Omit, "gpt-6-astra");
     let probes_run = Arc::new(AtomicUsize::new(0));
     let barrier = Arc::new(Barrier::new(8));
     let mut handles = Vec::new();
@@ -471,7 +471,7 @@ fn the_private_configuration_directory_is_removed_on_every_exit_path() {
 fn a_credential_shaped_probe_value_never_reaches_a_cache_artifact() {
     let temp = tempfile::tempdir().expect("temp");
     let cache = cache(temp.path(), 600, 600);
-    let identity = codex_probe_identity(larch_core::CodexEnvAuth::Omit, "gpt-5.6-sol");
+    let identity = codex_probe_identity(larch_core::CodexEnvAuth::Omit, "gpt-6-astra");
 
     cache.write_verdict(&identity, false).expect("stamp");
     cache

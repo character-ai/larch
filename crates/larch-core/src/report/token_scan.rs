@@ -29,9 +29,9 @@ use crate::report::run_log_corpus::{
 use crate::text::python_str as truthy_text;
 use crate::vendor_model::{
     CLAUDE_FABLE_5_MODEL, CLAUDE_HAIKU_4_5_MODEL, CLAUDE_OPUS_4_8_MODEL, CLAUDE_SONNET_4_6_MODEL,
-    CODEX_DEFAULT_MODEL, CODEX_FIX_MODEL_DEFAULT, CODEX_REVIEW_MODEL_DEFAULT,
-    CODEX_VOTE_MODEL_DEFAULT, CURSOR_DEFAULT_MODEL, CURSOR_GROK_4_6_HIGH_MODEL,
-    claude_sub_default_model, normalize_claude_ledger_model,
+    CODEX_DEFAULT_MODEL, CODEX_FIX_MODEL_DEFAULT, CODEX_LEGACY_SOL_MODEL,
+    CODEX_REVIEW_MODEL_DEFAULT, CODEX_VOTE_MODEL_DEFAULT, CURSOR_DEFAULT_MODEL,
+    CURSOR_GROK_4_6_HIGH_MODEL, claude_sub_default_model, normalize_claude_ledger_model,
 };
 use crate::vendor_usage::json_usage_number;
 use crate::{OrderedJson, ensure_ascii_json, python_json_dumps};
@@ -79,8 +79,9 @@ const KNOWN_CACHE_CREATION_FIELDS: [&str; 3] = [
     "ephemeral_1h_input_tokens",
     "5m",
 ];
-const PINNED_MODELS: [&str; 10] = [
+const PINNED_MODELS: [&str; 11] = [
     CODEX_DEFAULT_MODEL,
+    CODEX_LEGACY_SOL_MODEL,
     CODEX_REVIEW_MODEL_DEFAULT,
     CODEX_VOTE_MODEL_DEFAULT,
     CODEX_FIX_MODEL_DEFAULT,

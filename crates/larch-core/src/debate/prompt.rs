@@ -370,8 +370,8 @@ where <action> is one of: AGREE | CONCEDE | HOLD.";
             vec!["--model".to_owned(), "cursor-grok-4.6-high".to_owned()]
         );
         assert_eq!(
-            model_args("codex", "gpt-5.6-sol").expect("codex"),
-            vec!["-m".to_owned(), "gpt-5.6-sol".to_owned()]
+            model_args("codex", "gpt-6-astra").expect("codex"),
+            vec!["-m".to_owned(), "gpt-6-astra".to_owned()]
         );
         assert!(model_args("cursor", "-bad").is_err());
         assert!(model_args("claude", "x").is_err());

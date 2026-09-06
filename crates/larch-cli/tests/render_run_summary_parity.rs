@@ -141,7 +141,7 @@ fn cost_available_renders_the_total_line_and_codex_split() {
         .success()
         .stdout(predicates::str::contains("\u{1f4b0} TOTAL"))
         .stdout(predicates::str::contains("Claude $"))
-        .stdout(predicates::str::contains("Codex-5.6 $"))
+        .stdout(predicates::str::contains("Codex-default $"))
         .stdout(predicates::str::contains("Codex-mini $"))
         .stdout(predicates::str::contains(
             "- **Main agent model**: claude-sonnet-4-6",

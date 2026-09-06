@@ -547,8 +547,8 @@ mod tests {
 
     #[test]
     fn probe_identity_separates_auth_mode_and_model() {
-        let login = codex_probe_identity(CodexEnvAuth::Omit, "gpt-5.6-sol");
-        let env_key = codex_probe_identity(CodexEnvAuth::Include, "gpt-5.6-sol");
+        let login = codex_probe_identity(CodexEnvAuth::Omit, "gpt-6-astra");
+        let env_key = codex_probe_identity(CodexEnvAuth::Include, "gpt-6-astra");
         let other_model = codex_probe_identity(CodexEnvAuth::Omit, "gpt-5.6-terra");
 
         assert!(login.starts_with("codex-login-"));
@@ -558,14 +558,14 @@ mod tests {
         assert_eq!(login.len(), "codex-login-".len() + 16);
         assert_eq!(
             login,
-            codex_probe_identity(CodexEnvAuth::Omit, "gpt-5.6-sol")
+            codex_probe_identity(CodexEnvAuth::Omit, "gpt-6-astra")
         );
     }
 
     #[test]
     fn gate_detail_round_trips_and_rejects_foreign_or_forged_payloads() {
         let detail = detect_codex_cli_gate(
-            "model gpt-5.6-sol requires a newer version of Codex",
+            "model gpt-6-astra requires a newer version of Codex",
             "fallback",
         )
         .expect("gate");
@@ -730,7 +730,7 @@ mod tests {
     #[test]
     fn codex_gate_stops_the_loop_and_is_reported_once() {
         let detail = detect_codex_cli_gate(
-            "model gpt-5.6-sol requires a newer version of Codex",
+            "model gpt-6-astra requires a newer version of Codex",
             "fallback",
         )
         .expect("gate");

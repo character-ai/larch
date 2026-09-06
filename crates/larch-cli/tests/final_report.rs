@@ -188,7 +188,7 @@ No review rounds completed.\n\
 - **Outcome**: \u{2705} DONE\n\
 - **Path**: standard\n\
 - **Duration**: 00:41:07\n\
-- **Cost**: \u{1f4b0} TOTAL ~$3.14: Claude $3.14, Codex-5.6 $0.00, Codex-mini $0.00, \
+- **Cost**: \u{1f4b0} TOTAL ~$3.14: Claude $3.14, Codex-default $0.00, Codex-mini $0.00, \
 Cursor $0.00, Claude (subprocess) $0.00  |  Tokens: 1200k\n\
 - **Issue**: #4242: https://github.com/character-ai/larch/issues/4242\n\
 - **PR**: #8260: https://github.com/character-ai/larch/pull/8260\n\
