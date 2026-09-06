@@ -8,7 +8,9 @@ pub const CURSOR_DEFAULT_MODEL: &str = "composer-2.5";
 /// Cursor grok pin used by implement-lane and debate inventories.
 pub const CURSOR_GROK_4_6_HIGH_MODEL: &str = "cursor-grok-4.6-high";
 /// Default Codex model for the default role.
-pub const CODEX_DEFAULT_MODEL: &str = "gpt-5.6-sol";
+pub const CODEX_DEFAULT_MODEL: &str = "gpt-6-astra";
+/// Historical default model recognized in archived ledgers, never a launch default.
+pub const CODEX_LEGACY_SOL_MODEL: &str = "gpt-5.6-sol";
 /// Default Codex model for the review role.
 pub const CODEX_REVIEW_MODEL_DEFAULT: &str = "gpt-5.6-luna";
 /// Default Codex model for the vote role.

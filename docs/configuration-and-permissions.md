@@ -433,7 +433,7 @@ The strong/default Codex model for untagged Codex launches. Examples include the
 - Review, vote, and fix launchers ignore this key and use their role-specific keys.
 
 **When not set:**
-- The default role uses the plugin `codex_model` option, then a caller-supplied default, then `gpt-5.6-sol`.
+- The default role uses the plugin `codex_model` option, then a caller-supplied default, then `gpt-6-astra`.
 
 ### `LARCH_CODEX_REVIEW_MODEL`, `LARCH_CODEX_VOTE_MODEL`, `LARCH_CODEX_FIX_MODEL`
 
@@ -565,8 +565,8 @@ and `/report-tokens` USD estimates per lane. Rust `token cost` and
 `token render-cost-line` consume the same override names:
 
 - **Claude bucket env vars**: `LARCH_CLAUDE_INPUT_RATE_PER_M`, `LARCH_CLAUDE_CACHE_READ_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M`, and `LARCH_CLAUDE_OUTPUT_RATE_PER_M`.
-- **Codex bucket env vars** (`gpt-5.6-sol` default-bucket tokens): `LARCH_CODEX_INPUT_RATE_PER_M`, `LARCH_CODEX_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_OUTPUT_RATE_PER_M`.
-- **Codex mini bucket env vars** (`gpt-5.4-mini` and `gpt-5.6-luna` tokens): `LARCH_CODEX_MINI_INPUT_RATE_PER_M`, `LARCH_CODEX_MINI_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_MINI_OUTPUT_RATE_PER_M`. The cost line shows `Codex-5.6` and `Codex-mini` separately.
+- **Codex bucket env vars** (`gpt-6-astra` default-bucket tokens): `LARCH_CODEX_INPUT_RATE_PER_M`, `LARCH_CODEX_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_OUTPUT_RATE_PER_M`.
+- **Codex mini bucket env vars** (`gpt-5.4-mini` and `gpt-5.6-luna` tokens): `LARCH_CODEX_MINI_INPUT_RATE_PER_M`, `LARCH_CODEX_MINI_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_MINI_OUTPUT_RATE_PER_M`. The cost line shows `Codex-default` and `Codex-mini` separately.
 - **Cursor bucket env vars**: `LARCH_CURSOR_INPUT_RATE_PER_M`, `LARCH_CURSOR_CACHE_READ_RATE_PER_M`, and `LARCH_CURSOR_OUTPUT_RATE_PER_M`.
 - **Blended compatibility env vars**: `LARCH_CLAUDE_RATE_PER_M`, `LARCH_CODEX_RATE_PER_M`, and `LARCH_CURSOR_RATE_PER_M`.
 
@@ -576,7 +576,7 @@ Per-bucket env vars win when bucketed counts are available. Blended env vars are
 
 Default model basis:
 
-- **Codex default role**: `gpt-5.6-sol`, with `input=5.00`, `cached input=0.50`, and `output=30.00` per million tokens.
+- **Codex default role**: `gpt-6-astra`, retaining the prior default estimates of `input=5.00`, `cached input=0.50`, and `output=30.00` per million tokens. These are estimates carried forward from the previous model, not verified Astra prices. Historical `gpt-5.6-sol` ledger rows retain their existing rates.
 - **Codex review role**: `gpt-5.6-luna`, with `input=1.00`, `cached input=0.10`, and `output=6.00` per million tokens. **Codex vote/fix roles**: `gpt-5.6-terra`, with `input=2.50`, `cached input=0.25`, and `output=15.00` per million tokens.
 - **Cursor**: `composer-2.5`, with `input=0.50`, `cache read=0.20`, and `output=2.50` per million tokens. `cursor-grok-4.6-high` has `input=2.00`, `cache read=0.50`, and `output=6.00` per million tokens; pinned `cursor-grok-4.6-high` usage is exempt from the Cursor Token Rate surcharge.
 - **Claude**: Opus 4.8, with `input=5.00`, `cache read=0.50`, `cache write 5m=6.25`, `cache write 1h=10.00`, and `output=25.00` per million tokens.
@@ -610,7 +610,7 @@ On a failed required CI run, the ship driver distills the failure to `$IMPLEMENT
 
 Conflict resolution (`MODE=conflict`) uses the same `larch:ci-fixer` Agent-tool subagent. The subagent classifies and resolves conflicts, runs Phase 3 self-review for non-trivial `ship_pr_pre_push` resolutions, and continues the rebase locally with `push rebase --continue --no-push --keep-on-conflict`. Operator escalation on `needs-operator` stays with the main agent. The external registry role `implement.rebase_conflict_fixer` remains for any residual external-tier paths; the primary orchestrator path is the in-session ci-fixer conflict mode.
 
-Pre-ship lint-fix uses Claude/Opus 4.8, then Codex default-role `gpt-5.6-sol`, then Cursor `composer-2.5`. Each attempted tier gets an isolated artifact directory and a full 1800-second reservation. Capture, validation, and evidence-writing overhead does not consume the next tier reservation. Failed and no-op tiers advance; useful validated edits return to checks. `lint-fix-no-selectable-tier` and `lint-fix-budget-exhausted` stall with a bounded redacted `LINT_FIX_TIER_LEDGER_PATH`; `lint-fix-all-tiers-no-useful-delta` emits a `LINT_FIX_LEDGER_*` escalation and routes to the main agent. Structural failures remain fail-closed. This pre-ship contract does not change CI recovery or Step 8 ship-pr policy. Review-fix and plan-autofix Codex fixers use the fix role, default `gpt-5.6-terra`.
+Pre-ship lint-fix uses Claude/Opus 4.8, then Codex default-role `gpt-6-astra`, then Cursor `composer-2.5`. Each attempted tier gets an isolated artifact directory and a full 1800-second reservation. Capture, validation, and evidence-writing overhead does not consume the next tier reservation. Failed and no-op tiers advance; useful validated edits return to checks. `lint-fix-no-selectable-tier` and `lint-fix-budget-exhausted` stall with a bounded redacted `LINT_FIX_TIER_LEDGER_PATH`; `lint-fix-all-tiers-no-useful-delta` emits a `LINT_FIX_LEDGER_*` escalation and routes to the main agent. Structural failures remain fail-closed. This pre-ship contract does not change CI recovery or Step 8 ship-pr policy. Review-fix and plan-autofix Codex fixers use the fix role, default `gpt-5.6-terra`.
 
 ### `OOS_ISSUES_PER_RUN_CAP`
 

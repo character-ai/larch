@@ -77,6 +77,25 @@ fn a_committed_ledger_rebuilds_the_python_owner_report() {
 }
 
 #[test]
+fn historical_codex_sol_ledgers_keep_their_model_without_unpinned_warnings() {
+    let temp = TempDir::new().expect("temp");
+    let ledger = ledger_in(
+        temp.path(),
+        "historical-sol.jsonl",
+        &LEDGER.replace("gpt-6-astra", "gpt-5.6-sol"),
+    );
+    let mut observations = TokenObservations::default();
+    let report = build_report_from_ledgers(&[ledger], &mut observations).expect("report");
+
+    assert!(report["BUCKETS_codex_by_model"]["gpt-5.6-sol"].is_object());
+    assert!(!observations.entries().iter().any(|entry| {
+        entry.kind() == TokenObservationKind::UnpinnedModel
+            && entry.vendor() == "codex"
+            && entry.detail() == "gpt-5.6-sol"
+    }));
+}
+
+#[test]
 fn an_implement_row_outside_step_two_is_rerouted_into_a_synthetic_step() {
     let temp = TempDir::new().expect("temp");
     let ledger = ledger_in(temp.path(), "larch-tokens-b.jsonl", REROUTE_LEDGER);
@@ -187,7 +206,7 @@ fn unknown_models_and_unknown_usage_fields_are_reported_not_dropped() {
         "claude_sub",
         "claude-opus-4-8"
     )));
-    assert!(kinds.contains(&(TokenObservationKind::DefaultedModel, "codex", "gpt-5.6-sol")));
+    assert!(kinds.contains(&(TokenObservationKind::DefaultedModel, "codex", "gpt-6-astra")));
     // An unpinned vendor id keeps its exact spelling in the report.
     assert!(
         report

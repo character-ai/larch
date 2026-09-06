@@ -170,7 +170,7 @@ fn codex_cost_segment(cost: &RunSummaryCost) -> String {
             )
         };
     format!(
-        "Codex-5.6 {}, Codex-mini {}",
+        "Codex-default {}, Codex-mini {}",
         money(default_bucket),
         money(mini_bucket)
     )
@@ -456,7 +456,7 @@ mod tests {
         assert!(rendered.contains("- **PR**: #7: https://github.com/o/r/pull/7\n"));
         assert!(rendered.contains("- **Lines (PR diff)**: code +10/-2, larch-logs +3/-0\n"));
         assert!(rendered.contains(
-            "- **Cost**: \u{1f4b0} TOTAL ~$3.00: Claude $1.00, Codex-5.6 $1.00, \
+            "- **Cost**: \u{1f4b0} TOTAL ~$3.00: Claude $1.00, Codex-default $1.00, \
 Codex-mini $0.50, Cursor $0.25, Claude (subprocess) $0.25  |  Tokens: 2k\n"
         ));
         assert!(rendered.ends_with("<!-- larch:run-summary v=1 -->\n"));

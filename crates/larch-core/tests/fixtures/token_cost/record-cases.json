@@ -159,7 +159,7 @@
         "output": 40009
       },
       "BUCKETS_codex_by_model": {
-        "gpt-5.6-sol": {
+        "gpt-6-astra": {
           "input": 200003,
           "cached_input": 800011,
           "output": 30011
@@ -218,7 +218,7 @@
         "output": 40009
       },
       "BUCKETS_codex_by_model": {
-        "gpt-5.6-sol": {
+        "gpt-6-astra": {
           "input": 200003,
           "cached_input": 800011,
           "output": 30011
@@ -962,7 +962,7 @@
         "output": 40009
       },
       "BUCKETS_codex_by_model": {
-        "gpt-5.6-sol": {
+        "gpt-6-astra": {
           "input": 200003,
           "cached_input": 800011,
           "output": 30011

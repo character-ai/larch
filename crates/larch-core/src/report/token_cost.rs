@@ -43,8 +43,9 @@ use super::token_scan::{
 use crate::text::unsigned_integer;
 use crate::vendor_model::{
     CLAUDE_FABLE_5_MODEL, CLAUDE_GLM_5_2_MODEL, CLAUDE_HAIKU_4_5_MODEL, CLAUDE_OPUS_4_8_MODEL,
-    CLAUDE_SONNET_4_6_MODEL, CODEX_DEFAULT_MODEL, CODEX_REVIEW_MODEL_DEFAULT, CURSOR_DEFAULT_MODEL,
-    CURSOR_GROK_4_6_HIGH_MODEL, canonicalize_glm_main_model,
+    CLAUDE_SONNET_4_6_MODEL, CODEX_DEFAULT_MODEL, CODEX_LEGACY_SOL_MODEL,
+    CODEX_REVIEW_MODEL_DEFAULT, CURSOR_DEFAULT_MODEL, CURSOR_GROK_4_6_HIGH_MODEL,
+    canonicalize_glm_main_model,
 };
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
@@ -136,14 +137,15 @@ impl RateRow {
     }
 }
 
-/// The single reviewed pricing source, verified as of 2026-08-13.
+/// The single pricing source. GPT-6 Astra retains the prior default estimates;
+/// the remaining rates were verified as of 2026-08-13.
 ///
 /// Sources: `OpenAI` GPT-5.6 family and historical Codex model pricing; the
 /// Cursor [Models & Pricing](https://cursor.com/docs/models-and-pricing)
 /// `composer-2.5` and Grok 4.6 rows plus the
 /// Teams surcharge; Anthropic Claude Opus, Sonnet, Haiku, and Fable list-price buckets; and the
 /// Z.ai GLM-5.2 main-agent rates, whose cache-creation tiers are unused.
-pub static RATE_TABLE: [(TokenVendor, &str, RateRow); 12] = [
+pub static RATE_TABLE: [(TokenVendor, &str, RateRow); 13] = [
     (
         TokenVendor::Codex,
         CODEX_DEFAULT_MODEL,
@@ -158,6 +160,11 @@ pub static RATE_TABLE: [(TokenVendor, &str, RateRow); 12] = [
         TokenVendor::Codex,
         CODEX_REVIEW_MODEL_DEFAULT,
         RateRow::external(1.00, 0.10, 6.00),
+    ),
+    (
+        TokenVendor::Codex,
+        CODEX_LEGACY_SOL_MODEL,
+        RateRow::external(5.00, 0.50, 30.00),
     ),
     (
         TokenVendor::Codex,
@@ -1024,7 +1031,9 @@ impl TokenCounts {
             } else {
                 CODEX_DEFAULT_MODEL
             };
-            note_priced_as(TokenVendor::Codex, model, applied, observations);
+            if model != CODEX_LEGACY_SOL_MODEL {
+                note_priced_as(TokenVendor::Codex, model, applied, observations);
+            }
             let target = if mini {
                 &mut self.codex_mini
             } else {
@@ -1485,7 +1494,7 @@ pub fn render_cost_line(values: &TokenCostValues) -> String {
         _absent => format!("Cursor ${}", format_money(values.cursor_cost)),
     };
     format!(
-        "\u{1f4b0} Cost: TOTAL ~${}: Claude ${}, Codex-5.6 ${}, Codex-mini ${}, {}, \
+        "\u{1f4b0} Cost: TOTAL ~${}: Claude ${}, Codex-default ${}, Codex-mini ${}, {}, \
 Claude (subprocess) ${}  |  Tokens: {}k\n",
         format_money(values.total_cost),
         format_money(values.claude_cost),

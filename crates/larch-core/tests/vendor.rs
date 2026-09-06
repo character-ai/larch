@@ -475,7 +475,7 @@ fn session_create_and_resume_argv_are_byte_exact() {
     let codex = VendorSessionHandle::create("codex", "019fc6b3-e6c4-7892-a97a-c80b30a7f5b0")
         .expect("codex");
     let mut resume_request = VendorLaunchRequest::new("/repo", "/tmp/out.txt", "resume please");
-    resume_request.model_args = vec!["-m".to_owned(), "gpt-5.6-sol".to_owned()];
+    resume_request.model_args = vec!["-m".to_owned(), "gpt-6-astra".to_owned()];
     let resume = build_codex_resume_argv(&codex, &resume_request)
         .expect("resume")
         .full_argv();
